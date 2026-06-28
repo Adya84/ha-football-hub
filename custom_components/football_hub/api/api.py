@@ -64,6 +64,7 @@ class FootballHubAPI:
         return data.get("response", [])
 
     async def get_live(self, league_id: int, season: int):
+        """Return live fixtures."""
         return await self.request(
             "fixtures",
             {
@@ -74,6 +75,7 @@ class FootballHubAPI:
         )
 
     async def get_fixtures(self, league_id: int, season: int):
+        """Return all fixtures."""
         return await self.request(
             "fixtures",
             {
@@ -83,6 +85,7 @@ class FootballHubAPI:
         )
 
     async def get_standings(self, league_id: int, season: int):
+        """Return standings."""
         return await self.request(
             "standings",
             {
@@ -92,8 +95,19 @@ class FootballHubAPI:
         )
 
     async def get_top_scorers(self, league_id: int, season: int):
+        """Return top scorers."""
         return await self.request(
             "players/topscorers",
+            {
+                "league": league_id,
+                "season": season,
+            },
+        )
+
+    async def get_top_assists(self, league_id: int, season: int):
+        """Return top assists."""
+        return await self.request(
+            "players/topassists",
             {
                 "league": league_id,
                 "season": season,
