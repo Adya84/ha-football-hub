@@ -24,7 +24,7 @@ class FootballHubCoordinator(DataUpdateCoordinator):
 
         self.entry = entry
 
-        self.api = FootballHubAPI(entry.data["api_key"])
+       self.api = FootballHubAPI(hass, entry.data["api_key"])
 
         self.competition = COMPETITIONS[entry.data["competition"]]
         self.season = entry.data["season"]
