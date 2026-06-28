@@ -17,6 +17,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry, async_add_e
             FootballHubLiveSensor(coordinator, entry),
             FootballHubFixturesSensor(coordinator, entry),
             FootballHubStandingsSensor(coordinator, entry),
+            FootballHubTopScorersSensor(coordinator, entry),
         ]
     )
 
@@ -55,6 +56,7 @@ class FootballHubStatusSensor(FootballHubBaseSensor):
             "live_count": len(self.coordinator.data.get("live", [])),
             "fixtures_count": len(self.coordinator.data.get("fixtures", [])),
             "standings_count": len(self.coordinator.data.get("standings", [])),
+            "top_scorers_count": len(self.coordinator.data.get("top_scorers", [])),
         }
 
 
@@ -83,3 +85,12 @@ class FootballHubStandingsSensor(FootballHubBaseSensor):
     @property
     def native_value(self):
         return len(self.coordinator.data.get("standings", []))
+
+
+class FootballHubTopScorersSensor(FootballHubBaseSensor):
+    def __init__(self, coordinator, entry):
+        super().__init__(coordinator, entry, "top_scorers", "Top Scorers")
+
+    @property
+    def native_value(self):
+        return len(self.coordinator.data.get("top_scorers", []))
