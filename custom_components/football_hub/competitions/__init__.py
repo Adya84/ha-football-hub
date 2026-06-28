@@ -1,1 +1,1 @@
-
+from .competitions import COMPETITIONS
