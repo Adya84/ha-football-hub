@@ -1,1 +1,1 @@
-
+"""Football Hub data helpers."""
