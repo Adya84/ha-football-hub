@@ -1,1 +1,42 @@
-
+COMPETITIONS = {
+    "premier_league": {
+        "name": "Premier League",
+        "country": "England",
+        "league_id": 39,
+        "type": "league",
+        "has_table": True,
+        "has_matchweeks": True,
+    },
+    "championship": {
+        "name": "Championship",
+        "country": "England",
+        "league_id": 40,
+        "type": "league",
+        "has_table": True,
+        "has_matchweeks": True,
+    },
+    "league_one": {
+        "name": "League One",
+        "country": "England",
+        "league_id": 41,
+        "type": "league",
+        "has_table": True,
+        "has_matchweeks": True,
+    },
+    "league_two": {
+        "name": "League Two",
+        "country": "England",
+        "league_id": 42,
+        "type": "league",
+        "has_table": True,
+        "has_matchweeks": True,
+    },
+    "scottish_premiership": {
+        "name": "Scottish Premiership",
+        "country": "Scotland",
+        "league_id": 179,
+        "type": "league",
+        "has_table": True,
+        "has_matchweeks": True,
+    },
+}
