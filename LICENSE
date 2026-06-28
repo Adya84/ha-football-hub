@@ -1,0 +1,106 @@
+Football Hub Home Assistant Integration Licence
+
+Copyright (C) 2026 Adrian Apel
+
+All rights reserved.
+
+This software, including all source code, documentation, dashboard files, frontend files, images, configuration files and related materials, is the intellectual property of Adrian Apel.
+
+By downloading, installing, copying or using this software, you agree to the terms of this licence.
+
+## 1. Permission Granted
+
+Permission is granted to download, install and use this software free of charge for personal, private and non-commercial use only.
+
+You may use this software on your own Home Assistant installation.
+
+You may fork this repository for personal testing, learning or development only, provided that the fork is not used to redistribute, rebrand, publish, sell or commercially exploit the software.
+
+## 2. Restrictions
+
+You may not, without prior written permission from Adrian Apel:
+
+* Sell this software.
+* Charge money for access to this software.
+* Redistribute this software in modified or unmodified form.
+* Publish modified versions of this software.
+* Rebrand, rename or claim ownership of this software.
+* Include this software in any paid product, service, bundle or package.
+* Use this software or any part of its source code in a commercial product or service.
+* Remove or alter copyright notices, author credits or attribution.
+* Upload copies of this software to other repositories, websites, app stores or distribution platforms.
+* Use this software to provide paid installation, support, hosting, dashboard setup or managed services without permission.
+* Use the name, branding, screenshots or design of this project to imply endorsement, partnership or affiliation.
+
+## 3. Contributions
+
+Bug reports, suggestions and pull requests may be submitted to the official repository.
+
+By submitting a contribution, you grant Adrian Apel permission to use, modify, include and distribute that contribution as part of this project.
+
+Submission of a contribution does not give the contributor ownership of the project or permission to redistribute the project separately.
+
+## 4. Official Repository
+
+The official source repository is:
+
+https://github.com/Adya84/ha-football-hub
+
+Users should download and install the software only from the official repository or approved Home Assistant installation methods linked to the official repository.
+
+## 5. No Affiliation
+
+This project is an independent Home Assistant integration.
+
+It is not affiliated with, endorsed by, sponsored by or officially connected to Home Assistant, HACS, API-Football, football-data.org, FIFA, UEFA, The Premier League, The English Football League (EFL), The Scottish Professional Football League (SPFL), LaLiga, Bundesliga, Serie A, Ligue 1, Major League Soccer (MLS), or any football governing body, competition organiser, club, venue or broadcaster.
+
+All trademarks, club names, competition names, team names and logos remain the property of their respective owners.
+
+## 6. Warranty Disclaimer
+
+This software is provided "as is", without warranty of any kind, express or implied.
+
+Adrian Apel makes no guarantees that the software will be error-free, secure, uninterrupted, compatible with all systems, or suitable for any particular purpose.
+
+Use of this software is entirely at your own risk.
+
+## 7. Limitation of Liability
+
+To the maximum extent permitted by law, Adrian Apel shall not be liable for any loss, damage, data loss, service interruption, system failure, incorrect football data, fixtures, results, standings, statistics, line-ups, live match information, configuration issues, financial loss or any other claim arising from the use of this software.
+
+## 8. Permission Requests
+
+For permission to redistribute, modify, use commercially, include in another project, or provide paid services involving this software, written permission must be obtained from Adrian Apel.
+
+## 9. Termination
+
+Any breach of this licence automatically terminates your permission to use this software.
+
+Upon termination, you must stop using the software and delete any copies in your possession unless written permission is granted by Adrian Apel.
+
+## 10. Licence Changes
+
+Adrian Apel reserves the right to update or change this licence for future versions of the software.
+
+Existing versions remain governed by the licence terms included with that version at the time of release.
+
+## Summary
+
+You may:
+
+* Use this software for your own personal Home Assistant setup.
+* Download and install it free of charge.
+* Fork it for personal testing only.
+* Submit issues, suggestions and pull requests.
+
+You may not:
+
+* Sell it.
+* Rebrand it.
+* Redistribute it.
+* Publish modified versions.
+* Use it commercially.
+* Include it in paid services or products.
+* Claim it as your own.
+
+All rights not expressly granted are reserved by Adrian Apel.
