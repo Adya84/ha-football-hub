@@ -43,19 +43,23 @@ class FootballHubCoordinator(DataUpdateCoordinator):
             league_id = self.competition["league_id"]
 
             return {
-                "live": await self.api.get_live(
-                    league_id,
-                    self.season,
-                ),
-                "fixtures": await self.api.get_fixtures(
-                    league_id,
-                    self.season,
-                ),
-                "standings": await self.api.get_standings(
-                    league_id,
-                    self.season,
-                ),
-            }
+    "live": await self.api.get_live(
+        league_id,
+        self.season,
+    ),
+    "fixtures": await self.api.get_fixtures(
+        league_id,
+        self.season,
+    ),
+    "standings": await self.api.get_standings(
+        league_id,
+        self.season,
+    ),
+    "top_scorers": await self.api.get_top_scorers(
+        league_id,
+        self.season,
+    ),
+}
 
         except Exception as err:
             raise UpdateFailed(err) from err
