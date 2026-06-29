@@ -5,7 +5,10 @@ from __future__ import annotations
 from datetime import timedelta
 import logging
 
-from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
+from homeassistant.helpers.update_coordinator import (
+    DataUpdateCoordinator,
+    UpdateFailed,
+)
 
 from .api import FootballHubAPI
 from ..competitions import COMPETITIONS
@@ -18,8 +21,10 @@ class FootballHubCoordinator(DataUpdateCoordinator):
 
     def __init__(self, hass, entry):
         """Initialise the coordinator."""
+
         self.entry = entry
         self.api = FootballHubAPI(hass, entry.data["api_key"])
+
         self.competition = COMPETITIONS[entry.data["competition"]]
         self.season = entry.data["season"]
 
@@ -31,17 +36,13 @@ class FootballHubCoordinator(DataUpdateCoordinator):
         )
 
     async def _async_update_data(self):
-        """Fetch all data."""
-        try:
-            league_id = self.competition["league_id"]
+        """Fetch all competition data."""
 
-            return {
-                "live": await self.api.get_live(league_id, self.season),
-                "fixtures": await self.api.get_fixtures(league_id, self.season),
-                "standings": await self.api.get_standings(league_id, self.season),
-                "top_scorers": await self.api.get_top_scorers(league_id, self.season),
-                "top_assists": await self.api.get_top_assists(league_id, self.season),
-            }
+        try:
+            return await self.api.get_competition_data(
+                self.competition["league_id"],
+                self.season,
+            )
 
         except Exception as err:
             raise UpdateFailed(err) from err
