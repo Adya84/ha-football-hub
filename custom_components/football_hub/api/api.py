@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import logging
 from typing import Any
 
@@ -27,11 +28,12 @@ class FootballHubAPI:
 
     async def request(self, endpoint: str, params: dict[str, Any] | None = None):
         """Send request to API-Football."""
-        url = f"{API_BASE}/{endpoint}"
 
         headers = {
             "x-apisports-key": self.api_key,
         }
+
+        url = f"{API_BASE}/{endpoint}"
 
         try:
             async with self.session.get(
@@ -40,31 +42,30 @@ class FootballHubAPI:
                 params=params or {},
                 timeout=aiohttp.ClientTimeout(total=30),
             ) as response:
+
                 if response.status == 429:
                     raise FootballHubAPIError("API rate limit reached")
 
                 if response.status >= 400:
                     text = await response.text()
                     raise FootballHubAPIError(
-                        f"API request failed: {response.status} - {text}"
+                        f"{response.status} - {text}"
                     )
 
                 data = await response.json()
 
         except aiohttp.ClientError as err:
-            raise FootballHubAPIError(f"Connection error: {err}") from err
+            raise FootballHubAPIError(err) from err
 
         if not isinstance(data, dict):
             raise FootballHubAPIError("Invalid API response")
 
-        errors = data.get("errors")
-        if errors:
-            _LOGGER.warning("API-Football returned errors: %s", errors)
+        if data.get("errors"):
+            _LOGGER.warning("API returned errors: %s", data["errors"])
 
         return data.get("response", [])
 
     async def get_live(self, league_id: int, season: int):
-        """Return live fixtures."""
         return await self.request(
             "fixtures",
             {
@@ -75,7 +76,6 @@ class FootballHubAPI:
         )
 
     async def get_fixtures(self, league_id: int, season: int):
-        """Return all fixtures."""
         return await self.request(
             "fixtures",
             {
@@ -85,7 +85,6 @@ class FootballHubAPI:
         )
 
     async def get_standings(self, league_id: int, season: int):
-        """Return standings."""
         return await self.request(
             "standings",
             {
@@ -95,7 +94,6 @@ class FootballHubAPI:
         )
 
     async def get_top_scorers(self, league_id: int, season: int):
-        """Return top scorers."""
         return await self.request(
             "players/topscorers",
             {
@@ -105,7 +103,6 @@ class FootballHubAPI:
         )
 
     async def get_top_assists(self, league_id: int, season: int):
-        """Return top assists."""
         return await self.request(
             "players/topassists",
             {
@@ -113,3 +110,28 @@ class FootballHubAPI:
                 "season": season,
             },
         )
+
+    async def get_competition_data(self, league_id: int, season: int):
+        """Fetch all competition data in parallel."""
+
+        (
+            live,
+            fixtures,
+            standings,
+            scorers,
+            assists,
+        ) = await asyncio.gather(
+            self.get_live(league_id, season),
+            self.get_fixtures(league_id, season),
+            self.get_standings(league_id, season),
+            self.get_top_scorers(league_id, season),
+            self.get_top_assists(league_id, season),
+        )
+
+        return {
+            "live": live,
+            "fixtures": fixtures,
+            "standings": standings,
+            "top_scorers": scorers,
+            "top_assists": assists,
+        }
