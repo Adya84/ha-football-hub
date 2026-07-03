@@ -1,4 +1,6 @@
-from datetime import datetime, timezone
+"""Football Hub sensors."""
+
+from __future__ import annotations
 
 from homeassistant.components.sensor import SensorEntity
 from homeassistant.config_entries import ConfigEntry
@@ -7,8 +9,23 @@ from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from ..competitions import COMPETITIONS, SEASONS
 from ..const import DOMAIN
+from ..engine import (
+    all_results,
+    fixtures_today,
+    last_result,
+    latest,
+    league_table,
+    live_matches,
+    next_fixture,
+    primary_live_match,
+    this_week,
+    top_assists,
+    top_scorers,
+    upcoming,
+)
+from ..engine.helpers import limit_items
 
-ATTRIBUTE_LIMIT = 10
+ATTRIBUTE_LIMIT = 20
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry, async_add_entities):
@@ -39,82 +56,20 @@ class FootballHubBaseSensor(CoordinatorEntity, SensorEntity):
         self._attr_unique_id = f"{entry.entry_id}_{key}"
         self._attr_name = f"{entry.title} {name}"
 
+    @property
+    def raw_fixtures(self):
+        """Return raw fixtures."""
+        return self.coordinator.data.get("fixtures", []) or []
 
-def _raw_list(coordinator, key):
-    return coordinator.data.get(key, []) or []
-
-
-def _fixtures(coordinator):
-    return _raw_list(coordinator, "fixtures")
-
-
-def _live(coordinator):
-    return _raw_list(coordinator, "live")
-
-
-def _is_finished(match):
-    return match.get("fixture", {}).get("status", {}).get("short") in {"FT", "AET", "PEN"}
-
-
-def _is_not_started(match):
-    return match.get("fixture", {}).get("status", {}).get("short") in {"NS", "TBD"}
-
-
-def _fixture_timestamp(match):
-    return match.get("fixture", {}).get("timestamp") or 0
-
-
-def _next_fixture(coordinator):
-    now_ts = int(datetime.now(timezone.utc).timestamp())
-    upcoming = [
-        match for match in _fixtures(coordinator)
-        if _is_not_started(match) and _fixture_timestamp(match) >= now_ts
-    ]
-    return sorted(upcoming, key=_fixture_timestamp)[0] if upcoming else None
-
-
-def _clean_fixture(match):
-    if not match:
-        return {}
-
-    fixture = match.get("fixture", {})
-    league = match.get("league", {})
-    teams = match.get("teams", {})
-    goals = match.get("goals", {})
-    venue = fixture.get("venue", {})
-    status = fixture.get("status", {})
-    home = teams.get("home", {})
-    away = teams.get("away", {})
-
-    return {
-        "fixture_id": fixture.get("id"),
-        "kickoff": fixture.get("date"),
-        "timestamp": fixture.get("timestamp"),
-        "status": status.get("long"),
-        "status_short": status.get("short"),
-        "elapsed": status.get("elapsed"),
-        "league": league.get("name"),
-        "country": league.get("country"),
-        "season": league.get("season"),
-        "round": league.get("round"),
-        "home_team": home.get("name"),
-        "home_team_id": home.get("id"),
-        "home_logo": home.get("logo"),
-        "away_team": away.get("name"),
-        "away_team_id": away.get("id"),
-        "away_logo": away.get("logo"),
-        "home_goals": goals.get("home"),
-        "away_goals": goals.get("away"),
-        "stadium": venue.get("name"),
-        "city": venue.get("city"),
-    }
-
-
-def _limited_clean(matches, limit=ATTRIBUTE_LIMIT):
-    return [_clean_fixture(match) for match in matches[:limit]]
+    @property
+    def raw_live(self):
+        """Return raw live matches."""
+        return self.coordinator.data.get("live", []) or []
 
 
 class FootballHubStatusSensor(FootballHubBaseSensor):
+    """Football Hub status sensor."""
+
     def __init__(self, coordinator, entry):
         super().__init__(coordinator, entry, "status", "Status")
 
@@ -127,8 +82,9 @@ class FootballHubStatusSensor(FootballHubBaseSensor):
         competition_key = self.entry.data.get("competition")
         competition = COMPETITIONS.get(competition_key, {})
         season = self.entry.data.get("season")
-        fixtures = _fixtures(self.coordinator)
-        results = [match for match in fixtures if _is_finished(match)]
+        fixtures = upcoming(self.raw_fixtures)
+        results = all_results(self.raw_fixtures)
+        live = live_matches(self.raw_live)
 
         return {
             "competition": competition.get("name"),
@@ -136,121 +92,152 @@ class FootballHubStatusSensor(FootballHubBaseSensor):
             "league_id": competition.get("league_id"),
             "season": SEASONS.get(season, season),
             "provider_mode": self.entry.data.get("provider_mode"),
-            "live_count": len(_live(self.coordinator)),
-            "fixtures_count": len([m for m in fixtures if _is_not_started(m)]),
+            "live_count": len(live),
+            "fixtures_count": len(fixtures),
             "results_count": len(results),
-            "standings_count": len(_raw_list(self.coordinator, "standings")),
-            "top_scorers_count": len(_raw_list(self.coordinator, "top_scorers")),
-            "top_assists_count": len(_raw_list(self.coordinator, "top_assists")),
+            "standings_count": len(league_table(self.coordinator.data.get("standings", []) or [])),
+            "top_scorers_count": len(self.coordinator.data.get("top_scorers", []) or []),
+            "top_assists_count": len(self.coordinator.data.get("top_assists", []) or []),
         }
 
 
 class FootballHubLiveSensor(FootballHubBaseSensor):
+    """Live matches sensor."""
+
     def __init__(self, coordinator, entry):
         super().__init__(coordinator, entry, "live_matches", "Live Matches")
 
     @property
     def native_value(self):
-        return len(_live(self.coordinator))
+        return len(live_matches(self.raw_live))
 
     @property
     def extra_state_attributes(self):
-        live = _live(self.coordinator)
-        return {"total_live": len(live), "matches": _limited_clean(live)}
+        live = live_matches(self.raw_live)
+        return {
+            "total_live": len(live),
+            "primary_live_match": primary_live_match(self.raw_live),
+            "matches": limit_items(live, ATTRIBUTE_LIMIT),
+        }
 
 
 class FootballHubNextFixtureSensor(FootballHubBaseSensor):
+    """Next fixture sensor."""
+
     def __init__(self, coordinator, entry):
         super().__init__(coordinator, entry, "next_fixture", "Next Fixture")
 
     @property
     def native_value(self):
-        clean = _clean_fixture(_next_fixture(self.coordinator))
-        if not clean:
+        match = next_fixture(self.raw_fixtures)
+        if not match:
             return None
-        return f"{clean.get('home_team')} vs {clean.get('away_team')}"
+        return f"{match.get('home_team')} vs {match.get('away_team')}"
 
     @property
     def extra_state_attributes(self):
-        return _clean_fixture(_next_fixture(self.coordinator))
+        return next_fixture(self.raw_fixtures)
 
 
 class FootballHubFixturesSensor(FootballHubBaseSensor):
+    """Upcoming fixtures sensor."""
+
     def __init__(self, coordinator, entry):
         super().__init__(coordinator, entry, "fixtures", "Fixtures")
 
     @property
     def native_value(self):
-        return len([match for match in _fixtures(self.coordinator) if _is_not_started(match)])
+        return len(upcoming(self.raw_fixtures))
 
     @property
     def extra_state_attributes(self):
-        fixtures = [match for match in _fixtures(self.coordinator) if _is_not_started(match)]
+        fixtures = upcoming(self.raw_fixtures)
+        today = fixtures_today(self.raw_fixtures)
+        week = this_week(self.raw_fixtures)
         return {
             "total_fixtures": len(fixtures),
-            "shown_fixtures": min(len(fixtures), ATTRIBUTE_LIMIT),
-            "attribute_limit": ATTRIBUTE_LIMIT,
-            "fixtures": _limited_clean(fixtures),
+            "today_count": len(today),
+            "this_week_count": len(week),
+            "next_20": limit_items(fixtures, ATTRIBUTE_LIMIT),
+            "today": limit_items(today, ATTRIBUTE_LIMIT),
+            "this_week": limit_items(week, ATTRIBUTE_LIMIT),
         }
 
 
 class FootballHubResultsSensor(FootballHubBaseSensor):
+    """Results sensor."""
+
     def __init__(self, coordinator, entry):
         super().__init__(coordinator, entry, "results", "Results")
 
     @property
     def native_value(self):
-        return len([match for match in _fixtures(self.coordinator) if _is_finished(match)])
+        return len(all_results(self.raw_fixtures))
 
     @property
     def extra_state_attributes(self):
-        results = [match for match in _fixtures(self.coordinator) if _is_finished(match)]
-        results = sorted(results, key=_fixture_timestamp, reverse=True)
+        results = all_results(self.raw_fixtures)
         return {
             "total_results": len(results),
-            "shown_results": min(len(results), ATTRIBUTE_LIMIT),
-            "attribute_limit": ATTRIBUTE_LIMIT,
-            "results": _limited_clean(results),
+            "last_result": last_result(self.raw_fixtures),
+            "latest": latest(self.raw_fixtures, ATTRIBUTE_LIMIT),
         }
 
 
 class FootballHubStandingsSensor(FootballHubBaseSensor):
+    """Standings sensor."""
+
     def __init__(self, coordinator, entry):
         super().__init__(coordinator, entry, "standings", "Standings")
 
     @property
     def native_value(self):
-        return len(_raw_list(self.coordinator, "standings"))
+        return len(league_table(self.coordinator.data.get("standings", []) or []))
 
     @property
     def extra_state_attributes(self):
-        standings = _raw_list(self.coordinator, "standings")
-        return {"total_standings": len(standings), "standings": standings[:ATTRIBUTE_LIMIT]}
+        table = league_table(self.coordinator.data.get("standings", []) or [])
+        return {
+            "total_teams": len(table),
+            "table": limit_items(table, ATTRIBUTE_LIMIT),
+        }
 
 
 class FootballHubTopScorersSensor(FootballHubBaseSensor):
+    """Top scorers sensor."""
+
     def __init__(self, coordinator, entry):
         super().__init__(coordinator, entry, "top_scorers", "Top Scorers")
 
     @property
     def native_value(self):
-        return len(_raw_list(self.coordinator, "top_scorers"))
+        scorers = top_scorers(self.coordinator.data.get("top_scorers", []) or [])
+        return len(scorers)
 
     @property
     def extra_state_attributes(self):
-        scorers = _raw_list(self.coordinator, "top_scorers")
-        return {"total_top_scorers": len(scorers), "top_scorers": scorers[:ATTRIBUTE_LIMIT]}
+        scorers = top_scorers(self.coordinator.data.get("top_scorers", []) or [])
+        return {
+            "total_top_scorers": len(scorers),
+            "top_scorers": limit_items(scorers, ATTRIBUTE_LIMIT),
+        }
 
 
 class FootballHubTopAssistsSensor(FootballHubBaseSensor):
+    """Top assists sensor."""
+
     def __init__(self, coordinator, entry):
         super().__init__(coordinator, entry, "top_assists", "Top Assists")
 
     @property
     def native_value(self):
-        return len(_raw_list(self.coordinator, "top_assists"))
+        assists = top_assists(self.coordinator.data.get("top_assists", []) or [])
+        return len(assists)
 
     @property
     def extra_state_attributes(self):
-        assists = _raw_list(self.coordinator, "top_assists")
-        return {"total_top_assists": len(assists), "top_assists": assists[:ATTRIBUTE_LIMIT]}
+        assists = top_assists(self.coordinator.data.get("top_assists", []) or [])
+        return {
+            "total_top_assists": len(assists),
+            "top_assists": limit_items(assists, ATTRIBUTE_LIMIT),
+        }
