@@ -25,7 +25,7 @@ from ..engine import (
 )
 from ..engine.helpers import limit_items
 
-ATTRIBUTE_LIMIT = 20
+ATTRIBUTE_LIMIT = 5
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry, async_add_entities):
@@ -158,9 +158,7 @@ class FootballHubFixturesSensor(FootballHubBaseSensor):
             "total_fixtures": len(fixtures),
             "today_count": len(today),
             "this_week_count": len(week),
-            "next_20": limit_items(fixtures, ATTRIBUTE_LIMIT),
-            "today": limit_items(today, ATTRIBUTE_LIMIT),
-            "this_week": limit_items(week, ATTRIBUTE_LIMIT),
+            "next_5": limit_items(fixtures, ATTRIBUTE_LIMIT),
         }
 
 
@@ -180,7 +178,7 @@ class FootballHubResultsSensor(FootballHubBaseSensor):
         return {
             "total_results": len(results),
             "last_result": last_result(self.raw_fixtures),
-            "latest": latest(self.raw_fixtures, ATTRIBUTE_LIMIT),
+            "latest_5": latest(self.raw_fixtures, ATTRIBUTE_LIMIT),
         }
 
 
