@@ -1,3 +1,7 @@
+"""Config flow for Football Hub."""
+
+from __future__ import annotations
+
 import voluptuous as vol
 
 from homeassistant import config_entries
@@ -12,8 +16,7 @@ class FootballHubConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     VERSION = 1
 
     async def async_step_user(self, user_input=None):
-        """Initial setup step."""
-
+        """Handle the initial step."""
         errors = {}
 
         if user_input is not None:
@@ -22,41 +25,27 @@ class FootballHubConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
             competition = COMPETITIONS.get(competition_key)
 
-            if not competition:
+            if competition is None:
                 errors["competition"] = "invalid_competition"
             else:
-                title = f"Football Hub - {competition['name']} {SEASONS.get(season, season)}"
+                await self.async_set_unique_id(
+                    f"{competition_key}_{season}_{user_input['provider_mode']}"
+                )
+                self._abort_if_unique_id_configured()
 
                 return self.async_create_entry(
-                    title=title,
-                    data={
-                        "api_key": user_input["api_key"],
-                        "competition": competition_key,
-                        "season": season,
-                        "provider_mode": user_input["provider_mode"],
-                    },
+                    title=f"Football Hub - {competition['name']} {SEASONS.get(season, season)}",
+                    data=user_input,
                 )
 
-        schema = vol.Schema(
+        data_schema = vol.Schema(
             {
                 vol.Required("api_key"): str,
-                vol.Required(
-                    "competition",
-                    default="premier_league",
-                ): vol.In(
-                    {
-                        key: value["name"]
-                        for key, value in COMPETITIONS.items()
-                    }
+                vol.Required("competition", default="premier_league"): vol.In(
+                    {key: value["name"] for key, value in COMPETITIONS.items()}
                 ),
-                vol.Required(
-                    "season",
-                    default=DEFAULT_SEASON,
-                ): vol.In(SEASONS),
-                vol.Required(
-                    "provider_mode",
-                    default="main",
-                ): vol.In(
+                vol.Required("season", default=DEFAULT_SEASON): vol.In(SEASONS),
+                vol.Required("provider_mode", default="main"): vol.In(
                     {
                         "main": "Main Provider",
                         "viewer": "Viewer Device",
@@ -67,6 +56,6 @@ class FootballHubConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
         return self.async_show_form(
             step_id="user",
-            data_schema=schema,
+            data_schema=data_schema,
             errors=errors,
         )
