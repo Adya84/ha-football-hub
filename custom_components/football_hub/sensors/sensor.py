@@ -1,5 +1,3 @@
-from datetime import datetime, timezone
-
 from homeassistant.components.sensor import SensorEntity
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
@@ -7,6 +5,19 @@ from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from ..competitions import COMPETITIONS, SEASONS
 from ..const import DOMAIN
+from ..engine import (
+    fixtures_count,
+    live_count,
+    live_matches,
+    next_fixture,
+    results,
+    results_count,
+    standings,
+    standings_count,
+    top_assists,
+    top_scorers,
+    upcoming_fixtures,
+)
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry, async_add_entities):
@@ -38,87 +49,6 @@ class FootballHubBaseSensor(CoordinatorEntity, SensorEntity):
         self._attr_name = f"{entry.title} {name}"
 
 
-def _fixtures(coordinator):
-    return coordinator.data.get("fixtures", []) or []
-
-
-def _live(coordinator):
-    return coordinator.data.get("live", []) or []
-
-
-def _is_finished(match):
-    return match.get("fixture", {}).get("status", {}).get("short") in {
-        "FT",
-        "AET",
-        "PEN",
-    }
-
-
-def _is_not_started(match):
-    return match.get("fixture", {}).get("status", {}).get("short") in {
-        "NS",
-        "TBD",
-    }
-
-
-def _fixture_timestamp(match):
-    return match.get("fixture", {}).get("timestamp") or 0
-
-
-def _next_fixture(coordinator):
-    now_ts = int(datetime.now(timezone.utc).timestamp())
-    upcoming = [
-        match
-        for match in _fixtures(coordinator)
-        if _is_not_started(match) and _fixture_timestamp(match) >= now_ts
-    ]
-
-    if not upcoming:
-        return None
-
-    return sorted(upcoming, key=_fixture_timestamp)[0]
-
-
-def _clean_fixture(match):
-    if not match:
-        return {}
-
-    fixture = match.get("fixture", {})
-    league = match.get("league", {})
-    teams = match.get("teams", {})
-    goals = match.get("goals", {})
-    score = match.get("score", {})
-    venue = fixture.get("venue", {})
-    status = fixture.get("status", {})
-
-    home = teams.get("home", {})
-    away = teams.get("away", {})
-
-    return {
-        "fixture_id": fixture.get("id"),
-        "kickoff": fixture.get("date"),
-        "timestamp": fixture.get("timestamp"),
-        "status": status.get("long"),
-        "status_short": status.get("short"),
-        "elapsed": status.get("elapsed"),
-        "league": league.get("name"),
-        "country": league.get("country"),
-        "season": league.get("season"),
-        "round": league.get("round"),
-        "home_team": home.get("name"),
-        "home_team_id": home.get("id"),
-        "home_logo": home.get("logo"),
-        "away_team": away.get("name"),
-        "away_team_id": away.get("id"),
-        "away_logo": away.get("logo"),
-        "home_goals": goals.get("home"),
-        "away_goals": goals.get("away"),
-        "score": score,
-        "stadium": venue.get("name"),
-        "city": venue.get("city"),
-    }
-
-
 class FootballHubStatusSensor(FootballHubBaseSensor):
     def __init__(self, coordinator, entry):
         super().__init__(coordinator, entry, "status", "Status")
@@ -132,6 +62,7 @@ class FootballHubStatusSensor(FootballHubBaseSensor):
         competition_key = self.entry.data.get("competition")
         competition = COMPETITIONS.get(competition_key, {})
         season = self.entry.data.get("season")
+        data = self.coordinator.data or {}
 
         return {
             "competition": competition.get("name"),
@@ -139,14 +70,12 @@ class FootballHubStatusSensor(FootballHubBaseSensor):
             "league_id": competition.get("league_id"),
             "season": SEASONS.get(season, season),
             "provider_mode": self.entry.data.get("provider_mode"),
-            "live_count": len(_live(self.coordinator)),
-            "fixtures_count": len(_fixtures(self.coordinator)),
-            "results_count": len(
-                [match for match in _fixtures(self.coordinator) if _is_finished(match)]
-            ),
-            "standings_count": len(self.coordinator.data.get("standings", []) or []),
-            "top_scorers_count": len(self.coordinator.data.get("top_scorers", []) or []),
-            "top_assists_count": len(self.coordinator.data.get("top_assists", []) or []),
+            "live_count": live_count(data),
+            "fixtures_count": fixtures_count(data),
+            "results_count": results_count(data),
+            "standings_count": standings_count(data),
+            "top_scorers_count": len(top_scorers(data)),
+            "top_assists_count": len(top_assists(data)),
         }
 
 
@@ -156,14 +85,14 @@ class FootballHubLiveSensor(FootballHubBaseSensor):
 
     @property
     def native_value(self):
-        return len(_live(self.coordinator))
+        return live_count(self.coordinator.data or {})
 
     @property
     def extra_state_attributes(self):
-        live = [_clean_fixture(match) for match in _live(self.coordinator)]
+        matches = live_matches(self.coordinator.data or {})
         return {
-            "total_live": len(live),
-            "matches": live,
+            "total_live": len(matches),
+            "matches": matches,
         }
 
 
@@ -173,15 +102,14 @@ class FootballHubNextFixtureSensor(FootballHubBaseSensor):
 
     @property
     def native_value(self):
-        match = _next_fixture(self.coordinator)
-        clean = _clean_fixture(match)
-        if not clean:
+        fixture = next_fixture(self.coordinator.data or {})
+        if not fixture:
             return None
-        return f"{clean.get('home_team')} vs {clean.get('away_team')}"
+        return f"{fixture.get('home_team')} vs {fixture.get('away_team')}"
 
     @property
     def extra_state_attributes(self):
-        return _clean_fixture(_next_fixture(self.coordinator))
+        return next_fixture(self.coordinator.data or {})
 
 
 class FootballHubFixturesSensor(FootballHubBaseSensor):
@@ -190,17 +118,11 @@ class FootballHubFixturesSensor(FootballHubBaseSensor):
 
     @property
     def native_value(self):
-        fixtures = [match for match in _fixtures(self.coordinator) if _is_not_started(match)]
-        return len(fixtures)
+        return fixtures_count(self.coordinator.data or {})
 
     @property
     def extra_state_attributes(self):
-        fixtures = [
-            _clean_fixture(match)
-            for match in _fixtures(self.coordinator)
-            if _is_not_started(match)
-        ]
-
+        fixtures = upcoming_fixtures(self.coordinator.data or {})
         return {
             "total_fixtures": len(fixtures),
             "fixtures": fixtures,
@@ -213,20 +135,14 @@ class FootballHubResultsSensor(FootballHubBaseSensor):
 
     @property
     def native_value(self):
-        results = [match for match in _fixtures(self.coordinator) if _is_finished(match)]
-        return len(results)
+        return results_count(self.coordinator.data or {})
 
     @property
     def extra_state_attributes(self):
-        results = [
-            _clean_fixture(match)
-            for match in _fixtures(self.coordinator)
-            if _is_finished(match)
-        ]
-
+        match_results = results(self.coordinator.data or {})
         return {
-            "total_results": len(results),
-            "results": results,
+            "total_results": len(match_results),
+            "results": match_results,
         }
 
 
@@ -236,14 +152,14 @@ class FootballHubStandingsSensor(FootballHubBaseSensor):
 
     @property
     def native_value(self):
-        return len(self.coordinator.data.get("standings", []) or [])
+        return standings_count(self.coordinator.data or {})
 
     @property
     def extra_state_attributes(self):
-        standings = self.coordinator.data.get("standings", []) or []
+        table = standings(self.coordinator.data or {})
         return {
-            "total_standings": len(standings),
-            "standings": standings,
+            "total_standings": len(table),
+            "standings": table,
         }
 
 
@@ -253,11 +169,11 @@ class FootballHubTopScorersSensor(FootballHubBaseSensor):
 
     @property
     def native_value(self):
-        return len(self.coordinator.data.get("top_scorers", []) or [])
+        return len(top_scorers(self.coordinator.data or {}))
 
     @property
     def extra_state_attributes(self):
-        scorers = self.coordinator.data.get("top_scorers", []) or []
+        scorers = top_scorers(self.coordinator.data or {})
         return {
             "total_top_scorers": len(scorers),
             "top_scorers": scorers,
@@ -270,11 +186,11 @@ class FootballHubTopAssistsSensor(FootballHubBaseSensor):
 
     @property
     def native_value(self):
-        return len(self.coordinator.data.get("top_assists", []) or [])
+        return len(top_assists(self.coordinator.data or {}))
 
     @property
     def extra_state_attributes(self):
-        assists = self.coordinator.data.get("top_assists", []) or []
+        assists = top_assists(self.coordinator.data or {})
         return {
             "total_top_assists": len(assists),
             "top_assists": assists,
