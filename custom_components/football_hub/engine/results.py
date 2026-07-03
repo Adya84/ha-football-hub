@@ -4,28 +4,21 @@ from __future__ import annotations
 
 from typing import Any
 
-from .helpers import clean_fixture, fixture_timestamp, is_finished, limit_list
-from .fixtures import raw_fixtures
+from .helpers import clean_fixture, is_finished, sort_by_time
 
 
-def results(data: dict[str, Any]) -> list[dict[str, Any]]:
-    """Return cleaned finished fixtures, newest first."""
-    matches = [match for match in raw_fixtures(data) if is_finished(match)]
-    matches.sort(key=fixture_timestamp, reverse=True)
-    return [clean_fixture(match) for match in matches]
+def all_results(raw_fixtures: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Return all completed fixtures as clean objects."""
+    matches = [m for m in raw_fixtures or [] if is_finished(m)]
+    return [clean_fixture(m) for m in sort_by_time(matches, reverse=True)]
 
 
-def last_result(data: dict[str, Any]) -> dict[str, Any]:
-    """Return latest completed match."""
-    matches = results(data)
-    return matches[0] if matches else {}
+def latest(raw_fixtures: list[dict[str, Any]], limit: int = 10) -> list[dict[str, Any]]:
+    """Return latest completed fixtures."""
+    return all_results(raw_fixtures)[:limit]
 
 
-def results_summary(data: dict[str, Any], limit: int = 20) -> dict[str, Any]:
-    """Return results summary for sensor attributes."""
-    matches = results(data)
-    return {
-        "total_results": len(matches),
-        "showing": min(len(matches), limit),
-        "results": limit_list(matches, limit),
-    }
+def last_result(raw_fixtures: list[dict[str, Any]]) -> dict[str, Any]:
+    """Return most recent completed fixture."""
+    results = all_results(raw_fixtures)
+    return results[0] if results else {}
