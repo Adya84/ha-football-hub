@@ -5,97 +5,134 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from typing import Any
 
-
 FINISHED_STATUSES = {"FT", "AET", "PEN"}
-NOT_STARTED_STATUSES = {"NS", "TBD"}
+UPCOMING_STATUSES = {"NS", "TBD"}
 LIVE_STATUSES = {"1H", "HT", "2H", "ET", "BT", "P", "SUSP", "INT", "LIVE"}
 
-
-def get_fixture(match: dict[str, Any]) -> dict[str, Any]:
-    """Return the fixture object."""
-    return match.get("fixture", {}) or {}
-
-
-def get_league(match: dict[str, Any]) -> dict[str, Any]:
-    """Return the league object."""
-    return match.get("league", {}) or {}
-
-
-def get_teams(match: dict[str, Any]) -> dict[str, Any]:
-    """Return the teams object."""
-    return match.get("teams", {}) or {}
-
-
-def get_status(match: dict[str, Any]) -> dict[str, Any]:
-    """Return fixture status object."""
-    return get_fixture(match).get("status", {}) or {}
-
-
-def status_short(match: dict[str, Any]) -> str | None:
-    """Return short fixture status."""
-    return get_status(match).get("short")
+STATUS_TEXT = {
+    "TBD": "Time To Be Defined",
+    "NS": "Not Started",
+    "1H": "First Half",
+    "HT": "Half Time",
+    "2H": "Second Half",
+    "ET": "Extra Time",
+    "BT": "Break Time",
+    "P": "Penalties",
+    "SUSP": "Suspended",
+    "INT": "Interrupted",
+    "FT": "Full Time",
+    "AET": "After Extra Time",
+    "PEN": "Penalties Finished",
+    "PST": "Postponed",
+    "CANC": "Cancelled",
+    "ABD": "Abandoned",
+    "AWD": "Technical Loss",
+    "WO": "Walkover",
+}
 
 
-def is_finished(match: dict[str, Any]) -> bool:
-    """Return true if the match is finished."""
-    return status_short(match) in FINISHED_STATUSES
+def safe_get(data: dict[str, Any] | None, *keys: str, default: Any = None) -> Any:
+    """Safely read nested dictionary values."""
+    current: Any = data or {}
+    for key in keys:
+        if not isinstance(current, dict):
+            return default
+        current = current.get(key)
+    return default if current is None else current
 
 
-def is_not_started(match: dict[str, Any]) -> bool:
-    """Return true if the match has not started."""
-    return status_short(match) in NOT_STARTED_STATUSES
-
-
-def is_live(match: dict[str, Any]) -> bool:
-    """Return true if the match is live."""
-    return status_short(match) in LIVE_STATUSES
-
-
-def fixture_timestamp(match: dict[str, Any]) -> int:
-    """Return fixture timestamp."""
-    return get_fixture(match).get("timestamp") or 0
-
-
-def now_timestamp() -> int:
+def utc_now_ts() -> int:
     """Return current UTC timestamp."""
     return int(datetime.now(timezone.utc).timestamp())
 
 
-def sort_by_kickoff(matches: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    """Sort matches by kickoff time."""
-    return sorted(matches, key=fixture_timestamp)
+def parse_iso(value: str | None) -> datetime | None:
+    """Parse API ISO datetime safely."""
+    if not value:
+        return None
+    try:
+        return datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except (TypeError, ValueError):
+        return None
+
+
+def format_uk_datetime(value: str | None) -> str | None:
+    """Return a simple UK-friendly datetime string."""
+    parsed = parse_iso(value)
+    if not parsed:
+        return None
+    return parsed.strftime("%d/%m/%Y %H:%M")
+
+
+def status_short(match: dict[str, Any]) -> str | None:
+    """Return fixture short status."""
+    return safe_get(match, "fixture", "status", "short")
+
+
+def status_long(match: dict[str, Any]) -> str | None:
+    """Return human-readable status."""
+    short = status_short(match)
+    return STATUS_TEXT.get(short, safe_get(match, "fixture", "status", "long", default=short))
+
+
+def fixture_timestamp(match: dict[str, Any]) -> int:
+    """Return fixture timestamp."""
+    value = safe_get(match, "fixture", "timestamp", default=0)
+    try:
+        return int(value or 0)
+    except (TypeError, ValueError):
+        return 0
+
+
+def is_finished(match: dict[str, Any]) -> bool:
+    """Return True if match is finished."""
+    return status_short(match) in FINISHED_STATUSES
+
+
+def is_upcoming(match: dict[str, Any]) -> bool:
+    """Return True if match has not started."""
+    return status_short(match) in UPCOMING_STATUSES
+
+
+def is_live(match: dict[str, Any]) -> bool:
+    """Return True if match is live."""
+    return status_short(match) in LIVE_STATUSES
 
 
 def clean_fixture(match: dict[str, Any] | None) -> dict[str, Any]:
-    """Return a clean Football Hub fixture object."""
+    """Convert raw API fixture into a clean Football Hub fixture object."""
     if not match:
         return {}
 
-    fixture = get_fixture(match)
-    league = get_league(match)
-    teams = get_teams(match)
+    fixture = match.get("fixture", {}) or {}
+    league = match.get("league", {}) or {}
+    teams = match.get("teams", {}) or {}
     goals = match.get("goals", {}) or {}
     score = match.get("score", {}) or {}
     venue = fixture.get("venue", {}) or {}
     status = fixture.get("status", {}) or {}
-
     home = teams.get("home", {}) or {}
     away = teams.get("away", {}) or {}
 
+    kickoff = fixture.get("date")
+    elapsed = status.get("elapsed")
+    status_s = status.get("short")
+
     return {
         "fixture_id": fixture.get("id"),
-        "kickoff": fixture.get("date"),
+        "kickoff": kickoff,
+        "kickoff_uk": format_uk_datetime(kickoff),
         "timestamp": fixture.get("timestamp"),
         "timezone": fixture.get("timezone"),
-        "status": status.get("long"),
-        "status_short": status.get("short"),
-        "elapsed": status.get("elapsed"),
-        "extra": status.get("extra"),
-        "league_id": league.get("id"),
+        "status": STATUS_TEXT.get(status_s, status.get("long")),
+        "status_short": status_s,
+        "elapsed": elapsed,
+        "is_live": status_s in LIVE_STATUSES,
+        "is_finished": status_s in FINISHED_STATUSES,
+        "is_upcoming": status_s in UPCOMING_STATUSES,
         "league": league.get("name"),
+        "league_id": league.get("id"),
         "country": league.get("country"),
-        "league_logo": league.get("logo"),
-        "country_flag": league.get("flag"),
         "season": league.get("season"),
         "round": league.get("round"),
         "home_team": home.get("name"),
@@ -108,44 +145,23 @@ def clean_fixture(match: dict[str, Any] | None) -> dict[str, Any]:
         "away_winner": away.get("winner"),
         "home_goals": goals.get("home"),
         "away_goals": goals.get("away"),
+        "scoreline": make_scoreline(home.get("name"), away.get("name"), goals.get("home"), goals.get("away")),
         "score": score,
         "stadium": venue.get("name"),
         "city": venue.get("city"),
-        "raw": match,
+        "referee": fixture.get("referee"),
     }
 
 
-def clean_player_record(record: dict[str, Any]) -> dict[str, Any]:
-    """Return a clean player statistics object."""
-    player = record.get("player", {}) or {}
-    stats = (record.get("statistics") or [{}])[0] or {}
-    team = stats.get("team", {}) or {}
-    league = stats.get("league", {}) or {}
-    games = stats.get("games", {}) or {}
-    goals = stats.get("goals", {}) or {}
-    cards = stats.get("cards", {}) or {}
+def make_scoreline(home: str | None, away: str | None, home_goals: Any, away_goals: Any) -> str | None:
+    """Return a readable scoreline."""
+    if not home or not away:
+        return None
+    if home_goals is None or away_goals is None:
+        return f"{home} vs {away}"
+    return f"{home} {home_goals}-{away_goals} {away}"
 
-    return {
-        "player_id": player.get("id"),
-        "name": player.get("name"),
-        "firstname": player.get("firstname"),
-        "lastname": player.get("lastname"),
-        "age": player.get("age"),
-        "nationality": player.get("nationality"),
-        "photo": player.get("photo"),
-        "team_id": team.get("id"),
-        "team": team.get("name"),
-        "team_logo": team.get("logo"),
-        "league": league.get("name"),
-        "season": league.get("season"),
-        "appearances": games.get("appearences"),
-        "lineups": games.get("lineups"),
-        "minutes": games.get("minutes"),
-        "position": games.get("position"),
-        "rating": games.get("rating"),
-        "goals": goals.get("total"),
-        "assists": goals.get("assists"),
-        "yellow_cards": cards.get("yellow"),
-        "red_cards": cards.get("red"),
-        "raw": record,
-    }
+
+def limit_list(items: list[Any], limit: int = 20) -> list[Any]:
+    """Limit attribute payloads to keep Home Assistant recorder happy."""
+    return items[:limit]
