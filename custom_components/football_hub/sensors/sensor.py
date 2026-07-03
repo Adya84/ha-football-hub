@@ -77,6 +77,19 @@ class FootballHubFixturesSensor(FootballHubBaseSensor):
     def native_value(self):
         return len(self.coordinator.data.get("fixtures", []))
 
+    @property
+    def extra_state_attributes(self):
+        fixtures = self.coordinator.data.get("fixtures", [])
+
+        return {
+            "total_fixtures": len(fixtures),
+            "fixtures": fixtures,
+        }
+
+    @property
+    def native_value(self):
+        return len(self.coordinator.data.get("fixtures", []))
+
 
 class FootballHubStandingsSensor(FootballHubBaseSensor):
     def __init__(self, coordinator, entry):
