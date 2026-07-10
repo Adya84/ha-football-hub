@@ -1,4 +1,4 @@
-const PANEL_VERSION = "0.2.6-full-table";
+const PANEL_VERSION = "0.3.6-next-six";
 
 class FootballHubPanel extends HTMLElement {
   constructor() {
@@ -6,6 +6,8 @@ class FootballHubPanel extends HTMLElement {
     this.attachShadow({ mode: "open" });
     this._hass = null;
     this._activeTab = "overview";
+    this._selectedFixtureTeam = localStorage.getItem("football_hub_fixture_team") || "__all__";
+    this._fixturePage = 0;
     this._selectedPrefix = localStorage.getItem("football_hub_selected_prefix") || "";
   }
 
@@ -82,6 +84,22 @@ class FootballHubPanel extends HTMLElement {
   _setTab(tab) {
     this._activeTab = tab;
     this._render();
+  }
+
+  _setFixtureTeam(team) {
+    this._selectedFixtureTeam = team;
+    localStorage.setItem("football_hub_fixture_team", team);
+    this._fixturePage = 0;
+    this._render();
+  }
+
+  _setFixturePage(page) {
+    this._fixturePage = Math.max(0, page);
+    this._render();
+    this.shadowRoot.querySelector(".page-heading")?.scrollIntoView({
+      behavior: "smooth",
+      block: "start",
+    });
   }
 
   _escape(value) {
@@ -381,13 +399,48 @@ class FootballHubPanel extends HTMLElement {
   _fixturesPage() {
     const fixtures = this._attrs("fixtures");
     const today = this._attrs("matches_today").matches || [];
-    const nextFive = fixtures.next_5 || [];
+    const allFixtures = fixtures.fixtures || fixtures.next_5 || [];
+    const standingsTeams = (this._attrs("standings").table || [])
+      .map((row) => row.team || row.team_name)
+      .filter(Boolean);
+    const fixtureTeams = [...new Set(
+      allFixtures.flatMap((match) => [match.home_team, match.away_team]).filter(Boolean)
+    )];
+    const teams = (fixtureTeams.length > 10 ? fixtureTeams : [...new Set([...fixtureTeams, ...standingsTeams])])
+      .sort((a, b) => a.localeCompare(b));
+    const normaliseTeam = (name) => String(name || "").trim().toLowerCase();
+    const filteredFixtures = this._selectedFixtureTeam === "__all__"
+      ? allFixtures
+      : this._selectedFixtureTeam
+      ? allFixtures.filter((match) =>
+          normaliseTeam(match.home_team) === normaliseTeam(this._selectedFixtureTeam) ||
+          normaliseTeam(match.away_team) === normaliseTeam(this._selectedFixtureTeam)
+        )
+      : allFixtures.slice(0, 6);
+    const pageSize = 20;
+    const totalPages = Math.max(1, Math.ceil(filteredFixtures.length / pageSize));
+    const currentPage = Math.min(this._fixturePage, totalPages - 1);
+    const visibleFixtures = filteredFixtures.slice(currentPage * pageSize, (currentPage + 1) * pageSize);
 
     return `
       <section class="page-heading">
         <div><span class="eyebrow">MATCH SCHEDULE</span><h2>Fixtures</h2></div>
         <div class="count-badge">${this._escape(fixtures.total_fixtures || 0)} matches</div>
       </section>
+      <div class="fixture-filter">
+        <label for="fixture-team-select">Show fixtures for</label>
+        <select id="fixture-team-select" aria-label="Choose a team">
+          <option value="__all__" ${this._selectedFixtureTeam === "__all__" ? "selected" : ""}>All fixtures (${this._escape(allFixtures.length)})</option>
+          <option value="">Next 6 fixtures</option>
+          ${teams.map((team) => {
+            const gameCount = allFixtures.filter((match) =>
+              normaliseTeam(match.home_team) === normaliseTeam(team) ||
+              normaliseTeam(match.away_team) === normaliseTeam(team)
+            ).length;
+            return `<option value="${this._escape(team)}" ${team === this._selectedFixtureTeam ? "selected" : ""}>${this._escape(team)} (${gameCount} games)</option>`;
+          }).join("")}
+        </select>
+      </div>
       ${
         today.length
           ? `<section class="section"><h3>Today</h3><div class="match-list">${today
@@ -396,8 +449,19 @@ class FootballHubPanel extends HTMLElement {
           : ""
       }
       <section class="section">
-        <h3>Next fixtures</h3>
-        <div class="match-list">${nextFive.length ? nextFive.map((m) => this._matchCard(m)).join("") : `<div class="empty">No fixtures available.</div>`}</div>
+        <h3>${this._selectedFixtureTeam === "__all__" ? "All fixtures" : this._selectedFixtureTeam ? `${this._escape(this._selectedFixtureTeam)} fixtures` : "Next fixtures"}</h3>
+        <div class="match-list">${visibleFixtures.length ? visibleFixtures.map((m) => this._matchCard(m)).join("") : `<div class="empty">No fixtures available.</div>`}</div>
+        ${filteredFixtures.length > pageSize ? `
+          <div class="fixture-pagination">
+            <button data-fixture-page="${currentPage - 1}" ${currentPage === 0 ? "disabled" : ""}>
+              <ha-icon icon="mdi:chevron-left"></ha-icon> Previous
+            </button>
+            <span>Page ${currentPage + 1} of ${totalPages} · ${filteredFixtures.length} matches</span>
+            <button data-fixture-page="${currentPage + 1}" ${currentPage >= totalPages - 1 ? "disabled" : ""}>
+              Next <ha-icon icon="mdi:chevron-right"></ha-icon>
+            </button>
+          </div>
+        ` : ""}
       </section>
     `;
   }
@@ -570,6 +634,16 @@ class FootballHubPanel extends HTMLElement {
       button.addEventListener("click", () => this._setTab(button.dataset.tab));
     });
 
+    this.shadowRoot.querySelector("#fixture-team-select")?.addEventListener("change", (event) => {
+      this._setFixtureTeam(event.target.value);
+    });
+
+    this.shadowRoot.querySelectorAll("[data-fixture-page]").forEach((button) => {
+      button.addEventListener("click", () => {
+        if (!button.disabled) this._setFixturePage(Number(button.dataset.fixturePage));
+      });
+    });
+
     this.shadowRoot.querySelector("#competition-select")?.addEventListener("change", (event) => {
       this._setCompetition(event.target.value);
     });
@@ -579,7 +653,12 @@ class FootballHubPanel extends HTMLElement {
     return `
       :host {
         display: block;
-        min-height: 100vh;
+        height: 100vh;
+        min-height: 0;
+        overflow-y: auto;
+        overflow-x: hidden;
+        scrollbar-width: thin;
+        scrollbar-color: #31e981 rgba(2, 12, 23, .82);
         color: #ffffff;
         --primary-text-color: #ffffff;
         --secondary-text-color: rgba(226, 240, 255, .78);
@@ -594,6 +673,27 @@ class FootballHubPanel extends HTMLElement {
       }
 
       * { box-sizing: border-box; }
+
+      :host::-webkit-scrollbar {
+        width: 13px;
+      }
+
+      :host::-webkit-scrollbar-track {
+        background: rgba(2, 12, 23, .88);
+        border-left: 1px solid rgba(255,255,255,.08);
+      }
+
+      :host::-webkit-scrollbar-thumb {
+        min-height: 54px;
+        border: 3px solid rgba(2, 12, 23, .88);
+        border-radius: 999px;
+        background: linear-gradient(180deg, #46f596, #13bd68);
+        box-shadow: 0 0 12px rgba(49,233,129,.28);
+      }
+
+      :host::-webkit-scrollbar-thumb:hover {
+        background: linear-gradient(180deg, #72ffb3, #25df7d);
+      }
 
       h1, h2, h3, strong, .big-stat, .match-score, .score-board {
         color: #ffffff;
@@ -677,7 +777,16 @@ class FootballHubPanel extends HTMLElement {
         padding: 10px 34px 10px 12px;
       }
 
-      select option { color: #111; }
+      select option {
+        color: #f4f9ff;
+        background: #0b1724;
+      }
+
+      select option:checked {
+        color: #04130c;
+        background: #31e981;
+        font-weight: 900;
+      }
 
       .connection {
         display: inline-flex;
@@ -991,6 +1100,90 @@ class FootballHubPanel extends HTMLElement {
 
       .section h3 { margin: 0 0 14px; font-size: 1.3rem; }
 
+      .fixture-filter {
+        display: inline-flex;
+        align-items: center;
+        gap: 12px;
+        padding: 7px 8px 7px 14px;
+        margin: 0 0 24px;
+        border: 1px solid rgba(255,255,255,.14);
+        border-radius: 14px;
+        background: rgba(1,10,20,.34);
+      }
+
+      .fixture-filter label {
+        color: rgba(235,245,255,.78);
+        font-size: .78rem;
+        font-weight: 800;
+        text-transform: uppercase;
+        letter-spacing: .06em;
+      }
+
+      .fixture-filter select {
+        min-width: 220px;
+        border-color: rgba(255,255,255,.16);
+        background: rgba(2,15,27,.82);
+        color: #fff;
+        font-weight: 800;
+        color-scheme: dark;
+        scrollbar-width: thin;
+        scrollbar-color: #31e981 #0b1724;
+      }
+
+      .fixture-filter select::-webkit-scrollbar {
+        width: 12px;
+      }
+
+      .fixture-filter select::-webkit-scrollbar-track {
+        background: #0b1724;
+      }
+
+      .fixture-filter select::-webkit-scrollbar-thumb {
+        border: 3px solid #0b1724;
+        border-radius: 999px;
+        background: #31e981;
+      }
+
+      .fixture-filter select::-webkit-scrollbar-thumb:hover {
+        background: #72ffb3;
+      }
+
+      .fixture-pagination {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 16px;
+        margin-top: 24px;
+        padding: 14px;
+        border: 1px solid rgba(255,255,255,.14);
+        border-radius: 16px;
+        background: rgba(1,10,20,.38);
+      }
+
+      .fixture-pagination button {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        border: 1px solid rgba(255,255,255,.18);
+        border-radius: 10px;
+        padding: 9px 13px;
+        color: #fff;
+        background: rgba(255,255,255,.1);
+        cursor: pointer;
+        font-weight: 800;
+      }
+
+      .fixture-pagination button:disabled {
+        opacity: .35;
+        cursor: default;
+      }
+
+      .fixture-pagination span {
+        color: rgba(235,245,255,.8);
+        font-size: .82rem;
+        font-weight: 700;
+      }
+
       .match-list {
         display: grid;
         grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -1190,6 +1383,18 @@ class FootballHubPanel extends HTMLElement {
         .tabs button span { display: none; }
 
         main { padding: 14px; }
+
+        .fixture-filter {
+          display: flex;
+          align-items: stretch;
+          flex-direction: column;
+        }
+
+        .fixture-filter select { min-width: 0; width: 100%; }
+
+        .fixture-pagination { gap: 8px; }
+        .fixture-pagination span { font-size: .7rem; text-align: center; }
+        .fixture-pagination button { padding: 8px; font-size: .75rem; }
 
         .stat-card { grid-column: span 12; }
         .feature-match { grid-template-columns: 1fr 95px 1fr; gap: 8px; }
