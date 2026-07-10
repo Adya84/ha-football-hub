@@ -1,4 +1,4 @@
-const PANEL_VERSION = "0.1.0-dev";
+const PANEL_VERSION = "0.2.0-frontend-preview";
 
 class FootballHubPanel extends HTMLElement {
   constructor() {
@@ -173,8 +173,8 @@ class FootballHubPanel extends HTMLElement {
     return `
       <header class="hero">
         <div>
-          <div class="eyebrow">HOME ASSISTANT FOOTBALL CENTRE</div>
-          <h1>Football Hub</h1>
+          <div class="eyebrow">YOUR MATCHDAY STARTS HERE</div>
+          <h1><span>Football</span> Hub</h1>
           <p>${this._escape(status.competition || "Choose a competition")} · ${this._escape(
       status.season || ""
     )}</p>
@@ -581,11 +581,11 @@ class FootballHubPanel extends HTMLElement {
         display: block;
         min-height: 100vh;
         color: var(--primary-text-color);
-        --fh-purple: #3d155f;
-        --fh-purple-2: #5d1f86;
-        --fh-cyan: #00e5c4;
-        --fh-pink: #ff3d81;
-        --fh-surface: color-mix(in srgb, var(--card-background-color) 94%, var(--fh-purple) 6%);
+        --fh-purple: #071a14;
+        --fh-purple-2: #0b4d36;
+        --fh-cyan: #31e981;
+        --fh-pink: #ff4d4d;
+        --fh-surface: color-mix(in srgb, var(--card-background-color) 90%, #0a2019 10%);
         --fh-border: color-mix(in srgb, var(--divider-color) 70%, transparent);
         font-family: var(--paper-font-body1_-_font-family, system-ui, sans-serif);
       }
@@ -597,8 +597,8 @@ class FootballHubPanel extends HTMLElement {
       .app-shell {
         min-height: 100vh;
         background:
-          radial-gradient(circle at 90% 0%, rgba(0, 229, 196, .10), transparent 28rem),
-          radial-gradient(circle at 0% 10%, rgba(93, 31, 134, .16), transparent 32rem),
+          radial-gradient(circle at 84% 2%, rgba(49, 233, 129, .13), transparent 30rem),
+          linear-gradient(rgba(255,255,255,.018) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,.018) 1px, transparent 1px),
           var(--primary-background-color);
       }
 
@@ -611,8 +611,9 @@ class FootballHubPanel extends HTMLElement {
         gap: 24px;
         color: white;
         background:
-          linear-gradient(120deg, rgba(18, 7, 28, .10), rgba(18, 7, 28, .48)),
-          linear-gradient(135deg, var(--fh-purple), var(--fh-purple-2) 62%, #17485d);
+          linear-gradient(105deg, rgba(3, 14, 11, .28), rgba(3, 14, 11, .72)),
+          radial-gradient(circle at 76% 44%, rgba(49,233,129,.2), transparent 28%),
+          linear-gradient(135deg, #061711, #0a3526 58%, #09221c);
         position: relative;
         overflow: hidden;
       }
@@ -622,20 +623,24 @@ class FootballHubPanel extends HTMLElement {
         position: absolute;
         width: 390px;
         height: 390px;
-        border: 54px solid rgba(255,255,255,.055);
+        border: 2px solid rgba(255,255,255,.12);
         border-radius: 50%;
-        right: -90px;
-        top: -190px;
+        box-shadow: inset 0 0 0 76px rgba(255,255,255,.025);
+        right: -40px;
+        top: -105px;
       }
 
       .hero > * { position: relative; z-index: 1; }
 
       .hero h1 {
-        margin: 4px 0;
+        margin: 6px 0;
         font-size: clamp(2rem, 5vw, 4.2rem);
         line-height: .95;
         letter-spacing: -.055em;
+        text-transform: uppercase;
       }
+
+      .hero h1 span { color: var(--fh-cyan); }
 
       .hero p { margin: 10px 0 0; opacity: .78; }
 
@@ -695,7 +700,7 @@ class FootballHubPanel extends HTMLElement {
         display: flex;
         overflow-x: auto;
         padding: 0 clamp(10px, 3vw, 44px);
-        background: color-mix(in srgb, var(--card-background-color) 92%, transparent);
+        background: color-mix(in srgb, #071a14 94%, transparent);
         backdrop-filter: blur(18px);
         border-bottom: 1px solid var(--fh-border);
         scrollbar-width: none;
@@ -707,7 +712,7 @@ class FootballHubPanel extends HTMLElement {
         appearance: none;
         border: 0;
         background: transparent;
-        color: var(--secondary-text-color);
+        color: rgba(255,255,255,.68);
         display: flex;
         align-items: center;
         gap: 8px;
@@ -719,7 +724,7 @@ class FootballHubPanel extends HTMLElement {
       }
 
       .tabs button.active {
-        color: var(--primary-text-color);
+        color: white;
         border-bottom-color: var(--fh-cyan);
       }
 
@@ -738,8 +743,8 @@ class FootballHubPanel extends HTMLElement {
       .feature-card, .stat-card, .list-card, .page-card, .live-centre-card {
         background: var(--fh-surface);
         border: 1px solid var(--fh-border);
-        border-radius: 20px;
-        box-shadow: 0 14px 35px rgba(0,0,0,.07);
+        border-radius: 16px;
+        box-shadow: 0 16px 42px rgba(0,0,0,.12);
       }
 
       .feature-card {
@@ -983,7 +988,7 @@ class FootballHubPanel extends HTMLElement {
       .match-card {
         background: var(--fh-surface);
         border: 1px solid var(--fh-border);
-        border-radius: 18px;
+        border-radius: 14px;
         padding: 17px;
       }
 
@@ -1210,3 +1215,4 @@ class FootballHubPanel extends HTMLElement {
 if (!customElements.get("football-hub-panel")) {
   customElements.define("football-hub-panel", FootballHubPanel);
 }
+
