@@ -44,6 +44,7 @@ class FootballHubCoordinator(DataUpdateCoordinator):
         self._cache: dict[str, Any] = {}
         self._updated_at: dict[str, float] = {}
         self._live_rate_limited_until = 0.0
+        self.supported_team = entry.options.get("supported_team", "")
 
         super().__init__(
             hass,
@@ -111,6 +112,13 @@ class FootballHubCoordinator(DataUpdateCoordinator):
             waiting.append(promoted)
         return waiting
 
+    async def async_set_supported_team(self, team: str) -> None:
+        """Persist the team whose live match receives detailed API polling."""
+        self.supported_team = str(team or "").strip()
+        options = {**self.entry.options, "supported_team": self.supported_team}
+        self.hass.config_entries.async_update_entry(self.entry, options=options)
+        await self.async_request_refresh()
+
     async def _async_update_data(self):
         """Refresh only datasets whose cache period has expired."""
         league_id = self.competition["league_id"]
@@ -152,18 +160,26 @@ class FootballHubCoordinator(DataUpdateCoordinator):
         if not raw_live:
             raw_live = self._pre_live_matches()
         live_fixture_ids: list[int] = []
+        supported_fixture_id = None
         for item in raw_live:
             if not isinstance(item, dict):
                 continue
             fixture_id = (item.get("fixture") or {}).get("id")
             if fixture_id:
                 live_fixture_ids.append(fixture_id)
+                teams = (item.get("teams") or {}) if isinstance(item, dict) else {}
+                home_name = str((teams.get("home") or {}).get("name") or "").casefold()
+                away_name = str((teams.get("away") or {}).get("name") or "").casefold()
+                if self.supported_team.casefold() in {home_name, away_name}:
+                    supported_fixture_id = fixture_id
+
+        detail_fixture_ids = [supported_fixture_id or live_fixture_ids[0]] if live_fixture_ids else []
 
         # World Cup-style per-fixture live caches. This allows the frontend to
         # select any live match while the remaining games stay score-only.
         if live_fixture_ids and monotonic() >= self._live_rate_limited_until:
             detail_requests: list[tuple[str, int, str, Awaitable[Any]]] = []
-            for fixture_id in live_fixture_ids:
+            for fixture_id in detail_fixture_ids:
                 event_key = f"live_events:{fixture_id}"
                 stats_key = f"live_statistics:{fixture_id}"
                 lineup_key = f"live_lineups:{fixture_id}"
@@ -195,7 +211,7 @@ class FootballHubCoordinator(DataUpdateCoordinator):
                         self._store(cache_key, result)
 
         live_details: dict[str, dict[str, Any]] = {}
-        for fixture_id in live_fixture_ids:
+        for fixture_id in detail_fixture_ids:
             live_details[str(fixture_id)] = {
                 "events": self._cache.get(f"live_events:{fixture_id}", []),
                 "statistics": self._cache.get(f"live_statistics:{fixture_id}", []),
