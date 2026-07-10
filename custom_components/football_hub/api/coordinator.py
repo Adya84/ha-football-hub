@@ -38,7 +38,8 @@ class FootballHubCoordinator(DataUpdateCoordinator):
         """Initialise the coordinator."""
         self.entry = entry
         self.api = FootballHubAPI(hass, entry.data["api_key"])
-        self.competition = COMPETITIONS[entry.data["competition"]]
+        self.competition_key = entry.options.get("active_competition", entry.data["competition"])
+        self.competition = COMPETITIONS[self.competition_key]
         self.season = entry.data["season"]
         self.engine = FootballHubEngine()
         self._cache: dict[str, Any] = {}
@@ -111,6 +112,21 @@ class FootballHubCoordinator(DataUpdateCoordinator):
             promoted["awaiting_live_api_data"] = True
             waiting.append(promoted)
         return waiting
+
+    async def async_set_competition(self, competition_key: str) -> None:
+        """Switch the active competition and refresh every dataset."""
+        if competition_key not in COMPETITIONS:
+            raise ValueError(f"Unknown competition: {competition_key}")
+        if competition_key == self.competition_key:
+            return
+        self.competition_key = competition_key
+        self.competition = COMPETITIONS[competition_key]
+        self._cache.clear()
+        self._updated_at.clear()
+        self._live_rate_limited_until = 0.0
+        options = {**self.entry.options, "active_competition": competition_key}
+        self.hass.config_entries.async_update_entry(self.entry, options=options)
+        await self.async_request_refresh()
 
     async def async_set_supported_team(self, team: str) -> None:
         """Persist the team whose live match receives detailed API polling."""
@@ -233,3 +249,4 @@ class FootballHubCoordinator(DataUpdateCoordinator):
         }
         self.engine.update(data)
         return data
+
