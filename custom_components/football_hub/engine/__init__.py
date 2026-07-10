@@ -9,7 +9,13 @@ from __future__ import annotations
 from typing import Any
 
 from .fixtures import next_fixture, today as fixtures_today, this_week, upcoming
-from .live import live_matches, primary_live_match
+from .live import (
+    live_matches,
+    primary_live_match,
+    process_events,
+    process_lineups,
+    process_statistics,
+)
 from .players import top_assists as process_top_assists
 from .players import top_scorers as process_top_scorers
 from .results import all_results, last_result, latest
@@ -46,6 +52,15 @@ class LiveEngine:
 
     def primary(self) -> dict[str, Any]:
         return self._owner._processed["primary_live"]
+
+    def events(self) -> list[dict[str, Any]]:
+        return self._owner._processed["live_events"]
+
+    def statistics(self) -> list[dict[str, Any]]:
+        return self._owner._processed["live_statistics"]
+
+    def lineups(self) -> list[dict[str, Any]]:
+        return self._owner._processed["live_lineups"]
 
 
 class ResultsEngine:
@@ -102,6 +117,9 @@ class FootballHubEngine:
             "matches_this_week": this_week(raw_fixtures),
             "live": live_matches(raw_live),
             "primary_live": primary_live_match(raw_live),
+            "live_events": process_events(payload.get("live_events", []) or []),
+            "live_statistics": process_statistics(payload.get("live_statistics", []) or []),
+            "live_lineups": process_lineups(payload.get("live_lineups", []) or []),
             "results": processed_results,
             "last_result": processed_results[0] if processed_results else {},
             "standings": league_table(raw_standings),
