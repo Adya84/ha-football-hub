@@ -7,7 +7,7 @@ from pathlib import Path
 from homeassistant.components.frontend import async_register_built_in_panel
 from homeassistant.components.http import StaticPathConfig
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.core import HomeAssistant
+from homeassistant.core import HomeAssistant, ServiceCall
 
 from .api.coordinator import FootballHubCoordinator
 from .const import DOMAIN
@@ -16,7 +16,7 @@ PLATFORMS = ["sensor"]
 
 PANEL_URL = "football-hub"
 PANEL_NAME = "football-hub-panel"
-PANEL_VERSION = "0.2.1"
+PANEL_VERSION = "0.2.3"
 PANEL_STATIC_URL = "/football_hub/football-hub-panel.js"
 PANEL_MODULE_URL = f"{PANEL_STATIC_URL}?v={PANEL_VERSION}"
 PANEL_SCRIPT_PATH = Path(__file__).parent / "frontend" / "football-hub-panel.js"
@@ -60,6 +60,23 @@ async def async_setup(hass: HomeAssistant, config: dict) -> bool:
         require_admin=False,
         update=PANEL_URL in hass.data.get("frontend_panels", {}),
     )
+
+    async def async_select_live_team(call: ServiceCall) -> None:
+        """Select the supported team for detailed live polling."""
+        team = str(call.data.get("team") or "").strip()
+        for runtime in hass.data.get(DOMAIN, {}).values():
+            if not isinstance(runtime, dict):
+                continue
+            coordinator = runtime.get("coordinator")
+            if coordinator is not None:
+                await coordinator.async_set_supported_team(team)
+
+    if not hass.services.has_service(DOMAIN, "select_live_team"):
+        hass.services.async_register(
+            DOMAIN,
+            "select_live_team",
+            async_select_live_team,
+        )
 
     return True
 
