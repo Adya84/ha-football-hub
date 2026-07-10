@@ -217,6 +217,7 @@ class FootballHubFixturesSensor(FootballHubBaseSensor):
             "today_count": len(self.engine.fixtures.today()),
             "this_week_count": len(self.engine.fixtures.this_week()),
             "next_5": limit_items(fixtures, ATTRIBUTE_LIMIT),
+            "fixtures": fixtures,
         }
 
 
@@ -298,4 +299,3 @@ class FootballHubTopAssistsSensor(FootballHubBaseSensor):
             "total_top_assists": len(self.engine.top_assists),
             "top_assists": limit_items(self.engine.top_assists, ATTRIBUTE_LIMIT),
         }
-
