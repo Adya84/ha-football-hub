@@ -1,16 +1,23 @@
-const PANEL_VERSION = "0.4.5-efficient-live-polling";
+const PANEL_VERSION = "0.6.0-country-league-selector";
 
 class FootballHubPanel extends HTMLElement {
   constructor() {
     super();
     this.attachShadow({ mode: "open" });
     this._hass = null;
-    this._activeTab = "overview";
+    const savedTab = localStorage.getItem("football_hub_active_page") || "overview";
+    this._activeTab = ["overview", "live", "fixtures", "results", "table", "players", "supporters", "settings"].includes(savedTab)
+      ? savedTab
+      : "overview";
     this._selectedFixtureTeam = localStorage.getItem("football_hub_fixture_team") || "__all__";
     this._fixturePage = 0;
     this._selectedLiveMatch = localStorage.getItem("football_hub_live_match") || "";
     this._selectedLiveTeam = localStorage.getItem("football_hub_live_team") || "";
     this._selectedPrefix = localStorage.getItem("football_hub_selected_prefix") || "";
+    this._selectedCountry = localStorage.getItem("football_hub_selected_country") || "";
+    this._supporters = [];
+    this._supportersLoading = false;
+    this._supportersLoaded = false;
   }
 
   set hass(hass) {
@@ -34,6 +41,160 @@ class FootballHubPanel extends HTMLElement {
 
   connectedCallback() {
     this._render();
+    this._loadSupporters();
+  }
+
+  async _loadSupporters() {
+    if (this._supportersLoading || this._supportersLoaded) return;
+
+    this._supportersLoading = true;
+    const cacheBust = Date.now();
+
+    const fetchList = async (url, payloadKeys = []) => {
+      try {
+        const response = await fetch(`${url}?t=${cacheBust}`, {
+          cache: "no-store",
+        });
+
+        if (!response.ok) return [];
+
+        const raw = (await response.text()).trim();
+        if (!raw) return [];
+
+        const payload = JSON.parse(raw);
+
+        if (Array.isArray(payload)) return payload;
+
+        for (const key of payloadKeys) {
+          if (Array.isArray(payload?.[key])) return payload[key];
+        }
+      } catch (_error) {
+        return [];
+      }
+
+      return [];
+    };
+
+    const sortByDate = (items) =>
+      [...items].sort((a, b) => {
+        const aDate = new Date(a?.date || "1900-01-01").getTime();
+        const bDate = new Date(b?.date || "1900-01-01").getTime();
+        return bDate - aDate;
+      });
+
+    const [supporters, premiumSupporters] = await Promise.all([
+      fetchList(
+        "https://raw.githubusercontent.com/Adya84/ha-football-hub/main/supporters/supporters.json",
+        ["supporters"]
+      ),
+      fetchList(
+        "https://raw.githubusercontent.com/Adya84/ha-football-hub/main/supporters/premium_supporters.json",
+        ["premiumSupporters", "supporters"]
+      ),
+    ]);
+
+    this._supporters = sortByDate(supporters);
+    this._premiumSupporters = sortByDate(premiumSupporters);
+    this._supportersLoading = false;
+    this._supportersLoaded = true;
+    this._render();
+  }
+
+  _countryFlag(country, className = "supporter-flag-image") {
+    const name = String(country || "")
+      .trim()
+      .toLowerCase()
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .replace(/&/g, " and ")
+      .replace(/[^a-z0-9]+/g, " ")
+      .replace(/\s+/g, " ")
+      .trim();
+
+    const inlineFlags = {
+      england: `
+        <svg class="${className}" viewBox="0 0 60 36" role="img" aria-label="England flag">
+          <rect width="60" height="36" fill="#ffffff"/>
+          <rect x="25" width="10" height="36" fill="#ce1124"/>
+          <rect y="13" width="60" height="10" fill="#ce1124"/>
+        </svg>
+      `,
+      scotland: `
+        <svg class="${className}" viewBox="0 0 60 36" role="img" aria-label="Scotland flag">
+          <rect width="60" height="36" fill="#005eb8"/>
+          <polygon points="0,0 7,0 60,29 60,36 53,36 0,7" fill="#ffffff"/>
+          <polygon points="60,0 53,0 0,29 0,36 7,36 60,7" fill="#ffffff"/>
+        </svg>
+      `,
+      wales: `
+        <svg class="${className}" viewBox="0 0 60 36" role="img" aria-label="Wales flag">
+          <rect width="60" height="18" fill="#ffffff"/>
+          <rect y="18" width="60" height="18" fill="#00ab39"/>
+          <path d="M14 24c5-7 8-11 15-11 4 0 7 1 10 3l4-4 1 6 6 1-5 4 2 7-7-3-4 5-3-6-8 2 2-6-6-3z" fill="#d30731"/>
+        </svg>
+      `,
+      "northern ireland": `
+        <svg class="${className}" viewBox="0 0 60 36" role="img" aria-label="Northern Ireland flag">
+          <rect width="60" height="36" fill="#ffffff"/>
+          <rect x="25" width="10" height="36" fill="#ce1124"/>
+          <rect y="13" width="60" height="10" fill="#ce1124"/>
+        </svg>
+      `
+    };
+
+    if (inlineFlags[name]) return inlineFlags[name];
+
+    const codes = {
+      argentina:"ar", australia:"au", austria:"at", belgium:"be",
+      brazil:"br", bulgaria:"bg", canada:"ca", chile:"cl",
+      china:"cn", colombia:"co", croatia:"hr", cyprus:"cy",
+      czechia:"cz", "czech republic":"cz", denmark:"dk",
+      estonia:"ee", finland:"fi", france:"fr", germany:"de",
+      greece:"gr", hungary:"hu", iceland:"is", india:"in",
+      indonesia:"id", ireland:"ie", italy:"it", japan:"jp",
+      latvia:"lv", lithuania:"lt", luxembourg:"lu", malaysia:"my",
+      mexico:"mx", netherlands:"nl", holland:"nl", "new zealand":"nz",
+      norway:"no", philippines:"ph", poland:"pl", portugal:"pt",
+      romania:"ro", serbia:"rs", singapore:"sg", slovakia:"sk",
+      slovenia:"si", "south africa":"za", "south korea":"kr",
+      korea:"kr", spain:"es", sweden:"se", switzerland:"ch",
+      thailand:"th", turkey:"tr", turkiye:"tr", ukraine:"ua",
+      "united arab emirates":"ae", uae:"ae", "united kingdom":"gb",
+      uk:"gb", "great britain":"gb", usa:"us", us:"us",
+      "united states":"us", "united states of america":"us",
+      vietnam:"vn"
+    };
+
+    const code = codes[name] || (/^[a-z]{2}$/.test(name) ? name : "");
+
+    if (!code) return `<span class="supporter-flag-fallback">🏳️</span>`;
+
+    return `<img class="${className}" src="https://flagcdn.com/w160/${code}.png" alt="${this._escape(country || code)} flag" loading="lazy">`;
+  }
+
+  _supporterCard(supporter) {
+    const name = typeof supporter === "string" ? supporter : supporter?.name;
+    const country = typeof supporter === "string" ? "" : supporter?.country;
+    const date = typeof supporter === "string" ? "" : supporter?.date;
+    const message = typeof supporter === "string" ? "" : supporter?.message;
+    return `<article class="supporter-card"><div class="supporter-avatar">${this._countryFlag(country, "supporter-avatar-flag")}</div><div class="supporter-copy"><strong>${this._escape(name || "Anonymous Supporter")}</strong><div class="supporter-meta">${country ? `<span class="supporter-country">${this._escape(country)}</span>` : ""}${date ? `<span>${this._escape(date)}</span>` : ""}</div>${message ? `<p>${this._escape(message)}</p>` : ""}</div></article>`;
+  }
+
+  _supportersPage() {
+    const supporters = this._supporters;
+    const counts = supporters.reduce((out, item) => { const c = String(item?.country || "").trim(); if (c) out[c] = (out[c] || 0) + 1; return out; }, {});
+    const countries = Object.entries(counts).sort((a,b) => b[1]-a[1] || a[0].localeCompare(b[0]));
+    const latestDate = supporters[0]?.date || "";
+    const latest = latestDate ? supporters.filter((s) => s?.date === latestDate) : supporters.slice(0,4);
+    return `
+      <section class="page-heading"><div><span class="eyebrow">COMMUNITY SUPPORT</span><h2>Supporters</h2></div><div class="count-badge">${supporters.length} supporters</div></section>
+      <section class="support-hero page-card"><div><span class="support-kicker">🍺 HELP BUILD THE FUTURE</span><h2>Support Football Hub</h2><p>This project started as a personal Home Assistant football dashboard and has grown thanks to community feedback, testing, ideas and support.</p><div class="support-actions"><a class="support-button primary" href="https://ko-fi.com/supportkofi" target="_blank" rel="noopener noreferrer">☕ Support via Ko-fi</a><a class="support-button" href="https://paypal.me/graffidoodle" target="_blank" rel="noopener noreferrer">💳 Support via PayPal</a></div></div><div class="support-thanks"><strong>Thank you</strong><span>Every contribution helps</span></div></section>
+      <section class="support-benefits"><article class="page-card"><ha-icon icon="mdi:database-clock-outline"></ha-icon><strong>Live data costs</strong><span>Helps cover reliable football data and matchday services.</span></article><article class="page-card"><ha-icon icon="mdi:tools"></ha-icon><strong>Fixes & improvements</strong><span>Supports testing, maintenance and regular updates.</span></article><article class="page-card"><ha-icon icon="mdi:rocket-launch-outline"></ha-icon><strong>Future features</strong><span>Helps build more competitions, statistics and dashboard tools.</span></article><article class="page-card"><ha-icon icon="mdi:account-group-outline"></ha-icon><strong>Community development</strong><span>Keeps the project community-led and available to Home Assistant users.</span></article></section>
+      <section class="page-card premium-info"><div><span class="support-kicker">⭐ PREMIUM SUPPORTERS</span><h2>Extra recognition inside Football Hub</h2><p>Donate £10 / $10 / €10 or more to be featured with your name, country flag and an optional personal message.</p></div><div class="premium-features"><span>👑 Premium profile</span><span>🌍 Name & country flag</span><span>💬 Personal message</span></div></section>
+      <section class="support-summary page-card"><div><strong>${supporters.length}</strong><span>Total supporters</span></div><div><strong>${countries.length}</strong><span>Countries supporting</span></div><div><strong>${this._escape(latestDate || "—")}</strong><span>Latest support date</span></div></section>
+      ${countries.length ? `<section class="page-card country-support"><h2>Supporters around the world</h2><div class="country-support-grid">${countries.map(([country,count]) => `<span>${this._countryFlag(country)} ${this._escape(country)} <b>${count}</b></span>`).join("")}</div></section>` : ""}
+      ${this._supportersLoading && !supporters.length ? `<section class="page-card centred"><div class="empty">Loading supporters…</div></section>` : supporters.length ? `<section class="section"><div class="section-title-row"><div><span class="eyebrow">LATEST THANK YOUS</span><h3>Latest supporters</h3></div><span>${this._escape(latestDate)}</span></div><div class="supporter-grid latest-grid">${latest.map((s) => this._supporterCard(s)).join("")}</div></section><section class="section"><div class="section-title-row"><div><span class="eyebrow">THE COMMUNITY</span><h3>All supporters</h3></div></div><div class="supporter-grid">${supporters.map((s) => this._supporterCard(s)).join("")}</div></section>` : `<section class="page-card centred"><ha-icon class="huge-icon" icon="mdi:heart-outline"></ha-icon><h2>No supporters loaded yet</h2><p>Support the project and have your name added here as a thank you.</p></section>`}
+      <section class="page-card support-how"><strong>To be added as a supporter</strong><span>After donating, include your name, country and optional short message.</span></section>`;
   }
 
   _allStates() {
@@ -85,7 +246,23 @@ class FootballHubPanel extends HTMLElement {
 
   _setTab(tab) {
     this._activeTab = tab;
+    localStorage.setItem("football_hub_active_page", tab);
     this._render();
+  }
+
+  _setCountry(country) {
+    this._selectedCountry = country;
+    localStorage.setItem("football_hub_selected_country", country);
+    this._render();
+  }
+
+  _setLeague(competition) {
+    const status = this._statusInfo();
+    this._hass?.callService("football_hub", "select_competition", {
+      competition,
+      entry_id: status.config_entry_id || "",
+    }).catch(() => {});
+    localStorage.setItem("football_hub_selected_league", competition);
   }
 
   _setFixtureTeam(team) {
@@ -203,6 +380,17 @@ class FootballHubPanel extends HTMLElement {
   _hero() {
     const status = this._statusInfo();
     const prefixes = this._competitionPrefixes();
+    const catalogue = Array.isArray(status.available_competitions)
+      ? status.available_competitions
+      : [];
+    const countries = [...new Set(catalogue.map((item) => item.country).filter(Boolean))]
+      .sort((a, b) => a.localeCompare(b));
+    if (!countries.includes(this._selectedCountry)) {
+      this._selectedCountry = countries.includes(status.country) ? status.country : (countries[0] || "");
+    }
+    const countryLeagues = catalogue
+      .filter((item) => item.country === this._selectedCountry)
+      .sort((a, b) => a.name.localeCompare(b.name));
 
     const options = prefixes
       .map((prefix) => {
@@ -225,6 +413,16 @@ class FootballHubPanel extends HTMLElement {
     )}</p>
         </div>
         <div class="hero-actions">
+          ${catalogue.length ? `
+            <div class="competition-picker">
+              <label><span>Country</span><select id="country-select" aria-label="Country">
+                ${countries.map((country) => `<option value="${this._escape(country)}" ${country === this._selectedCountry ? "selected" : ""}>${this._escape(country)}</option>`).join("")}
+              </select></label>
+              <label><span>League</span><select id="league-select" aria-label="League">
+                ${countryLeagues.map((league) => `<option value="${this._escape(league.key)}" ${league.key === status.competition_key ? "selected" : ""}>${this._escape(league.name)}</option>`).join("")}
+              </select></label>
+            </div>
+          ` : ""}
           ${
             prefixes.length > 1
               ? `<select id="competition-select" aria-label="Competition">${options}</select>`
@@ -246,6 +444,7 @@ class FootballHubPanel extends HTMLElement {
       ["results", "mdi:check-decagram-outline", "Results"],
       ["table", "mdi:table-large", "Table"],
       ["players", "mdi:account-star-outline", "Players"],
+      ["supporters", "mdi:heart-outline", "Supporters"],
       ["settings", "mdi:cog-outline", "Settings"],
     ];
 
@@ -718,6 +917,8 @@ class FootballHubPanel extends HTMLElement {
         return this._tablePage();
       case "players":
         return this._playersPage();
+      case "supporters":
+        return this._supportersPage();
       case "settings":
         return this._settingsPage();
       default:
@@ -758,6 +959,14 @@ class FootballHubPanel extends HTMLElement {
 
     this.shadowRoot.querySelector("#competition-select")?.addEventListener("change", (event) => {
       this._setCompetition(event.target.value);
+    });
+
+    this.shadowRoot.querySelector("#country-select")?.addEventListener("change", (event) => {
+      this._setCountry(event.target.value);
+    });
+
+    this.shadowRoot.querySelector("#league-select")?.addEventListener("change", (event) => {
+      this._setLeague(event.target.value);
     });
   }
 
@@ -879,6 +1088,38 @@ class FootballHubPanel extends HTMLElement {
         gap: 12px;
         flex-wrap: wrap;
         justify-content: flex-end;
+      }
+
+      .competition-picker {
+        display: flex;
+        align-items: end;
+        gap: 9px;
+        padding: 7px;
+        border: 1px solid rgba(255,255,255,.15);
+        border-radius: 15px;
+        background: rgba(0,0,0,.2);
+      }
+
+      .competition-picker label {
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+      }
+
+      .competition-picker label > span {
+        padding-left: 4px;
+        color: rgba(235,245,255,.68);
+        font-size: .58rem;
+        font-weight: 900;
+        letter-spacing: .1em;
+        text-transform: uppercase;
+      }
+
+      .competition-picker select {
+        min-width: 150px;
+        max-width: 220px;
+        padding-block: 8px;
+        color-scheme: dark;
       }
 
       select {
@@ -1572,6 +1813,12 @@ class FootballHubPanel extends HTMLElement {
         font-size: .8rem;
       }
 
+      .support-hero {display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center;gap:28px;margin-bottom:18px;background:radial-gradient(circle at 10% 0%,rgba(49,233,129,.24),transparent 34%),radial-gradient(circle at 95% 10%,rgba(255,215,0,.18),transparent 32%),linear-gradient(135deg,rgba(5,30,22,.92),rgba(4,12,24,.84)) !important;border-color:rgba(49,233,129,.34)}
+      .support-hero h2{margin:7px 0 10px;font-size:clamp(2rem,4vw,3.4rem);letter-spacing:-.04em}.support-hero p,.premium-info p{max-width:760px;color:var(--secondary-text-color);line-height:1.65}.support-kicker{color:#86efac;font-size:.75rem;font-weight:1000;letter-spacing:.14em}.support-actions{display:flex;flex-wrap:wrap;gap:11px;margin-top:20px}.support-button{display:inline-flex;align-items:center;justify-content:center;min-height:44px;padding:11px 16px;border:1px solid rgba(255,255,255,.2);border-radius:12px;color:#fff;background:rgba(255,255,255,.08);text-decoration:none;font-weight:900}.support-button.primary{color:#04130c;border-color:#31e981;background:linear-gradient(135deg,#52f59c,#24cf76);box-shadow:0 0 20px rgba(49,233,129,.22)}
+      .support-thanks{width:190px;min-height:190px;display:grid;place-items:center;align-content:center;text-align:center;border:1px solid rgba(255,215,0,.4);border-radius:50%;background:radial-gradient(circle,rgba(255,215,0,.18),rgba(255,255,255,.045) 60%,transparent 62%);box-shadow:0 0 40px rgba(255,215,0,.12)}.support-thanks strong{color:#ffe27a;font-size:1.45rem}.support-thanks span{width:120px;margin-top:5px;color:var(--secondary-text-color);font-size:.72rem}
+      .support-benefits{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:14px;margin-bottom:18px}.support-benefits article{display:flex;flex-direction:column;gap:9px}.support-benefits ha-icon{--mdc-icon-size:31px;color:var(--fh-cyan)}.support-benefits span{color:var(--secondary-text-color);font-size:.82rem;line-height:1.45}.premium-info{display:flex;align-items:center;justify-content:space-between;gap:24px;margin-bottom:24px;border-color:rgba(255,215,0,.34);background:linear-gradient(135deg,rgba(255,215,0,.11),rgba(255,255,255,.06)) !important}.premium-info h2{margin:6px 0}.premium-features{display:grid;gap:9px;min-width:250px}.premium-features span{padding:10px 12px;border:1px solid rgba(255,215,0,.24);border-radius:11px;background:rgba(0,0,0,.14);font-weight:800}
+      .support-summary{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;margin-bottom:18px}.support-summary>div{padding:18px;border:1px solid var(--fh-border);border-radius:16px;background:rgba(255,255,255,.045);text-align:center}.support-summary strong{display:block;color:#86efac;font-size:clamp(1.45rem,3vw,2.35rem)}.support-summary span{color:var(--secondary-text-color);font-size:.72rem;text-transform:uppercase;letter-spacing:.07em}.country-support{margin-bottom:24px}.country-support-grid{display:flex;flex-wrap:wrap;gap:9px}.country-support-grid span{display:inline-flex;align-items:center;gap:7px;padding:8px 11px;border:1px solid var(--fh-border);border-radius:999px;background:rgba(255,255,255,.05);color:var(--secondary-text-color);font-size:.8rem}.country-support-grid b{color:#fff}.supporter-flag-image{display:inline-block;width:24px;height:16px;flex:0 0 24px;object-fit:cover;border-radius:2px;box-shadow:0 0 0 1px rgba(255,255,255,.18)}.supporter-avatar-flag{display:block;width:46px;height:28px;object-fit:cover;border-radius:4px}.supporter-country{display:inline-flex;align-items:center}
+      .section-title-row{display:flex;align-items:end;justify-content:space-between;gap:16px;margin-bottom:14px}.section-title-row h3{margin:3px 0 0}.section-title-row>span{color:var(--secondary-text-color);font-size:.8rem}.supporter-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:13px}.latest-grid{grid-template-columns:repeat(auto-fit,minmax(250px,1fr))}.supporter-card{display:grid;grid-template-columns:48px minmax(0,1fr);gap:12px;min-height:112px;padding:16px;border:1px solid rgba(255,255,255,.14);border-radius:17px;background:rgba(255,255,255,.075);box-shadow:0 16px 36px rgba(0,0,0,.16)}.supporter-avatar{width:48px;height:48px;display:grid;place-items:center;border:1px solid rgba(255,255,255,.15);border-radius:50%;background:rgba(0,0,0,.18);font-size:1.45rem}.supporter-copy{min-width:0}.supporter-copy>strong{display:block;overflow-wrap:anywhere;font-size:.98rem}.supporter-meta{display:flex;flex-wrap:wrap;gap:6px 11px;margin-top:5px;color:var(--secondary-text-color);font-size:.72rem}.supporter-copy p{margin:10px 0 0;color:rgba(235,245,255,.86);font-size:.78rem;line-height:1.45}.support-how{display:flex;align-items:center;justify-content:center;gap:10px 18px;margin-top:20px;text-align:center}.support-how span{color:var(--secondary-text-color)}
       footer {
         padding: 22px;
         text-align: center;
@@ -1584,6 +1831,8 @@ class FootballHubPanel extends HTMLElement {
         .stat-card { grid-column: span 6; }
         .list-card { grid-column: span 12; }
         .three-column { grid-template-columns: 1fr; }
+        .support-benefits { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+        .supporter-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
         .live-detail-grid { grid-template-columns: 1fr; }
         .lineup-panel { grid-column: auto; }
       }
@@ -1597,6 +1846,8 @@ class FootballHubPanel extends HTMLElement {
         }
 
         .hero-actions { justify-content: flex-start; }
+        .competition-picker { width: 100%; align-items: stretch; flex-direction: column; }
+        .competition-picker select { width: 100%; max-width: none; }
 
         .tabs button { padding-inline: 13px; }
         .tabs button span { display: none; }
@@ -1623,6 +1874,12 @@ class FootballHubPanel extends HTMLElement {
 
         .match-list { grid-template-columns: 1fr; }
         .two-column { grid-template-columns: 1fr; }
+        .support-hero { grid-template-columns: 1fr; }
+        .support-thanks { width:150px;min-height:150px;margin:0 auto; }
+        .support-benefits, .supporter-grid, .support-summary { grid-template-columns: 1fr; }
+        .premium-info { align-items:stretch;flex-direction:column; }
+        .premium-features { min-width:0; }
+        .support-how { align-items:flex-start;flex-direction:column;text-align:left; }
 
         .live-matchup { grid-template-columns: 1fr 90px 1fr; gap: 8px; }
         .live-team h2 { font-size: .9rem; }
