@@ -16,10 +16,12 @@ PLATFORMS = ["sensor"]
 
 PANEL_URL = "football-hub"
 PANEL_NAME = "football-hub-panel"
-PANEL_VERSION = "0.2.0"
+PANEL_VERSION = "0.2.1"
 PANEL_STATIC_URL = "/football_hub/football-hub-panel.js"
 PANEL_MODULE_URL = f"{PANEL_STATIC_URL}?v={PANEL_VERSION}"
 PANEL_SCRIPT_PATH = Path(__file__).parent / "frontend" / "football-hub-panel.js"
+PANEL_BACKGROUND_URL = "/football_hub/football-hub-background.png"
+PANEL_BACKGROUND_PATH = Path(__file__).parent / "frontend" / "football-hub-background.png"
 
 
 async def async_setup(hass: HomeAssistant, config: dict) -> bool:
@@ -31,6 +33,11 @@ async def async_setup(hass: HomeAssistant, config: dict) -> bool:
             StaticPathConfig(
                 PANEL_STATIC_URL,
                 str(PANEL_SCRIPT_PATH),
+                False,
+            ),
+            StaticPathConfig(
+                PANEL_BACKGROUND_URL,
+                str(PANEL_BACKGROUND_PATH),
                 False,
             )
         ]
