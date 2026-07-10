@@ -78,6 +78,26 @@ async def async_setup(hass: HomeAssistant, config: dict) -> bool:
             async_select_live_team,
         )
 
+    async def async_select_competition(call: ServiceCall) -> None:
+        """Switch the active competition for a config entry."""
+        competition_key = str(call.data.get("competition") or "").strip()
+        entry_id = str(call.data.get("entry_id") or "").strip()
+        for runtime_entry_id, runtime in hass.data.get(DOMAIN, {}).items():
+            if entry_id and runtime_entry_id != entry_id:
+                continue
+            if not isinstance(runtime, dict):
+                continue
+            coordinator = runtime.get("coordinator")
+            if coordinator is not None:
+                await coordinator.async_set_competition(competition_key)
+
+    if not hass.services.has_service(DOMAIN, "select_competition"):
+        hass.services.async_register(
+            DOMAIN,
+            "select_competition",
+            async_select_competition,
+        )
+
     return True
 
 
@@ -104,3 +124,4 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         hass.data[DOMAIN].pop(entry.entry_id, None)
 
     return unload_ok
+
