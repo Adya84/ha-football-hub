@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import asyncio
+import copy
+from datetime import datetime, timezone
 from datetime import timedelta
 import logging
 from time import monotonic
@@ -16,12 +18,17 @@ from .api import FootballHubAPI
 
 _LOGGER = logging.getLogger(__name__)
 
-LIVE_TTL = 30
+LIVE_TTL = 10
 FIXTURES_TTL = 6 * 60 * 60
 STANDINGS_TTL = 6 * 60 * 60
 PLAYERS_TTL = 12 * 60 * 60
-LIVE_DETAILS_TTL = 30
+LIVE_EVENTS_TTL = 10
+LIVE_STATISTICS_TTL = 15
 LINEUPS_TTL = 5 * 60
+LIVE_RATE_LIMIT_BACKOFF = 30
+PRE_LIVE_WINDOW = timedelta(minutes=5)
+POST_LIVE_WINDOW = timedelta(hours=3, minutes=15)
+PRE_LIVE_PROMOTION_END = timedelta(minutes=20)
 
 
 class FootballHubCoordinator(DataUpdateCoordinator):
@@ -36,6 +43,7 @@ class FootballHubCoordinator(DataUpdateCoordinator):
         self.engine = FootballHubEngine()
         self._cache: dict[str, Any] = {}
         self._updated_at: dict[str, float] = {}
+        self._live_rate_limited_until = 0.0
 
         super().__init__(
             hass,
@@ -55,12 +63,60 @@ class FootballHubCoordinator(DataUpdateCoordinator):
         self._cache[key] = value
         self._updated_at[key] = monotonic()
 
+    def _live_poll_window_active(self) -> bool:
+        """Poll live data from five minutes before kickoff through match end."""
+        now = datetime.now(timezone.utc)
+        for item in self._cache.get("fixtures", []) or []:
+            fixture = (item or {}).get("fixture", {}) or {}
+            status = (fixture.get("status", {}) or {}).get("short")
+            if status in {"1H", "HT", "2H", "ET", "BT", "P", "SUSP", "INT", "LIVE"}:
+                return True
+            value = fixture.get("date")
+            if not value:
+                continue
+            try:
+                kickoff = datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+            except ValueError:
+                continue
+            if kickoff - PRE_LIVE_WINDOW <= now <= kickoff + POST_LIVE_WINDOW:
+                return True
+        return not self._cache.get("fixtures")
+
+    def _pre_live_matches(self) -> list[dict[str, Any]]:
+        """Expose matches as awaiting live data shortly before kickoff."""
+        now = datetime.now(timezone.utc)
+        waiting: list[dict[str, Any]] = []
+        for item in self._cache.get("fixtures", []) or []:
+            fixture = (item or {}).get("fixture", {}) or {}
+            status = (fixture.get("status", {}) or {}).get("short")
+            if status not in {"NS", "TBD"}:
+                continue
+            value = fixture.get("date")
+            if not value:
+                continue
+            try:
+                kickoff = datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+            except ValueError:
+                continue
+            if not kickoff - PRE_LIVE_WINDOW <= now <= kickoff + PRE_LIVE_PROMOTION_END:
+                continue
+            promoted = copy.deepcopy(item)
+            promoted_fixture = promoted.setdefault("fixture", {})
+            promoted_fixture["status"] = {
+                "short": "LIVE",
+                "long": "Awaiting kickoff API data",
+                "elapsed": None,
+            }
+            promoted["awaiting_live_api_data"] = True
+            waiting.append(promoted)
+        return waiting
+
     async def _async_update_data(self):
         """Refresh only datasets whose cache period has expired."""
         league_id = self.competition["league_id"]
         requests: list[tuple[str, Awaitable[Any]]] = []
 
-        if self._is_stale("live", LIVE_TTL):
+        if self._is_stale("live", LIVE_TTL) and self._live_poll_window_active():
             requests.append(("live", self.api.get_live(league_id, self.season)))
         if self._is_stale("fixtures", FIXTURES_TTL):
             requests.append(("fixtures", self.api.get_fixtures(league_id, self.season)))
@@ -93,58 +149,60 @@ class FootballHubCoordinator(DataUpdateCoordinator):
                 raise UpdateFailed("; ".join(failures))
 
         raw_live = self._cache.get("live", [])
-        fixture_id = None
-        if raw_live:
-            fixture_id = (
-                raw_live[0].get("fixture", {}).get("id")
-                if isinstance(raw_live[0], dict)
-                else None
-            )
+        if not raw_live:
+            raw_live = self._pre_live_matches()
+        live_fixture_ids: list[int] = []
+        for item in raw_live:
+            if not isinstance(item, dict):
+                continue
+            fixture_id = (item.get("fixture") or {}).get("id")
+            if fixture_id:
+                live_fixture_ids.append(fixture_id)
 
-        if fixture_id:
-            detail_requests: list[tuple[str, Awaitable[Any]]] = []
-            detail_keys = {
-                "live_events": LIVE_DETAILS_TTL,
-                "live_statistics": LIVE_DETAILS_TTL,
-                "live_lineups": LINEUPS_TTL,
-            }
-            if self._cache.get("live_fixture_id") != fixture_id:
-                for key in detail_keys:
-                    self._cache.pop(key, None)
-                    self._updated_at.pop(key, None)
-                self._store("live_fixture_id", fixture_id)
-
-            if self._is_stale("live_events", detail_keys["live_events"]):
-                detail_requests.append(
-                    ("live_events", self.api.get_fixture_events(fixture_id))
-                )
-            if self._is_stale("live_statistics", detail_keys["live_statistics"]):
-                detail_requests.append(
-                    ("live_statistics", self.api.get_fixture_statistics(fixture_id))
-                )
-            if self._is_stale("live_lineups", detail_keys["live_lineups"]):
-                detail_requests.append(
-                    ("live_lineups", self.api.get_fixture_lineups(fixture_id))
-                )
+        # World Cup-style per-fixture live caches. This allows the frontend to
+        # select any live match while the remaining games stay score-only.
+        if live_fixture_ids and monotonic() >= self._live_rate_limited_until:
+            detail_requests: list[tuple[str, int, str, Awaitable[Any]]] = []
+            for fixture_id in live_fixture_ids:
+                event_key = f"live_events:{fixture_id}"
+                stats_key = f"live_statistics:{fixture_id}"
+                lineup_key = f"live_lineups:{fixture_id}"
+                if self._is_stale(event_key, LIVE_EVENTS_TTL):
+                    detail_requests.append((event_key, fixture_id, "events", self.api.get_fixture_events(fixture_id)))
+                if self._is_stale(stats_key, LIVE_STATISTICS_TTL):
+                    detail_requests.append((stats_key, fixture_id, "statistics", self.api.get_fixture_statistics(fixture_id)))
+                if self._is_stale(lineup_key, LINEUPS_TTL):
+                    detail_requests.append((lineup_key, fixture_id, "lineups", self.api.get_fixture_lineups(fixture_id)))
 
             if detail_requests:
                 detail_results = await asyncio.gather(
-                    *(request for _, request in detail_requests),
+                    *(request for _, _, _, request in detail_requests),
                     return_exceptions=True,
                 )
-                for (key, _), result in zip(
+                for (cache_key, fixture_id, kind, _), result in zip(
                     detail_requests, detail_results, strict=True
                 ):
                     if isinstance(result, Exception):
+                        if "rate limit" in str(result).lower() or "429" in str(result):
+                            self._live_rate_limited_until = monotonic() + LIVE_RATE_LIMIT_BACKOFF
                         _LOGGER.warning(
-                            "Football Hub %s refresh failed: %s", key, result
+                            "Football Hub live %s refresh failed for fixture %s: %s",
+                            kind,
+                            fixture_id,
+                            result,
                         )
                     else:
-                        self._store(key, result)
-        else:
-            for key in ("live_fixture_id", "live_events", "live_statistics", "live_lineups"):
-                self._cache.pop(key, None)
-                self._updated_at.pop(key, None)
+                        self._store(cache_key, result)
+
+        live_details: dict[str, dict[str, Any]] = {}
+        for fixture_id in live_fixture_ids:
+            live_details[str(fixture_id)] = {
+                "events": self._cache.get(f"live_events:{fixture_id}", []),
+                "statistics": self._cache.get(f"live_statistics:{fixture_id}", []),
+                "lineups": self._cache.get(f"live_lineups:{fixture_id}", []),
+            }
+
+        primary_fixture_id = live_fixture_ids[0] if live_fixture_ids else None
 
         data = {
             "live": raw_live,
@@ -152,9 +210,10 @@ class FootballHubCoordinator(DataUpdateCoordinator):
             "standings": self._cache.get("standings", []),
             "top_scorers": self._cache.get("top_scorers", []),
             "top_assists": self._cache.get("top_assists", []),
-            "live_events": self._cache.get("live_events", []),
-            "live_statistics": self._cache.get("live_statistics", []),
-            "live_lineups": self._cache.get("live_lineups", []),
+            "live_events": live_details.get(str(primary_fixture_id), {}).get("events", []),
+            "live_statistics": live_details.get(str(primary_fixture_id), {}).get("statistics", []),
+            "live_lineups": live_details.get(str(primary_fixture_id), {}).get("lineups", []),
+            "live_details": live_details,
         }
         self.engine.update(data)
         return data
