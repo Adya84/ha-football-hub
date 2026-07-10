@@ -265,7 +265,7 @@ class FootballHubStandingsSensor(FootballHubBaseSensor):
     @property
     def extra_state_attributes(self):
         table = self.engine.standings.table()
-        return {"total_teams": len(table), "table": limit_items(table, ATTRIBUTE_LIMIT)}
+        return {"total_teams": len(table), "table": table}
 
 
 class FootballHubTopScorersSensor(FootballHubBaseSensor):
@@ -298,3 +298,4 @@ class FootballHubTopAssistsSensor(FootballHubBaseSensor):
             "total_top_assists": len(self.engine.top_assists),
             "top_assists": limit_items(self.engine.top_assists, ATTRIBUTE_LIMIT),
         }
+
