@@ -20,6 +20,8 @@ LIVE_TTL = 30
 FIXTURES_TTL = 6 * 60 * 60
 STANDINGS_TTL = 6 * 60 * 60
 PLAYERS_TTL = 12 * 60 * 60
+LIVE_DETAILS_TTL = 30
+LINEUPS_TTL = 5 * 60
 
 
 class FootballHubCoordinator(DataUpdateCoordinator):
@@ -90,12 +92,69 @@ class FootballHubCoordinator(DataUpdateCoordinator):
             if failures and "fixtures" not in self._cache:
                 raise UpdateFailed("; ".join(failures))
 
+        raw_live = self._cache.get("live", [])
+        fixture_id = None
+        if raw_live:
+            fixture_id = (
+                raw_live[0].get("fixture", {}).get("id")
+                if isinstance(raw_live[0], dict)
+                else None
+            )
+
+        if fixture_id:
+            detail_requests: list[tuple[str, Awaitable[Any]]] = []
+            detail_keys = {
+                "live_events": LIVE_DETAILS_TTL,
+                "live_statistics": LIVE_DETAILS_TTL,
+                "live_lineups": LINEUPS_TTL,
+            }
+            if self._cache.get("live_fixture_id") != fixture_id:
+                for key in detail_keys:
+                    self._cache.pop(key, None)
+                    self._updated_at.pop(key, None)
+                self._store("live_fixture_id", fixture_id)
+
+            if self._is_stale("live_events", detail_keys["live_events"]):
+                detail_requests.append(
+                    ("live_events", self.api.get_fixture_events(fixture_id))
+                )
+            if self._is_stale("live_statistics", detail_keys["live_statistics"]):
+                detail_requests.append(
+                    ("live_statistics", self.api.get_fixture_statistics(fixture_id))
+                )
+            if self._is_stale("live_lineups", detail_keys["live_lineups"]):
+                detail_requests.append(
+                    ("live_lineups", self.api.get_fixture_lineups(fixture_id))
+                )
+
+            if detail_requests:
+                detail_results = await asyncio.gather(
+                    *(request for _, request in detail_requests),
+                    return_exceptions=True,
+                )
+                for (key, _), result in zip(
+                    detail_requests, detail_results, strict=True
+                ):
+                    if isinstance(result, Exception):
+                        _LOGGER.warning(
+                            "Football Hub %s refresh failed: %s", key, result
+                        )
+                    else:
+                        self._store(key, result)
+        else:
+            for key in ("live_fixture_id", "live_events", "live_statistics", "live_lineups"):
+                self._cache.pop(key, None)
+                self._updated_at.pop(key, None)
+
         data = {
-            "live": self._cache.get("live", []),
+            "live": raw_live,
             "fixtures": self._cache.get("fixtures", []),
             "standings": self._cache.get("standings", []),
             "top_scorers": self._cache.get("top_scorers", []),
             "top_assists": self._cache.get("top_assists", []),
+            "live_events": self._cache.get("live_events", []),
+            "live_statistics": self._cache.get("live_statistics", []),
+            "live_lineups": self._cache.get("live_lineups", []),
         }
         self.engine.update(data)
         return data
