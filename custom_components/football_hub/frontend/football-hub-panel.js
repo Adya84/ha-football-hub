@@ -1,4 +1,4 @@
-const PANEL_VERSION = "0.2.5-readable-text";
+const PANEL_VERSION = "0.2.6-full-table";
 
 class FootballHubPanel extends HTMLElement {
   constructor() {
@@ -299,7 +299,7 @@ class FootballHubPanel extends HTMLElement {
             <span><ha-icon icon="mdi:table-large"></ha-icon> League table</span>
             <button class="text-button" data-tab="table">View table</button>
           </div>
-          ${this._tableRows(table)}
+          ${this._tableRows(table.slice(0, 5))}
         </article>
 
         <article class="list-card">
