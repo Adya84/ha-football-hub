@@ -1,4 +1,4 @@
-const PANEL_VERSION = "0.2.1-frontend-preview";
+const PANEL_VERSION = "0.2.5-readable-text";
 
 class FootballHubPanel extends HTMLElement {
   constructor() {
@@ -580,25 +580,36 @@ class FootballHubPanel extends HTMLElement {
       :host {
         display: block;
         min-height: 100vh;
-        color: var(--primary-text-color);
+        color: #ffffff;
+        --primary-text-color: #ffffff;
+        --secondary-text-color: rgba(226, 240, 255, .78);
         --fh-purple: #071a14;
         --fh-purple-2: #0b4d36;
         --fh-cyan: #31e981;
         --fh-pink: #ff4d4d;
-        --fh-surface: color-mix(in srgb, var(--card-background-color) 90%, #0a2019 10%);
-        --fh-border: color-mix(in srgb, var(--divider-color) 70%, transparent);
+        --fh-surface: rgba(255,255,255,0.08);
+        --fh-surface-strong: rgba(255,255,255,0.10);
+        --fh-border: rgba(255,255,255,0.14);
         font-family: var(--paper-font-body1_-_font-family, system-ui, sans-serif);
       }
 
       * { box-sizing: border-box; }
+
+      h1, h2, h3, strong, .big-stat, .match-score, .score-board {
+        color: #ffffff;
+      }
+
+      h1, h2, h3, .big-stat, .match-score, .score-board strong {
+        text-shadow: 0 2px 12px rgba(0,0,0,.55);
+      }
 
       button, select { font: inherit; }
 
       .app-shell {
         min-height: 100vh;
         background:
-          linear-gradient(180deg, rgba(2, 10, 20, .34) 0%, rgba(2, 10, 20, .78) 42%, rgba(2, 10, 20, .94) 100%),
-          url("/football_hub/football-hub-background.png?v=0.2.1") center top / cover fixed no-repeat,
+          linear-gradient(180deg, rgba(2, 10, 20, .18) 0%, rgba(2, 10, 20, .38) 42%, rgba(2, 10, 20, .56) 100%),
+          url("/football_hub/football-hub-background.png?v=0.2.3") center top / cover fixed no-repeat,
           #020b14;
       }
 
@@ -711,7 +722,7 @@ class FootballHubPanel extends HTMLElement {
         appearance: none;
         border: 0;
         background: transparent;
-        color: rgba(255,255,255,.68);
+        color: rgba(235,245,255,.82);
         display: flex;
         align-items: center;
         gap: 8px;
@@ -740,10 +751,10 @@ class FootballHubPanel extends HTMLElement {
       }
 
       .feature-card, .stat-card, .list-card, .page-card, .live-centre-card {
-        background: var(--fh-surface);
-        border: 1px solid var(--fh-border);
-        border-radius: 16px;
-        box-shadow: 0 16px 42px rgba(0,0,0,.12);
+        background: rgba(255,255,255,0.08) !important;
+        border: 1px solid rgba(255,255,255,0.14);
+        border-radius: 22px;
+        box-shadow: 0 20px 50px rgba(0,0,0,0.20);
       }
 
       .feature-card {
@@ -772,7 +783,8 @@ class FootballHubPanel extends HTMLElement {
         text-transform: uppercase;
         letter-spacing: .08em;
         font-weight: 800;
-        color: var(--secondary-text-color);
+        color: rgba(226, 240, 255, .86);
+        text-shadow: 0 1px 5px rgba(0,0,0,.65);
       }
 
       .card-heading > span:first-child {
@@ -927,9 +939,10 @@ class FootballHubPanel extends HTMLElement {
       .text-button {
         border: 0;
         background: transparent;
-        color: var(--fh-cyan);
+        color: #42f58d;
         cursor: pointer;
         font-weight: 800;
+        text-shadow: 0 1px 6px rgba(0,0,0,.7);
       }
 
       .player-list { display: flex; flex-direction: column; }
@@ -985,10 +998,11 @@ class FootballHubPanel extends HTMLElement {
       }
 
       .match-card {
-        background: var(--fh-surface);
-        border: 1px solid var(--fh-border);
-        border-radius: 14px;
+        background: rgba(255,255,255,0.08) !important;
+        border: 1px solid rgba(255,255,255,0.14);
+        border-radius: 22px;
         padding: 17px;
+        box-shadow: 0 20px 50px rgba(0,0,0,0.20);
       }
 
       .match-meta, .match-footer {
@@ -1123,8 +1137,9 @@ class FootballHubPanel extends HTMLElement {
       .huge-icon { --mdc-icon-size: 74px; color: var(--fh-purple-2); }
 
       .empty {
-        color: var(--secondary-text-color);
+        color: rgba(235, 245, 255, .84);
         padding: 18px 0;
+        text-shadow: 0 1px 5px rgba(0,0,0,.7);
       }
 
       .empty.large { padding: 50px 0; text-align: center; }
