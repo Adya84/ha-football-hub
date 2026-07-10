@@ -62,6 +62,10 @@ class LiveEngine:
     def lineups(self) -> list[dict[str, Any]]:
         return self._owner._processed["live_lineups"]
 
+    def details(self, fixture_id: int | str) -> dict[str, Any]:
+        """Return processed live details for one fixture."""
+        return self._owner._processed.get("live_details", {}).get(str(fixture_id), {})
+
 
 class ResultsEngine:
     """Processed results access."""
@@ -110,6 +114,13 @@ class FootballHubEngine:
         raw_standings = payload.get("standings", []) or []
 
         processed_results = all_results(raw_fixtures)
+        processed_live_details = {}
+        for fixture_id, details in (payload.get("live_details", {}) or {}).items():
+            processed_live_details[str(fixture_id)] = {
+                "events": process_events(details.get("events", []) or []),
+                "statistics": process_statistics(details.get("statistics", []) or []),
+                "lineups": process_lineups(details.get("lineups", []) or []),
+            }
         self._processed = {
             "fixtures": upcoming(raw_fixtures),
             "next_fixture": next_fixture(raw_fixtures),
@@ -120,6 +131,7 @@ class FootballHubEngine:
             "live_events": process_events(payload.get("live_events", []) or []),
             "live_statistics": process_statistics(payload.get("live_statistics", []) or []),
             "live_lineups": process_lineups(payload.get("live_lineups", []) or []),
+            "live_details": processed_live_details,
             "results": processed_results,
             "last_result": processed_results[0] if processed_results else {},
             "standings": league_table(raw_standings),
@@ -141,3 +153,4 @@ __all__ = [
     "this_week",
     "upcoming",
 ]
+
