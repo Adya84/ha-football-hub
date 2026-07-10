@@ -138,6 +138,9 @@ class FootballHubLiveMatchSensor(FootballHubBaseSensor):
         if not match:
             return {"is_live": False}
 
+        events = self.engine.live.events()
+        statistics = self.engine.live.statistics()
+        lineups = self.engine.live.lineups()
         return {
             "is_live": True,
             **match,
@@ -145,6 +148,11 @@ class FootballHubLiveMatchSensor(FootballHubBaseSensor):
                 f"{match.get('home_team')} {match.get('home_goals')}-"
                 f"{match.get('away_goals')} {match.get('away_team')}"
             ),
+            "events_count": len(events),
+            "events": limit_items(events, 20),
+            "statistics": limit_items(statistics, 2),
+            "lineups_available": bool(lineups),
+            "lineups": limit_items(lineups, 2),
         }
 
 
