@@ -107,10 +107,14 @@ class FootballHubLiveSensor(FootballHubBaseSensor):
     @property
     def extra_state_attributes(self):
         matches = self.engine.live.matches()
+        enriched_matches = []
+        for match in matches:
+            details = self.engine.live.details(match.get("fixture_id"))
+            enriched_matches.append({**match, **details})
         return {
             "total_live": len(matches),
             "primary_live_match": self.engine.live.primary(),
-            "matches": limit_items(matches, ATTRIBUTE_LIMIT),
+            "matches": enriched_matches,
         }
 
 
