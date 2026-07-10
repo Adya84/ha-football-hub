@@ -37,7 +37,10 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry, async_add_e
             FootballHubStatusSensor(coordinator, entry),
             FootballHubLiveSensor(coordinator, entry),
             FootballHubNextFixtureSensor(coordinator, entry),
+            FootballHubMatchesTodaySensor(coordinator, entry),
+            FootballHubThisWeekSensor(coordinator, entry),
             FootballHubFixturesSensor(coordinator, entry),
+            FootballHubLastResultSensor(coordinator, entry),
             FootballHubResultsSensor(coordinator, entry),
             FootballHubStandingsSensor(coordinator, entry),
             FootballHubTopScorersSensor(coordinator, entry),
@@ -139,6 +142,44 @@ class FootballHubNextFixtureSensor(FootballHubBaseSensor):
         return next_fixture(self.raw_fixtures)
 
 
+class FootballHubMatchesTodaySensor(FootballHubBaseSensor):
+    """Today's fixtures sensor."""
+
+    def __init__(self, coordinator, entry):
+        super().__init__(coordinator, entry, "matches_today", "Matches Today")
+
+    @property
+    def native_value(self):
+        return len(fixtures_today(self.raw_fixtures))
+
+    @property
+    def extra_state_attributes(self):
+        matches = fixtures_today(self.raw_fixtures)
+        return {
+            "total_today": len(matches),
+            "matches": limit_items(matches, ATTRIBUTE_LIMIT),
+        }
+
+
+class FootballHubThisWeekSensor(FootballHubBaseSensor):
+    """Fixtures in the next seven days sensor."""
+
+    def __init__(self, coordinator, entry):
+        super().__init__(coordinator, entry, "matches_this_week", "Matches This Week")
+
+    @property
+    def native_value(self):
+        return len(this_week(self.raw_fixtures))
+
+    @property
+    def extra_state_attributes(self):
+        matches = this_week(self.raw_fixtures)
+        return {
+            "total_this_week": len(matches),
+            "matches": limit_items(matches, ATTRIBUTE_LIMIT),
+        }
+
+
 class FootballHubFixturesSensor(FootballHubBaseSensor):
     """Upcoming fixtures sensor."""
 
@@ -160,6 +201,26 @@ class FootballHubFixturesSensor(FootballHubBaseSensor):
             "this_week_count": len(week),
             "next_5": limit_items(fixtures, ATTRIBUTE_LIMIT),
         }
+
+
+class FootballHubLastResultSensor(FootballHubBaseSensor):
+    """Most recent completed fixture sensor."""
+
+    def __init__(self, coordinator, entry):
+        super().__init__(coordinator, entry, "last_result", "Last Result")
+
+    @property
+    def native_value(self):
+        match = last_result(self.raw_fixtures)
+        if not match:
+            return None
+        home = match.get("home_goals")
+        away = match.get("away_goals")
+        return f"{match.get('home_team')} {home}-{away} {match.get('away_team')}"
+
+    @property
+    def extra_state_attributes(self):
+        return last_result(self.raw_fixtures)
 
 
 class FootballHubResultsSensor(FootballHubBaseSensor):
