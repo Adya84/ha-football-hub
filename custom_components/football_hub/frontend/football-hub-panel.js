@@ -1,4 +1,4 @@
-const PANEL_VERSION = "0.2.0-frontend-preview";
+const PANEL_VERSION = "0.2.1-frontend-preview";
 
 class FootballHubPanel extends HTMLElement {
   constructor() {
@@ -597,9 +597,9 @@ class FootballHubPanel extends HTMLElement {
       .app-shell {
         min-height: 100vh;
         background:
-          radial-gradient(circle at 84% 2%, rgba(49, 233, 129, .13), transparent 30rem),
-          linear-gradient(rgba(255,255,255,.018) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,.018) 1px, transparent 1px),
-          var(--primary-background-color);
+          linear-gradient(180deg, rgba(2, 10, 20, .34) 0%, rgba(2, 10, 20, .78) 42%, rgba(2, 10, 20, .94) 100%),
+          url("/football_hub/football-hub-background.png?v=0.2.1") center top / cover fixed no-repeat,
+          #020b14;
       }
 
       .hero {
@@ -611,9 +611,8 @@ class FootballHubPanel extends HTMLElement {
         gap: 24px;
         color: white;
         background:
-          linear-gradient(105deg, rgba(3, 14, 11, .28), rgba(3, 14, 11, .72)),
-          radial-gradient(circle at 76% 44%, rgba(49,233,129,.2), transparent 28%),
-          linear-gradient(135deg, #061711, #0a3526 58%, #09221c);
+          linear-gradient(105deg, rgba(2, 11, 22, .36), rgba(2, 11, 22, .7)),
+          transparent;
         position: relative;
         overflow: hidden;
       }
@@ -1215,4 +1214,3 @@ class FootballHubPanel extends HTMLElement {
 if (!customElements.get("football-hub-panel")) {
   customElements.define("football-hub-panel", FootballHubPanel);
 }
-
