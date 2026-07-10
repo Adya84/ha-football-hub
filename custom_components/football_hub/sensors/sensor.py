@@ -81,10 +81,21 @@ class FootballHubStatusSensor(FootballHubBaseSensor):
 
     @property
     def extra_state_attributes(self):
-        competition = COMPETITIONS.get(self.entry.data.get("competition"), {})
+        competition = self.coordinator.competition
         season = self.entry.data.get("season")
         return {
             "competition": competition.get("name"),
+            "competition_key": self.coordinator.competition_key,
+            "config_entry_id": self.entry.entry_id,
+            "available_competitions": [
+                {
+                    "key": key,
+                    "name": item["name"],
+                    "country": item["country"],
+                    "league_id": item["league_id"],
+                }
+                for key, item in COMPETITIONS.items()
+            ],
             "country": competition.get("country"),
             "league_id": competition.get("league_id"),
             "season": SEASONS.get(season, season),
@@ -303,3 +314,4 @@ class FootballHubTopAssistsSensor(FootballHubBaseSensor):
             "total_top_assists": len(self.engine.top_assists),
             "top_assists": limit_items(self.engine.top_assists, ATTRIBUTE_LIMIT),
         }
+
