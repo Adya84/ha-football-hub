@@ -111,6 +111,19 @@ class FootballHubAPI:
             },
         )
 
+
+    async def get_fixture_events(self, fixture_id: int):
+        """Return events for a fixture."""
+        return await self.request("fixtures/events", {"fixture": fixture_id})
+
+    async def get_fixture_statistics(self, fixture_id: int):
+        """Return team statistics for a fixture."""
+        return await self.request("fixtures/statistics", {"fixture": fixture_id})
+
+    async def get_fixture_lineups(self, fixture_id: int):
+        """Return line-ups for a fixture."""
+        return await self.request("fixtures/lineups", {"fixture": fixture_id})
+
     async def get_competition_data(self, league_id: int, season: int):
         """Fetch all competition data in parallel."""
 
