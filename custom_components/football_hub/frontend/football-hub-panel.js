@@ -1,4 +1,4 @@
-const PANEL_VERSION = "0.4.4-always-live-team-picker";
+const PANEL_VERSION = "0.4.5-efficient-live-polling";
 
 class FootballHubPanel extends HTMLElement {
   constructor() {
@@ -94,6 +94,7 @@ class FootballHubPanel extends HTMLElement {
     if (team && team !== "__all__") {
       this._selectedLiveTeam = team;
       localStorage.setItem("football_hub_live_team", team);
+      this._hass?.callService("football_hub", "select_live_team", { team }).catch(() => {});
     }
     this._fixturePage = 0;
     this._render();
@@ -117,6 +118,7 @@ class FootballHubPanel extends HTMLElement {
   _setLiveTeam(team) {
     this._selectedLiveTeam = team;
     localStorage.setItem("football_hub_live_team", team);
+    this._hass?.callService("football_hub", "select_live_team", { team }).catch(() => {});
     const matches = this._attrs("live_matches").matches || [];
     const index = matches.findIndex((match) => match.home_team === team || match.away_team === team);
     if (index >= 0) {
