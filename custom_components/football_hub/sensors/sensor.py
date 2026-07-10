@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from datetime import datetime, timezone
+
 from homeassistant.components.sensor import SensorEntity
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
@@ -21,6 +23,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry, async_add_e
         [
             FootballHubStatusSensor(coordinator, entry),
             FootballHubLiveSensor(coordinator, entry),
+            FootballHubLiveMatchSensor(coordinator, entry),
             FootballHubNextFixtureSensor(coordinator, entry),
             FootballHubMatchesTodaySensor(coordinator, entry),
             FootballHubThisWeekSensor(coordinator, entry),
@@ -46,6 +49,26 @@ class FootballHubBaseSensor(CoordinatorEntity, SensorEntity):
     @property
     def engine(self):
         return self.coordinator.engine
+
+
+def _countdown_attributes(match: dict) -> dict:
+    """Return countdown details for a fixture without bloating attributes."""
+    timestamp = match.get("timestamp") if match else None
+    if not timestamp:
+        return {
+            "seconds_to_kickoff": None,
+            "minutes_to_kickoff": None,
+            "hours_to_kickoff": None,
+            "days_to_kickoff": None,
+        }
+
+    seconds = max(0, int(timestamp) - int(datetime.now(timezone.utc).timestamp()))
+    return {
+        "seconds_to_kickoff": seconds,
+        "minutes_to_kickoff": seconds // 60,
+        "hours_to_kickoff": seconds // 3600,
+        "days_to_kickoff": seconds // 86400,
+    }
 
 
 class FootballHubStatusSensor(FootballHubBaseSensor):
@@ -91,6 +114,40 @@ class FootballHubLiveSensor(FootballHubBaseSensor):
         }
 
 
+class FootballHubLiveMatchSensor(FootballHubBaseSensor):
+    """Expose the primary live match as a dedicated entity."""
+
+    def __init__(self, coordinator, entry):
+        super().__init__(coordinator, entry, "live_match", "Live Match")
+
+    @property
+    def native_value(self):
+        match = self.engine.live.primary()
+        if not match:
+            return "No live match"
+
+        status = match.get("status_short") or "LIVE"
+        elapsed = match.get("elapsed")
+        if status in {"1H", "2H", "ET"} and elapsed is not None:
+            return f"{elapsed}'"
+        return status
+
+    @property
+    def extra_state_attributes(self):
+        match = self.engine.live.primary()
+        if not match:
+            return {"is_live": False}
+
+        return {
+            "is_live": True,
+            **match,
+            "scoreline": (
+                f"{match.get('home_team')} {match.get('home_goals')}-"
+                f"{match.get('away_goals')} {match.get('away_team')}"
+            ),
+        }
+
+
 class FootballHubNextFixtureSensor(FootballHubBaseSensor):
     def __init__(self, coordinator, entry):
         super().__init__(coordinator, entry, "next_fixture", "Next Fixture")
@@ -102,7 +159,10 @@ class FootballHubNextFixtureSensor(FootballHubBaseSensor):
 
     @property
     def extra_state_attributes(self):
-        return self.engine.fixtures.next()
+        match = self.engine.fixtures.next()
+        if not match:
+            return {}
+        return {**match, **_countdown_attributes(match)}
 
 
 class FootballHubMatchesTodaySensor(FootballHubBaseSensor):
