@@ -25,6 +25,11 @@ PLAYERS_TTL = 12 * 60 * 60
 LIVE_EVENTS_TTL = 10
 LIVE_STATISTICS_TTL = 15
 LINEUPS_TTL = 5 * 60
+CLUB_PROFILE_TTL = 24 * 60 * 60
+CLUB_STATS_TTL = 12 * 60 * 60
+CLUB_SQUAD_TTL = 7 * 24 * 60 * 60
+CLUB_INJURIES_TTL = 4 * 60 * 60
+CLUB_TRANSFERS_TTL = 24 * 60 * 60
 LIVE_RATE_LIMIT_BACKOFF = 30
 PRE_LIVE_WINDOW = timedelta(minutes=5)
 POST_LIVE_WINDOW = timedelta(hours=3, minutes=15)
@@ -52,7 +57,12 @@ class FootballHubCoordinator(DataUpdateCoordinator):
         self._cache: dict[str, Any] = {}
         self._updated_at: dict[str, float] = {}
         self._live_rate_limited_until = 0.0
-        self.supported_team = entry.options.get("supported_team", "")
+        self.supported_teams = dict(entry.options.get("supported_teams", {}))
+        self.supported_team = self.supported_teams.get(
+            self.competition_key, entry.options.get("supported_team", "")
+        )
+        self.my_clubs = dict(entry.options.get("my_clubs", {}))
+        self.my_club = self.my_clubs.get(self.competition_key, "")
 
         super().__init__(
             hass,
@@ -128,6 +138,8 @@ class FootballHubCoordinator(DataUpdateCoordinator):
             return
         self.competition_key = competition_key
         self.competition = COMPETITIONS[competition_key]
+        self.supported_team = self.supported_teams.get(competition_key, "")
+        self.my_club = self.my_clubs.get(competition_key, "")
         self._cache.clear()
         self._updated_at.clear()
         self._live_rate_limited_until = 0.0
@@ -151,9 +163,42 @@ class FootballHubCoordinator(DataUpdateCoordinator):
     async def async_set_supported_team(self, team: str) -> None:
         """Persist the team whose live match receives detailed API polling."""
         self.supported_team = str(team or "").strip()
-        options = {**self.entry.options, "supported_team": self.supported_team}
+        self.supported_teams[self.competition_key] = self.supported_team
+        options = {
+            **self.entry.options,
+            "supported_team": self.supported_team,
+            "supported_teams": self.supported_teams,
+        }
         self.hass.config_entries.async_update_entry(self.entry, options=options)
         await self.async_request_refresh()
+
+    async def async_set_my_club(self, team: str) -> None:
+        """Persist the My Club selection and refresh club datasets."""
+        self.my_club = str(team or "").strip()
+        self.my_clubs[self.competition_key] = self.my_club
+        for key in list(self._cache):
+            if key.startswith("club_"):
+                self._cache.pop(key, None)
+                self._updated_at.pop(key, None)
+        options = {**self.entry.options, "my_clubs": self.my_clubs}
+        self.hass.config_entries.async_update_entry(self.entry, options=options)
+        await self.async_request_refresh()
+
+    def _club_context(self) -> tuple[int | None, int | None, int | None]:
+        """Return selected team id, next opponent id and fixture id."""
+        team_id = opponent_id = fixture_id = None
+        for item in self._cache.get("fixtures", []) or []:
+            teams = (item or {}).get("teams", {}) or {}
+            home = teams.get("home", {}) or {}
+            away = teams.get("away", {}) or {}
+            if str(home.get("name", "")).casefold() == self.my_club.casefold():
+                team_id, opponent_id = home.get("id"), away.get("id")
+            elif str(away.get("name", "")).casefold() == self.my_club.casefold():
+                team_id, opponent_id = away.get("id"), home.get("id")
+            if team_id:
+                fixture_id = ((item or {}).get("fixture", {}) or {}).get("id")
+                break
+        return team_id, opponent_id, fixture_id
 
     async def _async_update_data(self):
         """Refresh only datasets whose cache period has expired."""
@@ -174,6 +219,40 @@ class FootballHubCoordinator(DataUpdateCoordinator):
             requests.append(
                 ("top_assists", self.api.get_top_assists(league_id, self.season))
             )
+
+        team_id, opponent_id, next_fixture_id = self._club_context()
+        if self.my_club and team_id:
+            club_requests = [
+                ("club_profile", CLUB_PROFILE_TTL, lambda: self.api.get_teams(league_id, self.season)),
+                ("club_statistics", CLUB_STATS_TTL, lambda: self.api.get_team_statistics(team_id, league_id, self.season)),
+                ("club_seasons", CLUB_PROFILE_TTL, lambda: self.api.get_team_seasons(team_id)),
+                ("club_squad", CLUB_SQUAD_TTL, lambda: self.api.get_squad(team_id)),
+                ("club_coach", CLUB_PROFILE_TTL, lambda: self.api.get_coach(team_id)),
+                ("club_injuries", CLUB_INJURIES_TTL, lambda: self.api.get_injuries(team_id, self.season)),
+                ("club_transfers", CLUB_TRANSFERS_TTL, lambda: self.api.get_transfers(team_id)),
+                ("club_players", CLUB_STATS_TTL, lambda: self.api.get_team_players(team_id, league_id, self.season)),
+                ("club_yellow_cards", PLAYERS_TTL, lambda: self.api.get_top_yellow_cards(league_id, self.season)),
+                ("club_red_cards", PLAYERS_TTL, lambda: self.api.get_top_red_cards(league_id, self.season)),
+            ]
+            if opponent_id:
+                club_requests.append(("club_head_to_head", CLUB_STATS_TTL, lambda: self.api.get_head_to_head(team_id, opponent_id)))
+            if next_fixture_id:
+                club_requests.append(("club_prediction", CLUB_STATS_TTL, lambda: self.api.get_prediction(next_fixture_id)))
+            for key, ttl, request_factory in club_requests:
+                if self._is_stale(key, ttl):
+                    requests.append((key, request_factory()))
+
+            squad_response = self._cache.get("club_squad", []) or []
+            squad_players = (squad_response[0].get("players", []) if squad_response else []) or []
+            player_ids = [item.get("id") for item in squad_players if item.get("id")]
+            coach_response = self._cache.get("club_coach", []) or []
+            coach_id = (coach_response[0] or {}).get("id") if coach_response else None
+            if player_ids and self._is_stale("club_player_trophies", CLUB_SQUAD_TTL):
+                requests.append(("club_player_trophies", self.api.get_trophies_for_players(player_ids)))
+            if player_ids and self._is_stale("club_sidelined", CLUB_INJURIES_TTL):
+                requests.append(("club_sidelined", self.api.get_sidelined_players(player_ids)))
+            if coach_id and self._is_stale("club_coach_trophies", CLUB_SQUAD_TTL):
+                requests.append(("club_coach_trophies", self.api.get_trophies_for_coach(coach_id)))
 
         if requests:
             results = await asyncio.gather(
@@ -266,6 +345,23 @@ class FootballHubCoordinator(DataUpdateCoordinator):
             "live_statistics": live_details.get(str(primary_fixture_id), {}).get("statistics", []),
             "live_lineups": live_details.get(str(primary_fixture_id), {}).get("lineups", []),
             "live_details": live_details,
+            "my_club": self.my_club,
+            "my_club_team_id": team_id,
+            "club_profile": self._cache.get("club_profile", []),
+            "club_statistics": self._cache.get("club_statistics", []),
+            "club_seasons": self._cache.get("club_seasons", []),
+            "club_squad": self._cache.get("club_squad", []),
+            "club_coach": self._cache.get("club_coach", []),
+            "club_injuries": self._cache.get("club_injuries", []),
+            "club_transfers": self._cache.get("club_transfers", []),
+            "club_players": self._cache.get("club_players", []),
+            "club_yellow_cards": self._cache.get("club_yellow_cards", []),
+            "club_red_cards": self._cache.get("club_red_cards", []),
+            "club_head_to_head": self._cache.get("club_head_to_head", []),
+            "club_prediction": self._cache.get("club_prediction", []),
+            "club_player_trophies": self._cache.get("club_player_trophies", []),
+            "club_coach_trophies": self._cache.get("club_coach_trophies", []),
+            "club_sidelined": self._cache.get("club_sidelined", []),
         }
         self.engine.update(data)
         return data
