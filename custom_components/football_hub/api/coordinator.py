@@ -222,6 +222,10 @@ class FootballHubCoordinator(DataUpdateCoordinator):
 
         team_id, opponent_id, next_fixture_id = self._club_context()
         if self.my_club and team_id:
+            # Keep club enrichment below low-tier per-minute API limits. Two
+            # datasets per 30-second coordinator cycle allows the page to fill
+            # progressively without creating a large burst of requests.
+            club_request_budget = 2
             club_requests = [
                 ("club_profile", CLUB_PROFILE_TTL, lambda: self.api.get_teams(league_id, self.season)),
                 ("club_statistics", CLUB_STATS_TTL, lambda: self.api.get_team_statistics(team_id, league_id, self.season)),
@@ -239,20 +243,24 @@ class FootballHubCoordinator(DataUpdateCoordinator):
             if next_fixture_id:
                 club_requests.append(("club_prediction", CLUB_STATS_TTL, lambda: self.api.get_prediction(next_fixture_id)))
             for key, ttl, request_factory in club_requests:
-                if self._is_stale(key, ttl):
+                if club_request_budget and self._is_stale(key, ttl):
                     requests.append((key, request_factory()))
+                    club_request_budget -= 1
 
             squad_response = self._cache.get("club_squad", []) or []
             squad_players = (squad_response[0].get("players", []) if squad_response else []) or []
             player_ids = [item.get("id") for item in squad_players if item.get("id")]
             coach_response = self._cache.get("club_coach", []) or []
             coach_id = (coach_response[0] or {}).get("id") if coach_response else None
-            if player_ids and self._is_stale("club_player_trophies", CLUB_SQUAD_TTL):
+            if club_request_budget and player_ids and self._is_stale("club_player_trophies", CLUB_SQUAD_TTL):
                 requests.append(("club_player_trophies", self.api.get_trophies_for_players(player_ids)))
-            if player_ids and self._is_stale("club_sidelined", CLUB_INJURIES_TTL):
+                club_request_budget -= 1
+            if club_request_budget and player_ids and self._is_stale("club_sidelined", CLUB_INJURIES_TTL):
                 requests.append(("club_sidelined", self.api.get_sidelined_players(player_ids)))
-            if coach_id and self._is_stale("club_coach_trophies", CLUB_SQUAD_TTL):
+                club_request_budget -= 1
+            if club_request_budget and coach_id and self._is_stale("club_coach_trophies", CLUB_SQUAD_TTL):
                 requests.append(("club_coach_trophies", self.api.get_trophies_for_coach(coach_id)))
+                club_request_budget -= 1
 
         if requests:
             results = await asyncio.gather(
