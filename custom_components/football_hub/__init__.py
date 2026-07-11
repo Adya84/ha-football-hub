@@ -16,7 +16,7 @@ PLATFORMS = ["sensor"]
 
 PANEL_URL = "football-hub"
 PANEL_NAME = "football-hub-panel"
-PANEL_VERSION = "0.2.40"
+PANEL_VERSION = "0.2.8"
 PANEL_STATIC_URL = "/football_hub/football-hub-panel.js"
 PANEL_MODULE_URL = f"{PANEL_STATIC_URL}?v={PANEL_VERSION}"
 PANEL_SCRIPT_PATH = Path(__file__).parent / "frontend" / "football-hub-panel.js"
