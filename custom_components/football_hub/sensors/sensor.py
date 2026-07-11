@@ -83,6 +83,22 @@ class FootballHubClubDataSensor(FootballHubBaseSensor):
                 item for item in value
                 if str(((item or {}).get("team", {}) or {}).get("name", "")).casefold() == selected
             ]
+        if self.key == "club_transfers" and isinstance(value, list):
+            movements = []
+            for record in value:
+                for transfer in (record or {}).get("transfers", []) or []:
+                    movements.append(
+                        {
+                            **transfer,
+                            "player": (record or {}).get("player", {}),
+                            "date": transfer.get("date") or (record or {}).get("update", ""),
+                        }
+                    )
+            value = sorted(
+                movements,
+                key=lambda item: str(item.get("date") or ""),
+                reverse=True,
+            )
         return value
 
     @property
