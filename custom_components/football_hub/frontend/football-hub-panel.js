@@ -907,6 +907,7 @@ class FootballHubPanel extends HTMLElement {
   }
 
   _myClubPage() {
+    const club = this._selectedClub;
     const fixtures = this._attrs("fixtures").fixtures || [];
     const resultsAttrs = this._attrs("results");
     const results = resultsAttrs.latest_5 || [];
@@ -914,24 +915,40 @@ class FootballHubPanel extends HTMLElement {
     const scorers = this._attrs("top_scorers").top_scorers || [];
     const assists = this._attrs("top_assists").top_assists || [];
     const dataset = (key) => this._attrs(key).data ?? [];
-    const profileRows = dataset("club_profile");
+    const profileRows = dataset("my_club_profile");
     const profileRecord = Array.isArray(profileRows) ? (profileRows[0] || {}) : profileRows;
     const clubProfile = profileRecord.team || {};
     const venue = profileRecord.venue || {};
-    const clubStats = dataset("club_statistics") || {};
-    const squadRows = dataset("club_squad");
+    const clubStats = dataset("my_club_statistics") || {};
+    const squadRows = dataset("my_club_squad");
     const squadRecord = Array.isArray(squadRows) ? (squadRows[0] || {}) : {};
     const squad = squadRecord.players || [];
-    const coaches = Array.isArray(dataset("club_coach")) ? dataset("club_coach") : [];
-    const coach = coaches[0] || {};
-    const injuries = Array.isArray(dataset("club_injuries")) ? dataset("club_injuries") : [];
-    const transfers = Array.isArray(dataset("club_transfers")) ? dataset("club_transfers") : [];
-    const predictions = Array.isArray(dataset("club_prediction")) ? dataset("club_prediction") : [];
+    const clubPlayerStats = Array.isArray(dataset("my_club_player_statistics"))
+      ? dataset("my_club_player_statistics")
+      : [];
+    const coaches = Array.isArray(dataset("my_club_coach")) ? dataset("my_club_coach") : [];
+    const coach = coaches.find((item) => (item.career || []).some((job) =>
+      job.team?.name === club && !job.end
+    )) || coaches.sort((a, b) => {
+      const latest = (item) => Math.max(0, ...(item.career || []).map((job) => Date.parse(job.start || 0) || 0));
+      return latest(b) - latest(a);
+    })[0] || {};
+    const injuries = Array.isArray(dataset("my_club_injuries")) ? dataset("my_club_injuries") : [];
+    const transferPlayers = Array.isArray(dataset("my_club_transfers")) ? dataset("my_club_transfers") : [];
+    const transfers = transferPlayers.flatMap((record) => record.transfers
+      ? record.transfers.map((movement) => ({
+          ...movement,
+          player: record.player || {},
+          date: movement.date || record.update || "",
+        }))
+      : [record]
+    ).sort((a, b) => String(b.date || "").localeCompare(String(a.date || "")));
+    const predictions = Array.isArray(dataset("my_club_prediction")) ? dataset("my_club_prediction") : [];
     const prediction = predictions[0] || {};
-    const headToHead = Array.isArray(dataset("club_head_to_head")) ? dataset("club_head_to_head") : [];
-    const playerTrophies = Array.isArray(dataset("club_player_trophies")) ? dataset("club_player_trophies") : [];
-    const coachTrophies = Array.isArray(dataset("club_coach_trophies")) ? dataset("club_coach_trophies") : [];
-    const sidelined = Array.isArray(dataset("club_sidelined")) ? dataset("club_sidelined") : [];
+    const headToHead = Array.isArray(dataset("my_club_head_to_head")) ? dataset("my_club_head_to_head") : [];
+    const playerTrophies = Array.isArray(dataset("my_club_player_trophies")) ? dataset("my_club_player_trophies") : [];
+    const coachTrophies = Array.isArray(dataset("my_club_coach_trophies")) ? dataset("my_club_coach_trophies") : [];
+    const sidelined = Array.isArray(dataset("my_club_sidelined")) ? dataset("my_club_sidelined") : [];
     const teams = [...new Set([
       ...table.map((row) => row.team || row.team_name),
       ...fixtures.flatMap((match) => [match.home_team, match.away_team]),
@@ -941,13 +958,18 @@ class FootballHubPanel extends HTMLElement {
       this._selectedClub = "";
     }
 
-    const club = this._selectedClub;
     const clubFixtures = fixtures.filter((match) => match.home_team === club || match.away_team === club);
     const clubResults = results.filter((match) => match.home_team === club || match.away_team === club);
     const standing = table.find((row) => (row.team || row.team_name) === club);
     const clubPlayers = (items) => items.filter((item) =>
       item.statistics?.some((stats) => stats.team?.name === club)
     );
+    const playerStatValue = (item, key) => {
+      const stats = (item.statistics || []).find((entry) => entry.team?.name === club) || item.statistics?.[0] || {};
+      return key === "assists" ? (stats.goals?.assists || 0) : (stats.goals?.total || 0);
+    };
+    const clubScorers = [...clubPlayerStats].sort((a, b) => playerStatValue(b, "goals") - playerStatValue(a, "goals"));
+    const clubAssists = [...clubPlayerStats].sort((a, b) => playerStatValue(b, "assists") - playerStatValue(a, "assists"));
 
     return `
       <section class="page-heading">
@@ -986,13 +1008,13 @@ class FootballHubPanel extends HTMLElement {
         <section class="section"><div class="section-title-row"><div><span class="eyebrow">MATCH SCHEDULE</span><h3>Upcoming fixtures</h3></div><span>${clubFixtures.length} matches</span></div><div class="match-list">${clubFixtures.length ? clubFixtures.map((match) => this._matchCard(match)).join("") : `<div class="empty">No fixtures available.</div>`}</div></section>
         <section class="section"><div class="section-title-row"><div><span class="eyebrow">LATEST SCORES</span><h3>Recent results</h3></div></div><div class="match-list">${clubResults.length ? clubResults.map((match) => this._matchCard(match, "result")).join("") : `<div class="empty">No recent results available.</div>`}</div></section>
         <section class="two-column">
-          <article class="page-card"><h2>Club top scorers</h2>${this._playerRows(clubPlayers(scorers), "goals")}</article>
-          <article class="page-card"><h2>Club top assists</h2>${this._playerRows(clubPlayers(assists), "assists")}</article>
+          <article class="page-card"><h2>Club top scorers</h2>${this._playerRows(clubScorers.length ? clubScorers : clubPlayers(scorers), "goals")}</article>
+          <article class="page-card"><h2>Club top assists</h2>${this._playerRows(clubAssists.length ? clubAssists : clubPlayers(assists), "assists")}</article>
         </section>
         <section class="section"><div class="section-title-row"><div><span class="eyebrow">FIRST TEAM</span><h3>Current squad</h3></div><span>${squad.length} players</span></div><div class="squad-grid">${squad.length ? squad.map((player) => `<article class="page-card squad-player">${this._logo(player.photo, player.name, "54")}<div><strong>${this._escape(player.name || "Player")}</strong><small>${this._escape([player.number ? `#${player.number}` : "", player.position].filter(Boolean).join(" · "))}</small></div></article>`).join("") : `<div class="empty">Squad information is not available yet.</div>`}</div></section>
         <section class="two-column">
           <article class="page-card"><span class="eyebrow">AVAILABILITY</span><h2>Injuries & suspensions</h2><div class="player-list">${injuries.length ? injuries.map((item) => `<div class="player-row">${this._logo(item.player?.photo, item.player?.name, "40")}<span class="player-name"><strong>${this._escape(item.player?.name || "Player")}</strong><small>${this._escape(item.player?.reason || item.type || "Unavailable")}</small></span><strong>${this._escape(item.fixture?.date?.slice?.(0, 10) || "")}</strong></div>`).join("") : `<div class="empty">No current injuries supplied.</div>`}${sidelined.length ? `<p class="notice">${sidelined.length} additional historical sidelined records available.</p>` : ""}</div></article>
-          <article class="page-card"><span class="eyebrow">TRANSFER CENTRE</span><h2>Recent transfers</h2><div class="player-list">${transfers.length ? transfers.slice(0, 10).map((item) => `<div class="player-row">${this._logo(item.player?.photo, item.player?.name, "40")}<span class="player-name"><strong>${this._escape(item.player?.name || "Player")}</strong><small>${this._escape(item.update || "Transfer update")}</small></span></div>`).join("") : `<div class="empty">No transfer data available.</div>`}</div></article>
+          <article class="page-card"><span class="eyebrow">TRANSFER CENTRE</span><h2>Recent transfers</h2><div class="player-list">${transfers.length ? transfers.slice(0, 10).map((item) => `<div class="transfer-row">${this._logo(item.player?.photo, item.player?.name, "40")}<span class="player-name"><strong>${this._escape(item.player?.name || "Player")}</strong><small>${this._escape(`${item.teams?.out?.name || "Unknown"} → ${item.teams?.in?.name || "Unknown"}`)}</small><em>${this._escape(item.type || "Fee undisclosed")}</em></span><time>${this._escape(item.date || "")}</time></div>`).join("") : `<div class="empty">No transfer data available.</div>`}</div></article>
         </section>
         <section class="two-column">
           <article class="page-card"><span class="eyebrow">NEXT MATCH</span><h2>Prediction</h2><div class="settings-list"><div><span>Advice</span><strong>${this._escape(prediction.predictions?.advice || "Not available")}</strong></div><div><span>Home chance</span><strong>${this._escape(prediction.predictions?.percent?.home || "—")}</strong></div><div><span>Draw chance</span><strong>${this._escape(prediction.predictions?.percent?.draw || "—")}</strong></div><div><span>Away chance</span><strong>${this._escape(prediction.predictions?.percent?.away || "—")}</strong></div></div></article>
@@ -1139,6 +1161,13 @@ class FootballHubPanel extends HTMLElement {
       .squad-player { display:flex; align-items:center; gap:12px; padding:14px; }
       .squad-player div { display:flex; flex-direction:column; gap:4px; }
       .squad-player small { color:var(--muted); }
+      .transfer-row { display:grid; grid-template-columns:44px minmax(0,1fr) auto; align-items:center; gap:12px; padding:12px 0; border-bottom:1px solid var(--line); }
+      .transfer-row:last-child { border-bottom:0; }
+      .transfer-row .player-name { min-width:0; display:flex; flex-direction:column; gap:4px; }
+      .transfer-row .player-name strong, .transfer-row .player-name small { overflow-wrap:anywhere; }
+      .transfer-row .player-name small { color:var(--muted); }
+      .transfer-row .player-name em { color:var(--accent); font-size:12px; font-style:normal; font-weight:800; }
+      .transfer-row time { white-space:nowrap; font-weight:800; color:var(--text); }
       .table-row.selected-club { border:2px solid var(--accent); border-radius:12px; background:rgba(42, 245, 152, .12); box-shadow:0 0 0 1px rgba(42, 245, 152, .18), 0 0 20px rgba(42, 245, 152, .10); }
 
       * { box-sizing: border-box; }
