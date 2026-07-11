@@ -327,6 +327,11 @@ class FootballHubPanel extends HTMLElement {
   _setMyClub(team) {
     this._selectedClub = team;
     localStorage.setItem("football_hub_my_club", team);
+    const status = this._statusInfo();
+    this._hass?.callService("football_hub", "select_my_club", {
+      team,
+      entry_id: status.config_entry_id || "",
+    }).catch(() => {});
     this._render();
   }
 
