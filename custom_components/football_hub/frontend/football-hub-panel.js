@@ -1,4 +1,4 @@
-const PANEL_VERSION = "0.6.1-country-switch-fix";
+const PANEL_VERSION = "0.7.0-my-club";
 
 class FootballHubPanel extends HTMLElement {
   constructor() {
@@ -6,7 +6,7 @@ class FootballHubPanel extends HTMLElement {
     this.attachShadow({ mode: "open" });
     this._hass = null;
     const savedTab = localStorage.getItem("football_hub_active_page") || "overview";
-    this._activeTab = ["overview", "live", "fixtures", "results", "table", "players", "supporters", "settings"].includes(savedTab)
+    this._activeTab = ["overview", "live", "fixtures", "results", "table", "players", "my-club", "supporters", "settings"].includes(savedTab)
       ? savedTab
       : "overview";
     this._selectedFixtureTeam = localStorage.getItem("football_hub_fixture_team") || "__all__";
@@ -15,6 +15,8 @@ class FootballHubPanel extends HTMLElement {
     this._selectedLiveTeam = localStorage.getItem("football_hub_live_team") || "";
     this._selectedPrefix = localStorage.getItem("football_hub_selected_prefix") || "";
     this._selectedCountry = localStorage.getItem("football_hub_selected_country") || "";
+    this._selectedClub = localStorage.getItem("football_hub_my_club") || "";
+    this._pendingCompetition = "";
     this._supporters = [];
     this._supportersLoading = false;
     this._supportersLoaded = false;
@@ -23,6 +25,9 @@ class FootballHubPanel extends HTMLElement {
   set hass(hass) {
     this._hass = hass;
     this._ensureCompetition();
+    if (this._pendingCompetition && this._statusInfo().competition_key === this._pendingCompetition) {
+      this._pendingCompetition = "";
+    }
     this._render();
   }
 
@@ -270,6 +275,7 @@ class FootballHubPanel extends HTMLElement {
 
   _setLeague(competition) {
     const status = this._statusInfo();
+    this._pendingCompetition = competition;
     this._hass?.callService("football_hub", "select_competition", {
       competition,
       entry_id: status.config_entry_id || "",
@@ -315,6 +321,12 @@ class FootballHubPanel extends HTMLElement {
       this._selectedLiveMatch = String(match.fixture_id ?? match.id ?? `${match.home_team}-${match.away_team}-${index}`);
       localStorage.setItem("football_hub_live_match", this._selectedLiveMatch);
     }
+    this._render();
+  }
+
+  _setMyClub(team) {
+    this._selectedClub = team;
+    localStorage.setItem("football_hub_my_club", team);
     this._render();
   }
 
@@ -403,6 +415,12 @@ class FootballHubPanel extends HTMLElement {
     const countryLeagues = catalogue
       .filter((item) => item.country === this._selectedCountry)
       .sort((a, b) => a.name.localeCompare(b.name));
+    const pendingLeague = catalogue.find((item) => item.key === this._pendingCompetition);
+    const activeCompetition = pendingLeague || {
+      name: status.competition,
+      country: status.country,
+      key: status.competition_key,
+    };
 
     const options = prefixes
       .map((prefix) => {
@@ -420,7 +438,7 @@ class FootballHubPanel extends HTMLElement {
         <div>
           <div class="eyebrow">YOUR MATCHDAY STARTS HERE</div>
           <h1><span>Football</span> Hub</h1>
-          <p>${this._escape(status.competition || "Choose a competition")} · ${this._escape(
+          <p>${this._escape(activeCompetition.name || "Choose a competition")} · ${this._escape(
       status.season || ""
     )}</p>
         </div>
@@ -456,6 +474,7 @@ class FootballHubPanel extends HTMLElement {
       ["results", "mdi:check-decagram-outline", "Results"],
       ["table", "mdi:table-large", "Table"],
       ["players", "mdi:account-star-outline", "Players"],
+      ["my-club", "mdi:shield-star-outline", "My Club"],
       ["supporters", "mdi:heart-outline", "Supporters"],
       ["settings", "mdi:cog-outline", "Settings"],
     ];
@@ -881,6 +900,59 @@ class FootballHubPanel extends HTMLElement {
     `;
   }
 
+  _myClubPage() {
+    const fixtures = this._attrs("fixtures").fixtures || [];
+    const resultsAttrs = this._attrs("results");
+    const results = resultsAttrs.latest_5 || [];
+    const table = this._attrs("standings").table || [];
+    const scorers = this._attrs("top_scorers").top_scorers || [];
+    const assists = this._attrs("top_assists").top_assists || [];
+    const teams = [...new Set([
+      ...table.map((row) => row.team || row.team_name),
+      ...fixtures.flatMap((match) => [match.home_team, match.away_team]),
+    ].filter(Boolean))].sort((a, b) => a.localeCompare(b));
+
+    if (this._selectedClub && !teams.includes(this._selectedClub)) {
+      this._selectedClub = "";
+    }
+
+    const club = this._selectedClub;
+    const clubFixtures = fixtures.filter((match) => match.home_team === club || match.away_team === club);
+    const clubResults = results.filter((match) => match.home_team === club || match.away_team === club);
+    const standing = table.find((row) => (row.team || row.team_name) === club);
+    const clubPlayers = (items) => items.filter((item) =>
+      item.statistics?.some((stats) => stats.team?.name === club)
+    );
+
+    return `
+      <section class="page-heading">
+        <div><span class="eyebrow">YOUR TEAM CENTRE</span><h2>My Club</h2></div>
+        ${club ? `<div class="count-badge">${this._escape(club)}</div>` : ""}
+      </section>
+      <section class="page-card live-picker">
+        <div class="live-picker-control">
+          <label for="my-club-select">Choose your club</label>
+          <select id="my-club-select" aria-label="Choose your club">
+            <option value="">Select a team</option>
+            ${teams.map((team) => `<option value="${this._escape(team)}" ${team === club ? "selected" : ""}>${this._escape(team)}</option>`).join("")}
+          </select>
+        </div>
+      </section>
+      ${!club ? `<section class="page-card centred"><ha-icon class="huge-icon" icon="mdi:shield-star-outline"></ha-icon><h2>Choose your club</h2><p>Your fixtures, results, league position and players will appear here.</p></section>` : `
+        <section class="two-column">
+          <article class="page-card"><span class="eyebrow">LEAGUE POSITION</span><h2>${standing ? `${this._escape(standing.rank)} · ${this._escape(club)}` : this._escape(club)}</h2>${standing ? `<div class="settings-list"><div><span>Played</span><strong>${this._escape(standing.played ?? standing.all?.played ?? 0)}</strong></div><div><span>Goal difference</span><strong>${this._escape(standing.goals_diff ?? standing.goal_difference ?? 0)}</strong></div><div><span>Points</span><strong>${this._escape(standing.points ?? 0)}</strong></div></div>` : `<div class="empty">League position is not available yet.</div>`}</article>
+          <article class="page-card"><span class="eyebrow">NEXT MATCH</span>${clubFixtures.length ? this._matchCard(clubFixtures[0]) : `<div class="empty">No upcoming fixture available.</div>`}</article>
+        </section>
+        <section class="section"><div class="section-title-row"><div><span class="eyebrow">MATCH SCHEDULE</span><h3>Upcoming fixtures</h3></div><span>${clubFixtures.length} matches</span></div><div class="match-list">${clubFixtures.length ? clubFixtures.map((match) => this._matchCard(match)).join("") : `<div class="empty">No fixtures available.</div>`}</div></section>
+        <section class="section"><div class="section-title-row"><div><span class="eyebrow">LATEST SCORES</span><h3>Recent results</h3></div></div><div class="match-list">${clubResults.length ? clubResults.map((match) => this._matchCard(match, "result")).join("") : `<div class="empty">No recent results available.</div>`}</div></section>
+        <section class="two-column">
+          <article class="page-card"><h2>Club top scorers</h2>${this._playerRows(clubPlayers(scorers), "goals")}</article>
+          <article class="page-card"><h2>Club top assists</h2>${this._playerRows(clubPlayers(assists), "assists")}</article>
+        </section>
+      `}
+    `;
+  }
+
   _settingsPage() {
     const status = this._statusInfo();
     const prefixes = this._competitionPrefixes();
@@ -929,6 +1001,8 @@ class FootballHubPanel extends HTMLElement {
         return this._tablePage();
       case "players":
         return this._playersPage();
+      case "my-club":
+        return this._myClubPage();
       case "supporters":
         return this._supportersPage();
       case "settings":
@@ -967,6 +1041,10 @@ class FootballHubPanel extends HTMLElement {
 
     this.shadowRoot.querySelector("#live-team-select")?.addEventListener("change", (event) => {
       this._setLiveTeam(event.target.value);
+    });
+
+    this.shadowRoot.querySelector("#my-club-select")?.addEventListener("change", (event) => {
+      this._setMyClub(event.target.value);
     });
 
     this.shadowRoot.querySelector("#competition-select")?.addEventListener("change", (event) => {
