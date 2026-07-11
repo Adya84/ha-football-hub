@@ -5,6 +5,7 @@ from __future__ import annotations
 from datetime import datetime, timezone
 
 from homeassistant.components.sensor import SensorEntity
+from homeassistant.components.recorder import RecorderEntity
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
@@ -66,7 +67,7 @@ class FootballHubBaseSensor(CoordinatorEntity, SensorEntity):
         return self.coordinator.engine
 
 
-class FootballHubClubDataSensor(FootballHubBaseSensor):
+class FootballHubClubDataSensor(FootballHubBaseSensor, RecorderEntity):
     """Expose one cached My Club API dataset safely."""
 
     def __init__(self, coordinator, entry, key: str, name: str):
@@ -104,6 +105,11 @@ class FootballHubClubDataSensor(FootballHubBaseSensor):
             "dataset": self.key,
             "data": safe_value,
         }
+
+    @property
+    def exclude_attributes(self) -> set[str]:
+        """Keep rich club data available without storing it in Recorder."""
+        return {"data"}
 
 
 def _countdown_attributes(match: dict) -> dict:
@@ -273,7 +279,7 @@ class FootballHubThisWeekSensor(FootballHubBaseSensor):
         return {"total_this_week": len(matches), "matches": limit_items(matches, ATTRIBUTE_LIMIT)}
 
 
-class FootballHubFixturesSensor(FootballHubBaseSensor):
+class FootballHubFixturesSensor(FootballHubBaseSensor, RecorderEntity):
     def __init__(self, coordinator, entry):
         super().__init__(coordinator, entry, "fixtures", "Fixtures")
 
@@ -291,6 +297,11 @@ class FootballHubFixturesSensor(FootballHubBaseSensor):
             "next_5": limit_items(fixtures, ATTRIBUTE_LIMIT),
             "fixtures": fixtures,
         }
+
+    @property
+    def exclude_attributes(self) -> set[str]:
+        """Expose all fixtures to the panel but not Recorder storage."""
+        return {"fixtures"}
 
 
 class FootballHubLastResultSensor(FootballHubBaseSensor):
