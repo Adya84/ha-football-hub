@@ -16,7 +16,7 @@ PLATFORMS = ["sensor"]
 
 PANEL_URL = "football-hub"
 PANEL_NAME = "football-hub-panel"
-PANEL_VERSION = "0.2.3"
+PANEL_VERSION = "0.2.40"
 PANEL_STATIC_URL = "/football_hub/football-hub-panel.js"
 PANEL_MODULE_URL = f"{PANEL_STATIC_URL}?v={PANEL_VERSION}"
 PANEL_SCRIPT_PATH = Path(__file__).parent / "frontend" / "football-hub-panel.js"
@@ -98,6 +98,22 @@ async def async_setup(hass: HomeAssistant, config: dict) -> bool:
             async_select_competition,
         )
 
+    async def async_select_my_club(call: ServiceCall) -> None:
+        """Select the club used by the My Club data sensors."""
+        team = str(call.data.get("team") or "").strip()
+        entry_id = str(call.data.get("entry_id") or "").strip()
+        for runtime_entry_id, runtime in hass.data.get(DOMAIN, {}).items():
+            if entry_id and runtime_entry_id != entry_id:
+                continue
+            if not isinstance(runtime, dict):
+                continue
+            coordinator = runtime.get("coordinator")
+            if coordinator is not None:
+                await coordinator.async_set_my_club(team)
+
+    if not hass.services.has_service(DOMAIN, "select_my_club"):
+        hass.services.async_register(DOMAIN, "select_my_club", async_select_my_club)
+
     return True
 
 
@@ -124,4 +140,3 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         hass.data[DOMAIN].pop(entry.entry_id, None)
 
     return unload_ok
-
