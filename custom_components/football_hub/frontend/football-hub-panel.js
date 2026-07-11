@@ -1,4 +1,4 @@
-const PANEL_VERSION = "0.6.0-country-league-selector";
+const PANEL_VERSION = "0.6.1-country-switch-fix";
 
 class FootballHubPanel extends HTMLElement {
   constructor() {
@@ -253,6 +253,18 @@ class FootballHubPanel extends HTMLElement {
   _setCountry(country) {
     this._selectedCountry = country;
     localStorage.setItem("football_hub_selected_country", country);
+
+    const status = this._statusInfo();
+    const catalogue = Array.isArray(status.available_competitions)
+      ? status.available_competitions
+      : [];
+    const firstLeague = catalogue
+      .filter((item) => item.country === country)
+      .sort((a, b) => a.name.localeCompare(b.name))[0];
+
+    if (firstLeague?.key) {
+      this._setLeague(firstLeague.key);
+    }
     this._render();
   }
 
