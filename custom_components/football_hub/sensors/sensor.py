@@ -33,6 +33,21 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry, async_add_e
             FootballHubStandingsSensor(coordinator, entry),
             FootballHubTopScorersSensor(coordinator, entry),
             FootballHubTopAssistsSensor(coordinator, entry),
+            FootballHubClubDataSensor(coordinator, entry, "club_profile", "My Club Profile"),
+            FootballHubClubDataSensor(coordinator, entry, "club_statistics", "My Club Statistics"),
+            FootballHubClubDataSensor(coordinator, entry, "club_squad", "My Club Squad"),
+            FootballHubClubDataSensor(coordinator, entry, "club_coach", "My Club Coach"),
+            FootballHubClubDataSensor(coordinator, entry, "club_injuries", "My Club Injuries"),
+            FootballHubClubDataSensor(coordinator, entry, "club_transfers", "My Club Transfers"),
+            FootballHubClubDataSensor(coordinator, entry, "club_players", "My Club Player Statistics"),
+            FootballHubClubDataSensor(coordinator, entry, "club_yellow_cards", "My Club Yellow Cards"),
+            FootballHubClubDataSensor(coordinator, entry, "club_red_cards", "My Club Red Cards"),
+            FootballHubClubDataSensor(coordinator, entry, "club_head_to_head", "My Club Head To Head"),
+            FootballHubClubDataSensor(coordinator, entry, "club_prediction", "My Club Prediction"),
+            FootballHubClubDataSensor(coordinator, entry, "club_seasons", "My Club Seasons"),
+            FootballHubClubDataSensor(coordinator, entry, "club_player_trophies", "My Club Player Trophies"),
+            FootballHubClubDataSensor(coordinator, entry, "club_coach_trophies", "My Club Coach Trophies"),
+            FootballHubClubDataSensor(coordinator, entry, "club_sidelined", "My Club Sidelined"),
         ]
     )
 
@@ -49,6 +64,46 @@ class FootballHubBaseSensor(CoordinatorEntity, SensorEntity):
     @property
     def engine(self):
         return self.coordinator.engine
+
+
+class FootballHubClubDataSensor(FootballHubBaseSensor):
+    """Expose one cached My Club API dataset safely."""
+
+    def __init__(self, coordinator, entry, key: str, name: str):
+        super().__init__(coordinator, entry, key, name)
+        self.key = key
+
+    def _items(self):
+        value = (self.coordinator.data or {}).get(self.key, [])
+        if self.key == "club_profile" and isinstance(value, list):
+            selected = self.coordinator.my_club.casefold()
+            value = [
+                item for item in value
+                if str(((item or {}).get("team", {}) or {}).get("name", "")).casefold() == selected
+            ]
+        return value
+
+    @property
+    def native_value(self):
+        if not self.coordinator.my_club:
+            return "Not selected"
+        value = self._items()
+        if isinstance(value, list):
+            return len(value)
+        if isinstance(value, dict):
+            return self.coordinator.my_club if value else "Unavailable"
+        return value if value is not None else "Unavailable"
+
+    @property
+    def extra_state_attributes(self):
+        value = self._items()
+        safe_value = limit_items(value, 20) if isinstance(value, list) else value
+        return {
+            "club": self.coordinator.my_club,
+            "team_id": (self.coordinator.data or {}).get("my_club_team_id"),
+            "dataset": self.key,
+            "data": safe_value,
+        }
 
 
 def _countdown_attributes(match: dict) -> dict:
@@ -100,6 +155,8 @@ class FootballHubStatusSensor(FootballHubBaseSensor):
             "league_id": competition.get("league_id"),
             "season": SEASONS.get(season, season),
             "provider_mode": self.entry.data.get("provider_mode"),
+            "my_club": self.coordinator.my_club,
+            "my_club_team_id": (self.coordinator.data or {}).get("my_club_team_id"),
             "live_count": len(self.engine.live.matches()),
             "fixtures_count": len(self.engine.fixtures.all()),
             "results_count": len(self.engine.results.all()),
@@ -314,4 +371,3 @@ class FootballHubTopAssistsSensor(FootballHubBaseSensor):
             "total_top_assists": len(self.engine.top_assists),
             "top_assists": limit_items(self.engine.top_assists, ATTRIBUTE_LIMIT),
         }
-
