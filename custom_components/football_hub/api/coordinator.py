@@ -124,8 +124,21 @@ class FootballHubCoordinator(DataUpdateCoordinator):
         self._cache.clear()
         self._updated_at.clear()
         self._live_rate_limited_until = 0.0
+        empty_data = {
+            "live": [],
+            "fixtures": [],
+            "standings": [],
+            "top_scorers": [],
+            "top_assists": [],
+            "live_events": [],
+            "live_statistics": [],
+            "live_lineups": [],
+            "live_details": {},
+        }
+        self.engine.update(empty_data)
         options = {**self.entry.options, "active_competition": competition_key}
         self.hass.config_entries.async_update_entry(self.entry, options=options)
+        self.async_set_updated_data(empty_data)
         await self.async_request_refresh()
 
     async def async_set_supported_team(self, team: str) -> None:
@@ -249,4 +262,3 @@ class FootballHubCoordinator(DataUpdateCoordinator):
         }
         self.engine.update(data)
         return data
-
