@@ -31,6 +31,8 @@ class FootballHubAPI:
         self.session = async_get_clientsession(hass)
         self._scoreboard_cache: dict[tuple[int, int], tuple[float, list[dict]]] = {}
         self._fixture_leagues: dict[str, str] = {}
+        self._team_leagues: dict[str, str] = {}
+        self._team_cache: dict[str, tuple[float, dict]] = {}
 
     async def _get(self, url: str, params: dict[str, Any] | None = None) -> dict:
         async with self.session.get(
@@ -205,8 +207,78 @@ class FootballHubAPI:
         output = []
         for wrapper in teams:
             team = wrapper.get("team") or {}
+            if team.get("id") is not None:
+                self._team_leagues[str(team.get("id"))] = slug
             output.append({"team": {"id": team.get("id"), "name": team.get("displayName"), "code": team.get("abbreviation"), "country": None, "founded": None, "logo": self._logo(team)}, "venue": {}})
         return output
+
+    async def _team_detail(self, team_id, league_id=None) -> dict:
+        key = str(team_id)
+        cached = self._team_cache.get(key)
+        if cached and monotonic() - cached[0] < 6 * 60 * 60:
+            return cached[1]
+        slug = self._league(league_id) if league_id is not None else self._team_leagues.get(key, "all")
+        data = await self._get(f"{ESPN_SITE_BASE}/{slug}/teams/{team_id}", {"enable": "roster"})
+        if not self._athletes(data):
+            try:
+                data["roster_data"] = await self._get(f"{ESPN_SITE_BASE}/{slug}/teams/{team_id}/roster")
+            except FootballHubAPIError:
+                pass
+        self._team_leagues[key] = slug
+        self._team_cache[key] = (monotonic(), data)
+        return data
+
+    @staticmethod
+    def _team_object(data: dict) -> dict:
+        team = data.get("team") or data.get("club") or {}
+        return team if isinstance(team, dict) else {}
+
+    @classmethod
+    def _athletes(cls, data: Any) -> list[dict]:
+        """Find ESPN athlete records across grouped and flat roster responses."""
+        found: dict[str, dict] = {}
+
+        def walk(value: Any) -> None:
+            if isinstance(value, dict):
+                athlete = value.get("athlete")
+                if isinstance(athlete, dict) and (athlete.get("displayName") or athlete.get("fullName")):
+                    merged = {**athlete, "jersey": value.get("jersey") or athlete.get("jersey"), "position": value.get("position") or athlete.get("position")}
+                    found[str(athlete.get("id") or athlete.get("displayName"))] = merged
+                elif (value.get("displayName") or value.get("fullName")) and any(key in value for key in ("position", "jersey", "headshot")):
+                    found[str(value.get("id") or value.get("displayName"))] = value
+                for key, child in value.items():
+                    if key not in {"links", "statistics", "stats"}:
+                        walk(child)
+            elif isinstance(value, list):
+                for child in value:
+                    walk(child)
+
+        walk(data.get("athletes") or data.get("roster") or data.get("roster_data") or [])
+        return list(found.values())
+
+    async def get_team(self, team_id, league_id):
+        data = await self._team_detail(team_id, league_id)
+        team = self._team_object(data)
+        venue = team.get("venue") or data.get("venue") or {}
+        address = venue.get("address") or {}
+        return [{
+            "team": {
+                "id": team.get("id") or team_id,
+                "name": team.get("displayName") or team.get("name"),
+                "code": team.get("abbreviation"),
+                "country": address.get("country") or team.get("country"),
+                "founded": team.get("founded"),
+                "logo": self._logo(team),
+            },
+            "venue": {
+                "id": venue.get("id"),
+                "name": venue.get("fullName") or venue.get("displayName") or venue.get("name"),
+                "city": address.get("city"),
+                "capacity": venue.get("capacity"),
+                "surface": venue.get("grass") or venue.get("surface"),
+                "image": ((venue.get("images") or [{}])[0] or {}).get("href") if venue.get("images") else None,
+            },
+        }]
 
     async def _summary(self, fixture_id):
         slug = self._fixture_leagues.get(str(fixture_id), "all")
@@ -247,18 +319,144 @@ class FootballHubAPI:
             output.append({"team": {"id": team.get("id"), "name": team.get("displayName"), "logo": self._logo(team)}, "formation": roster.get("formation"), "startXI": [p for p, source in zip(players, roster.get("roster", []), strict=False) if source.get("starter")], "substitutes": [p for p, source in zip(players, roster.get("roster", []), strict=False) if not source.get("starter")]})
         return output
 
-    async def get_top_scorers(self, league_id, season): return []
-    async def get_top_assists(self, league_id, season): return []
-    async def get_team_statistics(self, team_id, league_id, season): return {}
+    async def get_top_scorers(self, league_id, season):
+        return await self._get_league_players(league_id, "goals")
+
+    async def get_top_assists(self, league_id, season):
+        return await self._get_league_players(league_id, "assists")
+
+    async def _get_league_players(self, league_id, stat_name: str) -> list[dict]:
+        """Read ESPN league leaders when that competition exposes them."""
+        slug = self._league(league_id)
+        try:
+            data = await self._get(f"{ESPN_SITE_BASE}/{slug}/statistics")
+        except FootballHubAPIError:
+            return []
+        records: dict[str, dict] = {}
+
+        def walk(value: Any, category: str = "") -> None:
+            if isinstance(value, dict):
+                current = str(value.get("name") or value.get("displayName") or category).lower()
+                athlete = value.get("athlete") or value.get("player")
+                if isinstance(athlete, dict) and stat_name in current:
+                    player_id = str(athlete.get("id") or athlete.get("displayName"))
+                    amount = self._int(value.get("value") or value.get("displayValue"))
+                    team = value.get("team") or {}
+                    records[player_id] = {
+                        "player": {"id": athlete.get("id"), "name": athlete.get("displayName") or athlete.get("fullName"), "photo": ((athlete.get("headshot") or {}).get("href"))},
+                        "statistics": [{"team": {"id": team.get("id"), "name": team.get("displayName")}, "goals": {"total": amount if stat_name == "goals" else 0, "assists": amount if stat_name == "assists" else 0}}],
+                    }
+                for child in value.values():
+                    walk(child, current)
+            elif isinstance(value, list):
+                for child in value:
+                    walk(child, category)
+
+        walk(data)
+        return list(records.values())
+
+    async def get_team_statistics(self, team_id, league_id, season):
+        fixtures = await self._fixtures(league_id, season)
+        played = wins = draws = losses = goals_for = goals_against = clean_sheets = 0
+        for item in fixtures:
+            fixture = item.get("fixture") or {}
+            if (fixture.get("status") or {}).get("short") != "FT":
+                continue
+            teams, goals = item.get("teams") or {}, item.get("goals") or {}
+            home, away = teams.get("home") or {}, teams.get("away") or {}
+            is_home = str(home.get("id")) == str(team_id)
+            is_away = str(away.get("id")) == str(team_id)
+            if not (is_home or is_away):
+                continue
+            scored = self._int(goals.get("home") if is_home else goals.get("away"))
+            conceded = self._int(goals.get("away") if is_home else goals.get("home"))
+            played += 1
+            goals_for += scored
+            goals_against += conceded
+            clean_sheets += int(conceded == 0)
+            wins += int(scored > conceded)
+            draws += int(scored == conceded)
+            losses += int(scored < conceded)
+        return {
+            "fixtures": {"played": {"total": played}, "wins": {"total": wins}, "draws": {"total": draws}, "loses": {"total": losses}},
+            "goals": {"for": {"total": {"total": goals_for}}, "against": {"total": {"total": goals_against}}},
+            "clean_sheet": {"total": clean_sheets},
+        }
     async def get_team_seasons(self, team_id): return []
-    async def get_squad(self, team_id): return []
-    async def get_coach(self, team_id): return []
-    async def get_injuries(self, team_id, season): return []
+    async def get_squad(self, team_id):
+        data = await self._team_detail(team_id)
+        team = self._team_object(data)
+        players = []
+        for athlete in self._athletes(data):
+            position = athlete.get("position") or {}
+            headshot = athlete.get("headshot") or {}
+            players.append({
+                "id": athlete.get("id"),
+                "name": athlete.get("displayName") or athlete.get("fullName"),
+                "age": athlete.get("age"),
+                "number": athlete.get("jersey"),
+                "position": position.get("displayName") or position.get("abbreviation") if isinstance(position, dict) else position,
+                "photo": headshot.get("href") if isinstance(headshot, dict) else headshot,
+            })
+        return [{"team": {"id": team.get("id") or team_id, "name": team.get("displayName") or team.get("name"), "logo": self._logo(team)}, "players": players}] if players else []
+
+    async def get_coach(self, team_id):
+        data = await self._team_detail(team_id)
+        team = self._team_object(data)
+        coaches = data.get("coaches") or team.get("coaches") or []
+        if isinstance(data.get("coach") or team.get("coach"), dict):
+            coaches = [data.get("coach") or team.get("coach"), *coaches]
+        output = []
+        for coach in coaches:
+            if not isinstance(coach, dict):
+                continue
+            headshot = coach.get("headshot") or {}
+            output.append({
+                "id": coach.get("id"),
+                "name": coach.get("displayName") or coach.get("fullName") or coach.get("name"),
+                "age": coach.get("age"),
+                "nationality": coach.get("citizenship") or coach.get("nationality"),
+                "photo": headshot.get("href") if isinstance(headshot, dict) else headshot,
+                "career": [{"team": {"id": team.get("id") or team_id, "name": team.get("displayName") or team.get("name")}, "start": None, "end": None}],
+            })
+        return [item for item in output if item.get("name")]
+    async def get_injuries(self, team_id, season):
+        slug = self._team_leagues.get(str(team_id), "all")
+        try:
+            data = await self._get(f"{ESPN_SITE_BASE}/{slug}/teams/{team_id}/injuries")
+        except FootballHubAPIError:
+            return []
+        injuries = data.get("injuries") or data.get("items") or []
+        output = []
+        for record in injuries:
+            athlete = record.get("athlete") or record.get("player") or {}
+            output.append({
+                "player": {"id": athlete.get("id"), "name": athlete.get("displayName") or athlete.get("fullName"), "photo": ((athlete.get("headshot") or {}).get("href"))},
+                "team": {"id": team_id},
+                "type": record.get("type") or (record.get("status") or {}).get("type"),
+                "reason": record.get("details") or record.get("description") or (record.get("status") or {}).get("name"),
+                "date": record.get("date"),
+            })
+        return [item for item in output if item.get("player", {}).get("name")]
     async def get_transfers(self, team_id): return []
-    async def get_team_players(self, team_id, league_id, season, page=1): return []
+    async def get_team_players(self, team_id, league_id, season, page=1):
+        squad = await self.get_squad(team_id)
+        if not squad:
+            return []
+        team = squad[0].get("team") or {}
+        return [{"player": {"id": player.get("id"), "name": player.get("name"), "age": player.get("age"), "photo": player.get("photo")}, "statistics": [{"team": team, "games": {"position": player.get("position"), "number": player.get("number")}, "goals": {"total": 0, "assists": 0}}]} for player in squad[0].get("players", [])]
     async def get_top_yellow_cards(self, league_id, season): return []
     async def get_top_red_cards(self, league_id, season): return []
-    async def get_head_to_head(self, team_id, opponent_id): return []
+    async def get_head_to_head(self, team_id, opponent_id):
+        matches = []
+        wanted = {str(team_id), str(opponent_id)}
+        for _, fixtures in self._scoreboard_cache.values():
+            for item in fixtures:
+                teams = item.get("teams") or {}
+                ids = {str((teams.get("home") or {}).get("id")), str((teams.get("away") or {}).get("id"))}
+                if ids == wanted:
+                    matches.append(item)
+        return matches[-10:]
     async def get_prediction(self, fixture_id): return []
     async def get_trophies_for_players(self, player_ids): return []
     async def get_trophies_for_coach(self, coach_id): return []
