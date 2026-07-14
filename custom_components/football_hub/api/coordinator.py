@@ -42,7 +42,7 @@ class FootballHubCoordinator(DataUpdateCoordinator):
     def __init__(self, hass, entry):
         """Initialise the coordinator."""
         self.entry = entry
-        self.api = FootballHubAPI(hass, entry.data["api_key"])
+        self.api = FootballHubAPI(hass, entry.data.get("api_key"))
         requested_competition = entry.options.get(
             "active_competition", entry.data["competition"]
         )
