@@ -227,7 +227,7 @@ class FootballHubCoordinator(DataUpdateCoordinator):
             # progressively without creating a large burst of requests.
             club_request_budget = 2
             club_requests = [
-                ("club_profile", CLUB_PROFILE_TTL, lambda: self.api.get_teams(league_id, self.season)),
+                ("club_profile", CLUB_PROFILE_TTL, lambda: self.api.get_team(team_id, league_id)),
                 ("club_statistics", CLUB_STATS_TTL, lambda: self.api.get_team_statistics(team_id, league_id, self.season)),
                 ("club_seasons", CLUB_PROFILE_TTL, lambda: self.api.get_team_seasons(team_id)),
                 ("club_squad", CLUB_SQUAD_TTL, lambda: self.api.get_squad(team_id)),
