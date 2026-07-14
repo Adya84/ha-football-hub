@@ -24,6 +24,22 @@ PANEL_BACKGROUND_URL = "/football_hub/football-hub-background.png"
 PANEL_BACKGROUND_PATH = Path(__file__).parent / "frontend" / "football-hub-background.png"
 
 
+async def async_migrate_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
+    """Migrate existing API-key entries to the free ESPN provider."""
+    data = dict(entry.data)
+    data.setdefault("country", "England")
+    data.setdefault("competition", "premier_league")
+    data.setdefault("season", 2026)
+    data["provider_mode"] = "espn"
+
+    hass.config_entries.async_update_entry(
+        entry,
+        data=data,
+        version=3,
+    )
+    return True
+
+
 async def async_setup(hass: HomeAssistant, config: dict) -> bool:
     """Set up Football Hub and register its sidebar panel."""
     hass.data.setdefault(DOMAIN, {})
