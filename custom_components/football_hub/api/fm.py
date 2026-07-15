@@ -42,6 +42,34 @@ FM_LEAGUES = {
     94: 61,    # Primeira Liga
     144: 40,   # Belgian Pro League
     203: 71,   # Turkish Super Lig
+    1001: 42,    # UEFA Champions League
+    1002: 73,    # UEFA Europa League
+    1003: 10216, # UEFA Conference League
+    1101: 132,   # FA Cup
+    1102: 133,   # EFL Cup
+    1103: 247,   # Community Shield
+    1201: 65,    # Scottish Cup
+    1202: 66,    # Scottish League Cup
+    1301: 118,   # Welsh Cup
+    1401: 113,   # Irish Cup
+    1501: 128,   # FAI Cup
+    1601: 138,   # Copa del Rey
+    1602: 139,   # Spanish Super Cup
+    1701: 209,   # DFB-Pokal
+    1702: 210,   # German Super Cup
+    1801: 141,   # Coppa Italia
+    1802: 222,   # Supercoppa Italiana
+    1901: 134,   # Coupe de France
+    1902: 219,   # Trophée des Champions
+    2001: 58,    # KNVB Cup
+    2002: 189,   # Johan Cruyff Shield
+    2101: 96,    # Taça de Portugal
+    2102: 228,   # Portuguese League Cup
+    2103: 129,   # Portuguese Super Cup
+    2201: 112,   # Belgian Cup
+    2202: 174,   # Belgian Super Cup
+    2301: 193,   # Turkish Cup
+    2302: 194,   # Turkish Super Cup
 }
 
 LEAGUE_TTL = 6 * 60 * 60
