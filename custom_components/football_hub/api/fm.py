@@ -10,7 +10,7 @@ import asyncio
 import logging
 import re
 from datetime import datetime, timedelta, timezone
-from time import monotonic
+from time import monotonic, time
 from typing import Any
 
 import aiohttp
@@ -69,9 +69,11 @@ class FMProvider:
             "team_ids": {},
             "match_ids": {},
             "teams": {},
+            "league_data": {},
         }
         self._loaded = False
         self._load_lock = asyncio.Lock()
+        self._save_lock = asyncio.Lock()
         self._memory: dict[str, tuple[float, Any]] = {}
         self._team_names: dict[str, str] = {}
         self._fixture_context: dict[str, dict] = {}
@@ -85,12 +87,13 @@ class FMProvider:
             stored = await self._store.async_load()
             if isinstance(stored, dict):
                 self._persistent.update(stored)
-            for key in ("league_ids", "team_ids", "match_ids", "teams"):
+            for key in ("league_ids", "team_ids", "match_ids", "teams", "league_data"):
                 self._persistent.setdefault(key, {})
             self._loaded = True
 
     async def _save(self) -> None:
-        await self._store.async_save(self._persistent)
+        async with self._save_lock:
+            await self._store.async_save(self._persistent)
 
     @staticmethod
     def _norm(value: Any) -> str:
@@ -130,6 +133,27 @@ class FMProvider:
 
     def _cache_put(self, key: str, value: Any) -> Any:
         self._memory[key] = (monotonic(), value)
+        return value
+
+    async def _persistent_get(self, section: str, key: str, ttl: int) -> Any | None:
+        """Return restart-safe cached data while it remains within its TTL."""
+        await self._ensure_loaded()
+        record = (self._persistent.get(section) or {}).get(key)
+        if not isinstance(record, dict):
+            return None
+        updated = record.get("updated")
+        if not isinstance(updated, (int, float)) or time() - updated >= ttl:
+            return None
+        return record.get("data")
+
+    async def _persistent_put(self, section: str, key: str, value: Any) -> Any:
+        """Store expensive FM responses in Home Assistant storage."""
+        await self._ensure_loaded()
+        self._persistent.setdefault(section, {})[key] = {
+            "updated": time(),
+            "data": value,
+        }
+        await self._save()
         return value
 
     async def _get(self, path: str, params: dict[str, Any] | None = None) -> dict:
@@ -302,7 +326,11 @@ class FMProvider:
         cached = self._cache_get(key, LEAGUE_TTL)
         if cached is not None:
             return cached
+        persisted = await self._persistent_get("league_data", str(fm_id), LEAGUE_TTL)
+        if isinstance(persisted, dict):
+            return self._cache_put(key, persisted)
         data = await self._get_first(("api/data/leagues", "api/leagues"), {"id": fm_id, "ccode3": "GBR"})
+        await self._persistent_put("league_data", str(fm_id), data)
         return self._cache_put(key, data)
 
     async def _matches_for_date(self, date: datetime) -> list[dict]:
@@ -579,7 +607,12 @@ class FMProvider:
         cached = self._cache_get(key, ttl)
         if cached is not None:
             return cached
+        persistent_key = f"{team_id}:{tab or 'overview'}"
+        persisted = await self._persistent_get("teams", persistent_key, ttl)
+        if isinstance(persisted, dict):
+            return self._cache_put(key, persisted)
         data = await self._get("api/data/teams", params)
+        await self._persistent_put("teams", persistent_key, data)
         return self._cache_put(key, data)
 
     async def get_team(self, team_id, league_id):
