@@ -1,4 +1,4 @@
-const PANEL_VERSION = "0.9.0-cups";
+const PANEL_VERSION = "0.9.1-independent-cups";
 
 class FootballHubPanel extends HTMLElement {
   constructor() {
@@ -34,6 +34,8 @@ class FootballHubPanel extends HTMLElement {
     this._selectedPrefix = localStorage.getItem("football_hub_selected_prefix") || "";
     this._selectedCountry = localStorage.getItem("football_hub_selected_country") || "";
     this._selectedCupCountry = localStorage.getItem("football_hub_cup_country") || "Europe";
+    this._cupView = localStorage.getItem("football_hub_cup_view") || "overview";
+    this._pendingCup = "";
     const savedViewMode = localStorage.getItem("football_hub_view_mode") || "desktop";
     this._viewMode = ["desktop", "tablet", "mobile"].includes(savedViewMode) ? savedViewMode : "desktop";
     const savedLanguage = localStorage.getItem("football_hub_language") || "en";
@@ -50,6 +52,9 @@ class FootballHubPanel extends HTMLElement {
     this._ensureCompetition();
     if (this._pendingCompetition && this._statusInfo().competition_key === this._pendingCompetition) {
       this._pendingCompetition = "";
+    }
+    if (this._pendingCup && this._attrs("cup_centre").competition_key === this._pendingCup) {
+      this._pendingCup = "";
     }
     if (this._selectInteracting || this.shadowRoot.activeElement?.tagName === "SELECT") {
       this._pendingHassRender = true;
@@ -382,6 +387,19 @@ class FootballHubPanel extends HTMLElement {
       entry_id: status.config_entry_id || "",
     }).catch(() => {});
     localStorage.setItem("football_hub_selected_league", competition);
+    this._render();
+  }
+
+  _setCup(competition) {
+    if (!competition) return;
+    const status = this._statusInfo();
+    this._pendingCup = competition;
+    this._hass?.callService("football_hub", "select_cup", {
+      competition,
+      entry_id: status.config_entry_id || "",
+    }).catch(() => { this._pendingCup = ""; this._render(); });
+    localStorage.setItem("football_hub_selected_cup", competition);
+    this._render();
   }
 
   _setFixtureTeam(team) {
@@ -947,7 +965,7 @@ class FootballHubPanel extends HTMLElement {
         ${table
           .map(
             (row, index) => `
-          <div class="table-row ${(row.team || row.team_name) === this._selectedClub ? "selected-club" : ""}">
+          <div class="table-row ${String(row.team || row.team_name || "").trim().toLowerCase() === String(this._selectedClub || "").trim().toLowerCase() ? "selected-club" : ""}">
             <span>${this._escape(row.rank ?? index + 1)}</span>
             <span class="club">${this._logo(row.team_logo || row.logo, row.team || row.team_name, "28")} ${this._escape(
               row.team || row.team_name || "Team"
@@ -1147,6 +1165,7 @@ class FootballHubPanel extends HTMLElement {
 
   _cupsPage() {
     const status = this._statusInfo();
+    const cupData = this._attrs("cup_centre");
     const catalogue = Array.isArray(status.available_competitions)
       ? status.available_competitions.filter((item) => item.type === "cup")
       : [];
@@ -1158,6 +1177,25 @@ class FootballHubPanel extends HTMLElement {
     const cups = catalogue
       .filter((item) => item.country === this._selectedCupCountry)
       .sort((a, b) => a.name.localeCompare(b.name));
+    const selectedCupKey = this._pendingCup || cupData.competition_key || "";
+    const activeCup = catalogue.find((item) => item.key === selectedCupKey);
+    const cupDataReady = Boolean(activeCup && cupData.competition_key === activeCup.key && !this._pendingCup);
+    const fixtures = cupDataReady && Array.isArray(cupData.fixtures) ? cupData.fixtures : [];
+    const results = cupDataReady && Array.isArray(cupData.results) ? cupData.results : [];
+    const table = cupDataReady && Array.isArray(cupData.table) ? cupData.table : [];
+    const scorers = cupDataReady && Array.isArray(cupData.top_scorers) ? cupData.top_scorers : [];
+    let cupContent = `<article class="page-card"><div class="empty">Choose a cup competition to load its data.</div></article>`;
+    if (activeCup && !cupDataReady) {
+      cupContent = `<article class="page-card"><div class="empty">Loading ${this._escape(activeCup.name)} data…</div></article>`;
+    } else if (activeCup && this._cupView === "fixtures") {
+      cupContent = `<section class="section"><h2>${this._escape(activeCup.name)} fixtures</h2><div class="match-list">${fixtures.length ? fixtures.map((match) => this._matchCard(match)).join("") : `<div class="empty">No cup fixtures are available yet.</div>`}</div></section>`;
+    } else if (activeCup && this._cupView === "results") {
+      cupContent = `<section class="section"><h2>${this._escape(activeCup.name)} results</h2><div class="match-list">${results.length ? results.map((match) => this._matchCard(match, "result")).join("") : `<div class="empty">No cup results are available yet.</div>`}</div></section>`;
+    } else if (activeCup && this._cupView === "table") {
+      cupContent = `<section class="page-card cup-table"><h2>${activeCup.has_table ? "Table / phase standings" : "Knockout competition"}</h2>${activeCup.has_table ? this._tableRows(table) : `<div class="empty">This competition uses knockout rounds, so follow it through Fixtures and Results.</div>`}</section>`;
+    } else if (activeCup) {
+      cupContent = `<section class="dashboard-grid cup-overview"><article class="stat-card"><div class="card-heading"><span>Competition</span></div><div class="big-stat cup-name">${this._escape(activeCup.name)}</div><div class="stat-label">${this._escape(activeCup.country)}</div></article><article class="stat-card"><div class="card-heading"><span>Matches</span></div><div class="big-stat">${fixtures.length + results.length}</div><div class="stat-label">${fixtures.length} upcoming · ${results.length} completed</div></article><article class="list-card"><div class="card-heading"><span>Next fixtures</span><button class="text-button" data-cup-view="fixtures">View all</button></div><div class="match-list">${fixtures.length ? fixtures.slice(0, 3).map((match) => this._matchCard(match)).join("") : `<div class="empty">No upcoming fixtures.</div>`}</div></article><article class="list-card"><div class="card-heading"><span>Top scorers</span></div>${this._playerRows(scorers, "goals")}</article></section>`;
+    }
 
     return `
       <section class="page-heading">
@@ -1170,16 +1208,31 @@ class FootballHubPanel extends HTMLElement {
         </select></label>
         <label><span>Competition</span><select id="cup-competition-select" aria-label="Cup competition">
           <option value="">Choose a competition</option>
-          ${cups.map((cup) => `<option value="${this._escape(cup.key)}" ${cup.key === status.competition_key ? "selected" : ""}>${this._escape(cup.name)}</option>`).join("")}
+          ${cups.map((cup) => `<option value="${this._escape(cup.key)}" ${cup.key === selectedCupKey ? "selected" : ""}>${this._escape(cup.name)}</option>`).join("")}
         </select></label>
       </section>
       <section class="cup-grid">
-        ${cups.map((cup) => `<article class="page-card cup-card ${cup.key === status.competition_key ? "active" : ""}">
+        ${cups.map((cup) => `<article class="page-card cup-card ${cup.key === selectedCupKey ? "active" : ""}">
           <ha-icon icon="mdi:trophy-variant-outline"></ha-icon>
           <div><strong>${this._escape(cup.name)}</strong><span>${cup.has_table ? "League-phase table, fixtures and results" : "Fixtures, results and knockout rounds"}</span></div>
           <button data-cup="${this._escape(cup.key)}">Open</button>
         </article>`).join("") || `<div class="empty">No cup competitions are configured for this country.</div>`}
       </section>
+      ${activeCup ? `
+        <section class="section cup-data">
+          <div class="section-title-row"><div><span class="eyebrow">SELECTED COMPETITION</span><h2>${this._escape(activeCup.name)}</h2></div><span class="pill">${this._escape(activeCup.country)}</span></div>
+          <nav class="cup-tabs"><button data-cup-view="overview" class="${this._cupView === "overview" ? "active" : ""}">Overview</button><button data-cup-view="fixtures" class="${this._cupView === "fixtures" ? "active" : ""}">Fixtures</button><button data-cup-view="results" class="${this._cupView === "results" ? "active" : ""}">Results</button><button data-cup-view="table" class="${this._cupView === "table" ? "active" : ""}">Table</button></nav>
+          ${cupContent}
+          ${false ? `
+          ${!cupDataReady ? `<article class="page-card"><div class="empty">Loading ${this._escape(activeCup.name)} data…</div></article>` : ""}
+          ${cupDataReady && activeCup.has_table ? `<article class="page-card cup-table"><h2>Table / phase standings</h2>${this._tableRows(table)}</article>` : ""}
+          <h3>Upcoming fixtures</h3>
+          <div class="match-list">${cupDataReady && fixtures.length ? fixtures.slice(0, 6).map((match) => this._matchCard(match)).join("") : `<div class="empty">Cup fixture data is loading.</div>`}</div>
+          <h3>Latest results</h3>
+          <div class="match-list">${cupDataReady && results.length ? results.map((match) => this._matchCard(match, "result")).join("") : `<div class="empty">No cup results are available yet.</div>`}</div>
+          ` : ""}
+        </section>
+      ` : ""}
     `;
   }
 
@@ -1309,11 +1362,19 @@ class FootballHubPanel extends HTMLElement {
     });
 
     this.shadowRoot.querySelector("#cup-competition-select")?.addEventListener("change", (event) => {
-      if (event.target.value) this._setLeague(event.target.value);
+      if (event.target.value) this._setCup(event.target.value);
     });
 
     this.shadowRoot.querySelectorAll("[data-cup]").forEach((button) => {
-      button.addEventListener("click", () => this._setLeague(button.dataset.cup));
+      button.addEventListener("click", () => this._setCup(button.dataset.cup));
+    });
+
+    this.shadowRoot.querySelectorAll("[data-cup-view]").forEach((button) => {
+      button.addEventListener("click", () => {
+        this._cupView = button.dataset.cupView;
+        localStorage.setItem("football_hub_cup_view", this._cupView);
+        this._render();
+      });
     });
   }
 
@@ -1871,6 +1932,10 @@ class FootballHubPanel extends HTMLElement {
       .cup-card > div { display: flex; flex: 1; flex-direction: column; gap: 4px; min-width: 0; }
       .cup-card > div span { font-size: .75rem; opacity: .7; }
       .cup-card button { border: 1px solid rgba(255,255,255,.2); border-radius: 10px; padding: 9px 12px; color: white; background: rgba(255,255,255,.08); font-weight: 800; cursor: pointer; }
+      .cup-tabs { display: flex; gap: 8px; margin: 18px 0; overflow-x: auto; }
+      .cup-tabs button { border: 1px solid rgba(255,255,255,.16); border-radius: 12px; padding: 10px 16px; color: rgba(255,255,255,.72); background: rgba(0,0,0,.2); font-weight: 800; cursor: pointer; }
+      .cup-tabs button.active { border-color: var(--fh-cyan); color: white; background: rgba(49,233,129,.13); }
+      .cup-name { font-size: clamp(1.15rem, 2vw, 1.8rem); line-height: 1.1; }
 
       .page-card h2 { margin: 0 0 18px; }
 
