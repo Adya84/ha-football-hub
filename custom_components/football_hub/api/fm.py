@@ -1,50 +1,80 @@
-"""Low-scan persistent FotMob enrichment for Football Hub."""
+"""FM-only trial provider for Football Hub v0.3.0.
+
+This provider keeps the coordinator-facing method names unchanged, allowing the
+existing sensors and frontend to run without ESPN. Data is persisted in Home
+Assistant storage to minimise requests and survive restarts.
+"""
 from __future__ import annotations
 
 import asyncio
 import logging
 import re
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
+from time import monotonic
 from typing import Any
 
 import aiohttp
+from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.helpers.storage import Store
 
 _LOGGER = logging.getLogger(__name__)
 
-FOTMOB_BASE = "https://www.fotmob.com"
+FM_BASE = "https://www.fotmob.com"
 STORE_VERSION = 1
-STORE_KEY = "football_hub_fm"
+STORE_KEY = "football_hub_fm_v3"
 
-PROFILE_TTL = 30 * 24 * 60 * 60
-MANAGER_TTL = 7 * 24 * 60 * 60
-SQUAD_TTL = 7 * 24 * 60 * 60
-TRANSFERS_TTL = 24 * 60 * 60
-INJURIES_TTL = 24 * 60 * 60
+# Existing Football Hub competition IDs -> FM league IDs.
+FM_LEAGUES = {
+    39: 47,    # Premier League
+    40: 48,    # Championship
+    41: 108,   # League One
+    42: 109,   # League Two
+    43: 117,   # National League
+    179: 64,   # Scottish Premiership
+    110: 9080, # Cymru Premier
+    408: 9084, # Northern Ireland Premiership
+    357: 126,  # Republic of Ireland Premier Division
+    140: 87,   # LaLiga
+    78: 54,    # Bundesliga
+    135: 55,   # Serie A
+    61: 53,    # Ligue 1
+    88: 57,    # Eredivisie
+    94: 61,    # Primeira Liga
+    144: 40,   # Belgian Pro League
+    203: 71,   # Turkish Super Lig
+}
+
+LEAGUE_TTL = 6 * 60 * 60
+TODAY_TTL = 30
+MATCH_TTL_LIVE = 15
+MATCH_TTL_FINISHED = 24 * 60 * 60
+TEAM_PROFILE_TTL = 30 * 24 * 60 * 60
+TEAM_SQUAD_TTL = 7 * 24 * 60 * 60
+TEAM_TRANSFERS_TTL = 24 * 60 * 60
 
 
-class FotMobProvider:
-    """Persist FotMob club enrichment in Home Assistant storage."""
+class FMProviderError(Exception):
+    """FM provider error."""
 
-    def __init__(self, hass, session: aiohttp.ClientSession, ccode3: str = "GBR"):
+
+class FMProvider:
+    """Use FM for every Football Hub dataset."""
+
+    def __init__(self, hass):
         self.hass = hass
-        self.session = session
-        self.ccode3 = ccode3
+        self.session = async_get_clientsession(hass)
         self._store = Store(hass, STORE_VERSION, STORE_KEY)
-        self._data: dict[str, Any] = {"teams": {}, "name_map": {}}
+        self._persistent: dict[str, Any] = {
+            "league_ids": {},
+            "team_ids": {},
+            "match_ids": {},
+            "teams": {},
+        }
         self._loaded = False
         self._load_lock = asyncio.Lock()
-        self._team_locks: dict[str, asyncio.Lock] = {}
-
-    @staticmethod
-    def _now() -> float:
-        return datetime.now(timezone.utc).timestamp()
-
-    @staticmethod
-    def _normalise(value: Any) -> str:
-        text = str(value or "").casefold()
-        text = re.sub(r"[^a-z0-9]+", " ", text)
-        return re.sub(r"\s+", " ", text).strip()
+        self._memory: dict[str, tuple[float, Any]] = {}
+        self._team_names: dict[str, str] = {}
+        self._fixture_context: dict[str, dict] = {}
 
     async def _ensure_loaded(self) -> None:
         if self._loaded:
@@ -54,48 +84,23 @@ class FotMobProvider:
                 return
             stored = await self._store.async_load()
             if isinstance(stored, dict):
-                self._data = stored
-            self._data.setdefault("teams", {})
-            self._data.setdefault("name_map", {})
+                self._persistent.update(stored)
+            for key in ("league_ids", "team_ids", "match_ids", "teams"):
+                self._persistent.setdefault(key, {})
             self._loaded = True
 
     async def _save(self) -> None:
-        await self._store.async_save(self._data)
+        await self._store.async_save(self._persistent)
 
-    def _fresh(self, record: dict, section: str, ttl: int) -> bool:
-        stamp = ((record.get("updated") or {}).get(section))
-        try:
-            return self._now() - float(stamp) < ttl
-        except (TypeError, ValueError):
-            return False
-
-    async def _get(self, path: str, params: dict[str, Any]) -> dict:
-        url = f"{FOTMOB_BASE}/{path.lstrip('/')}"
-        headers = {
-            "Accept": "application/json",
-            "Accept-Language": "en-GB,en;q=0.9",
-            "Referer": "https://www.fotmob.com/",
-            "User-Agent": "Mozilla/5.0 Football-Hub/Home-Assistant",
-        }
-        try:
-            async with self.session.get(
-                url,
-                params=params,
-                headers=headers,
-                timeout=aiohttp.ClientTimeout(total=30),
-            ) as response:
-                if response.status != 200:
-                    _LOGGER.debug("FotMob HTTP %s for %s", response.status, url)
-                    return {}
-                data = await response.json(content_type=None)
-                return data if isinstance(data, dict) else {}
-        except (aiohttp.ClientError, asyncio.TimeoutError, ValueError) as err:
-            _LOGGER.debug("FotMob request failed: %s", err)
-            return {}
+    @staticmethod
+    def _norm(value: Any) -> str:
+        text = str(value or "").casefold()
+        text = re.sub(r"[^a-z0-9]+", " ", text)
+        return re.sub(r"\s+", " ", text).strip()
 
     @classmethod
-    def _name_score(cls, wanted: str, candidate: str) -> int:
-        a, b = cls._normalise(wanted), cls._normalise(candidate)
+    def _score_name(cls, wanted: str, candidate: str) -> int:
+        a, b = cls._norm(wanted), cls._norm(candidate)
         if not a or not b:
             return 0
         if a == b:
@@ -105,277 +110,1007 @@ class FotMobProvider:
         aw, bw = set(a.split()), set(b.split())
         return int(70 * len(aw & bw) / len(aw)) if aw else 0
 
-    async def _resolve_team(self, team_name: str) -> dict | None:
+    @staticmethod
+    def _logo(team_id: Any) -> str | None:
+        if team_id in (None, ""):
+            return None
+        return f"https://images.fotmob.com/image_resources/logo/teamlogo/{team_id}.png"
+
+    @staticmethod
+    def _player_photo(player_id: Any) -> str | None:
+        if player_id in (None, ""):
+            return None
+        return f"https://images.fotmob.com/image_resources/playerimages/{player_id}.png"
+
+    def _cache_get(self, key: str, ttl: int) -> Any | None:
+        cached = self._memory.get(key)
+        if cached and monotonic() - cached[0] < ttl:
+            return cached[1]
+        return None
+
+    def _cache_put(self, key: str, value: Any) -> Any:
+        self._memory[key] = (monotonic(), value)
+        return value
+
+    async def _get(self, path: str, params: dict[str, Any] | None = None) -> dict:
+        url = f"{FM_BASE}/{path.lstrip('/')}"
+        try:
+            async with self.session.get(
+                url,
+                params=params or {},
+                headers={
+                    "Accept": "application/json",
+                    "Accept-Language": "en-GB,en;q=0.9",
+                    "Referer": "https://www.fotmob.com/",
+                    "User-Agent": (
+                        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                        "AppleWebKit/537.36 (KHTML, like Gecko) "
+                        "Chrome/120.0.0.0 Safari/537.36"
+                    ),
+                },
+                timeout=aiohttp.ClientTimeout(total=30),
+            ) as response:
+                if response.status == 429:
+                    raise FMProviderError("FM request limit reached")
+                if response.status >= 400:
+                    raise FMProviderError(f"FM returned HTTP {response.status}")
+                data = await response.json(content_type=None)
+                if not isinstance(data, dict):
+                    raise FMProviderError("Invalid FM response")
+                return data
+        except asyncio.TimeoutError as err:
+            raise FMProviderError("FM request timed out") from err
+        except aiohttp.ClientError as err:
+            raise FMProviderError(f"FM connection failed: {err}") from err
+
+    async def _get_first(
+        self,
+        paths: tuple[str, ...],
+        params: dict[str, Any] | None = None,
+    ) -> dict:
+        """Try current and legacy FM endpoint paths without failing on 404."""
+        last_error: Exception | None = None
+        for path in paths:
+            try:
+                return await self._get(path, params)
+            except FMProviderError as err:
+                last_error = err
+                if "HTTP 404" not in str(err):
+                    raise
+                _LOGGER.debug("FM endpoint not found, trying fallback: %s", path)
+        if last_error:
+            raise last_error
+        return {}
+
+    @staticmethod
+    def _walk(value: Any):
+        if isinstance(value, dict):
+            yield value
+            for child in value.values():
+                yield from FMProvider._walk(child)
+        elif isinstance(value, list):
+            for child in value:
+                yield from FMProvider._walk(child)
+
+    @staticmethod
+    def _status(match: dict) -> dict:
+        status = match.get("status") or {}
+        if status.get("cancelled"):
+            short = "CANC"
+        elif status.get("finished"):
+            short = "FT"
+        elif status.get("started"):
+            short = "LIVE"
+        else:
+            short = "NS"
+
+        elapsed = None
+        live_time = status.get("liveTime") or status.get("reason")
+        if isinstance(live_time, dict):
+            elapsed = live_time.get("short")
+        if isinstance(elapsed, str):
+            found = re.search(r"\d+", elapsed)
+            elapsed = int(found.group(0)) if found else None
+
+        return {
+            "short": short,
+            "long": status.get("reason") or status.get("scoreStr") or short,
+            "elapsed": elapsed,
+        }
+
+    def _fixture(self, match: dict, league_name: str | None = None) -> dict | None:
+        match_id = match.get("id") or match.get("matchId")
+        home = match.get("home") or match.get("homeTeam") or {}
+        away = match.get("away") or match.get("awayTeam") or {}
+        if match_id in (None, "") or not home or not away:
+            return None
+
+        status = match.get("status") or {}
+        date = status.get("utcTime") or match.get("utcTime") or match.get("date")
+        timestamp = None
+        try:
+            timestamp = int(datetime.fromisoformat(str(date).replace("Z", "+00:00")).timestamp())
+        except (TypeError, ValueError):
+            pass
+
+        home_score = home.get("score")
+        away_score = away.get("score")
+        try:
+            home_score = int(home_score) if home_score not in (None, "") else None
+        except (TypeError, ValueError):
+            home_score = None
+        try:
+            away_score = int(away_score) if away_score not in (None, "") else None
+        except (TypeError, ValueError):
+            away_score = None
+
+        item = {
+            "fixture": {
+                "id": int(match_id) if str(match_id).isdigit() else match_id,
+                "date": date,
+                "timestamp": timestamp,
+                "status": self._status(match),
+                "venue": {
+                    "name": match.get("stadium") or match.get("venue"),
+                    "city": None,
+                },
+            },
+            "league": {
+                "id": match.get("leagueId"),
+                "name": league_name or match.get("leagueName"),
+                "round": match.get("roundName") or match.get("round"),
+            },
+            "teams": {
+                "home": {
+                    "id": home.get("id"),
+                    "name": home.get("name"),
+                    "logo": self._logo(home.get("id")),
+                },
+                "away": {
+                    "id": away.get("id"),
+                    "name": away.get("name"),
+                    "logo": self._logo(away.get("id")),
+                },
+            },
+            "goals": {"home": home_score, "away": away_score},
+            "score": {
+                "halftime": {"home": None, "away": None},
+                "fulltime": {"home": home_score, "away": away_score},
+            },
+        }
+
+        self._fixture_context[str(match_id)] = {
+            "home": home.get("name"),
+            "away": away.get("name"),
+            "date": date,
+        }
+        for team in (home, away):
+            if team.get("id") is not None and team.get("name"):
+                self._team_names[str(team["id"])] = team["name"]
+        return item
+
+    @staticmethod
+    def _league_id(league_id: Any) -> int:
+        try:
+            return FM_LEAGUES[int(league_id)]
+        except (KeyError, TypeError, ValueError) as err:
+            raise FMProviderError(f"FM league mapping is unavailable for {league_id}") from err
+
+    async def _league_data(self, league_id: Any) -> dict:
+        fm_id = self._league_id(league_id)
+        key = f"league:{fm_id}"
+        cached = self._cache_get(key, LEAGUE_TTL)
+        if cached is not None:
+            return cached
+        data = await self._get_first(("api/data/leagues", "api/leagues"), {"id": fm_id, "ccode3": "GBR"})
+        return self._cache_put(key, data)
+
+    async def _matches_for_date(self, date: datetime) -> list[dict]:
+        day = date.strftime("%Y%m%d")
+        key = f"matches:{day}"
+        cached = self._cache_get(key, TODAY_TTL)
+        if cached is not None:
+            return cached
+
+        data = await self._get_first(("api/data/matches", "api/matches"), {"date": day, "ccode3": "GBR"})
+        output = []
+        for league in data.get("leagues") or []:
+            league_name = league.get("name")
+            for match in league.get("matches") or []:
+                item = self._fixture(match, league_name)
+                if item:
+                    output.append(item)
+        return self._cache_put(key, output)
+
+    async def get_live(self, league_id, season):
+        fm_id = self._league_id(league_id)
+        matches = await self._matches_for_date(datetime.now(timezone.utc))
+        return [
+            item for item in matches
+            if (item.get("league") or {}).get("id") in (fm_id, str(fm_id), None)
+            and ((item.get("fixture") or {}).get("status") or {}).get("short") == "LIVE"
+        ]
+
+    async def get_fixtures(self, league_id, season):
+        fm_id = self._league_id(league_id)
+        data = await self._league_data(league_id)
+        output: dict[str, dict] = {}
+
+        # FM league responses have changed shape over time; detect match objects
+        # recursively and keep only matches belonging to the selected league.
+        for node in self._walk(data):
+            if not isinstance(node, dict):
+                continue
+            match_id = node.get("id") or node.get("matchId")
+            home = node.get("home") or node.get("homeTeam")
+            away = node.get("away") or node.get("awayTeam")
+            if match_id in (None, "") or not isinstance(home, dict) or not isinstance(away, dict):
+                continue
+            node_league = node.get("leagueId")
+            if node_league not in (None, fm_id, str(fm_id)):
+                continue
+            item = self._fixture(node, data.get("details", {}).get("name"))
+            if item:
+                output[str(match_id)] = item
+
+        # Include today's matches so live/new fixtures are not missed.
+        for item in await self._matches_for_date(datetime.now(timezone.utc)):
+            if (item.get("league") or {}).get("id") in (fm_id, str(fm_id), None):
+                output[str((item.get("fixture") or {}).get("id"))] = item
+
+        return sorted(
+            output.values(),
+            key=lambda item: (item.get("fixture") or {}).get("timestamp") or 0,
+        )
+
+    async def get_standings(self, league_id, season):
+        """Return the current FM league table."""
+        data = await self._league_data(league_id)
+        rows = []
+
+        table_rows = []
+        table = data.get("table") or {}
+        if isinstance(table, list):
+            table_rows = table
+        elif isinstance(table, dict):
+            table_rows = (
+                table.get("all")
+                or table.get("table")
+                or table.get("rows")
+                or []
+            )
+
+        if not table_rows:
+            for node in self._walk(data):
+                if not isinstance(node, dict):
+                    continue
+                candidate = (
+                    node.get("all")
+                    or node.get("table")
+                    or node.get("rows")
+                )
+                if (
+                    isinstance(candidate, list)
+                    and candidate
+                    and isinstance(candidate[0], dict)
+                    and (
+                        candidate[0].get("teamId")
+                        or candidate[0].get("id")
+                    )
+                ):
+                    table_rows = candidate
+                    break
+
+        for index, item in enumerate(table_rows or [], 1):
+            team = item.get("team") if isinstance(item.get("team"), dict) else item
+            team_id = (
+                team.get("id")
+                or item.get("teamId")
+                or item.get("id")
+            )
+            team_name = (
+                team.get("name")
+                or item.get("teamName")
+                or item.get("name")
+            )
+            if not team_id or not team_name:
+                continue
+
+            scores = str(
+                item.get("scoresStr")
+                or item.get("goals")
+                or "0-0"
+            ).split("-", 1)
+
+            self._team_names[str(team_id)] = team_name
+            rows.append({
+                "rank": (
+                    item.get("idx")
+                    or item.get("position")
+                    or item.get("rank")
+                    or index
+                ),
+                "team": {
+                    "id": team_id,
+                    "name": team_name,
+                    "logo": self._logo(team_id),
+                },
+                "points": item.get("pts") or item.get("points") or 0,
+                "goalsDiff": (
+                    item.get("goalConDiff")
+                    or item.get("goalDifference")
+                    or item.get("goalDiff")
+                    or 0
+                ),
+                "all": {
+                    "played": (
+                        item.get("played")
+                        or item.get("matchesPlayed")
+                        or 0
+                    ),
+                    "win": item.get("wins") or item.get("win") or 0,
+                    "draw": item.get("draws") or item.get("draw") or 0,
+                    "lose": item.get("losses") or item.get("loss") or 0,
+                    "goals": {
+                        "for": (
+                            item.get("scoresFor")
+                            or item.get("goalsFor")
+                            or (
+                                int(scores[0])
+                                if scores and scores[0].strip().isdigit()
+                                else 0
+                            )
+                        ),
+                        "against": (
+                            item.get("scoresAgainst")
+                            or item.get("goalsAgainst")
+                            or (
+                                int(scores[1])
+                                if len(scores) > 1
+                                and scores[1].strip().isdigit()
+                                else 0
+                            )
+                        ),
+                    },
+                },
+            })
+
+        return [{"league": {"standings": [rows]}}] if rows else []
+
+    async def get_teams(self, league_id, season):
+        """Return teams for the selected league and populate dropdowns."""
+        data = await self._league_data(league_id)
+        found: dict[str, dict] = {}
+
+        for node in self._walk(data):
+            if not isinstance(node, dict):
+                continue
+
+            team = node.get("team") if isinstance(node.get("team"), dict) else node
+            team_id = team.get("id") or node.get("teamId")
+            team_name = (
+                team.get("name")
+                or team.get("longName")
+                or node.get("teamName")
+            )
+
+            if team_id in (None, "") or not team_name:
+                continue
+
+            # Avoid treating players, matches and unrelated objects as teams.
+            if any(
+                key in node
+                for key in (
+                    "playerId",
+                    "matchId",
+                    "utcTime",
+                    "scoreStr",
+                )
+            ):
+                continue
+
+            found[str(team_id)] = {
+                "team": {
+                    "id": team_id,
+                    "name": team_name,
+                    "code": team.get("shortName") or team.get("code"),
+                    "country": team.get("country"),
+                    "founded": None,
+                    "logo": self._logo(team_id),
+                },
+                "venue": {},
+            }
+            self._team_names[str(team_id)] = team_name
+
+        if not found:
+            standings = await self.get_standings(league_id, season)
+            rows = (
+                (((standings[0] or {}).get("league") or {})
+                 .get("standings") or [[]])[0]
+                if standings
+                else []
+            )
+            for row in rows:
+                team = row.get("team") or {}
+                if team.get("id") and team.get("name"):
+                    found[str(team["id"])] = {
+                        "team": team,
+                        "venue": {},
+                    }
+
+        return sorted(
+            found.values(),
+            key=lambda item: str(
+                (item.get("team") or {}).get("name") or ""
+            ).casefold(),
+        )
+
+    async def _team_name(self, team_id: Any) -> str | None:
+        key = str(team_id)
+        if key in self._team_names:
+            return self._team_names[key]
         await self._ensure_loaded()
-        key = self._normalise(team_name)
-        mapped = self._data["name_map"].get(key)
-        if isinstance(mapped, dict) and mapped.get("id"):
-            return mapped
+        mapped = self._persistent["team_ids"].get(key)
+        if isinstance(mapped, dict):
+            return mapped.get("name")
+        return None
 
-        response = await self._get("api/searchData", {"term": team_name})
-        best, best_score = None, 0
-        for item in response.get("team") or response.get("teams") or []:
-            if not isinstance(item, dict):
-                continue
-            name = item.get("name") or item.get("localizedName")
-            team_id = item.get("id") or item.get("teamId")
-            if not name or team_id in (None, ""):
-                continue
-            score = self._name_score(team_name, name)
-            if score > best_score:
-                best_score = score
-                best = {"id": str(team_id), "name": name}
+    async def _team_data(self, team_id: Any, tab: str | None = None) -> dict:
+        params = {"id": team_id, "ccode3": "GBR"}
+        if tab:
+            params["tab"] = tab
+        ttl = TEAM_PROFILE_TTL if not tab else (
+            TEAM_TRANSFERS_TTL if tab == "transfers" else TEAM_SQUAD_TTL
+        )
+        key = f"team:{team_id}:{tab or 'overview'}"
+        cached = self._cache_get(key, ttl)
+        if cached is not None:
+            return cached
+        data = await self._get("api/data/teams", params)
+        return self._cache_put(key, data)
 
-        if best_score < 60:
-            return None
-
-        self._data["name_map"][key] = best
-        await self._save()
-        return best
-
-    @staticmethod
-    def _image_url(kind: str, item_id: Any) -> str | None:
-        if item_id in (None, ""):
-            return None
-        return f"https://images.fotmob.com/image_resources/{kind}/{item_id}.png"
-
-    @staticmethod
-    def _profile_from(data: dict) -> dict:
+    async def get_team(self, team_id, league_id):
+        data = await self._team_data(team_id)
         details = data.get("details") or {}
         sports = details.get("sportsTeamJSONLD") or {}
         location = sports.get("location") or {}
         address = location.get("address") or {}
+        geo = location.get("geo") or {}
 
-        venue_name = location.get("name")
-        city = address.get("addressLocality")
-        country = address.get("addressCountry")
         capacity = None
         opened = None
-
         for qa in data.get("QAData") or []:
-            question = str(qa.get("question") or "").casefold()
-            answer = str(qa.get("answer") or "")
-            if "capacity" in question:
-                match = re.search(r"(\d[\d,]*)", answer)
-                if match:
-                    capacity = int(match.group(1).replace(",", ""))
-            elif "opened" in question:
-                match = re.search(r"\b(18|19|20)\d{2}\b", answer)
-                if match:
-                    opened = int(match.group(0))
-            elif "where is" in question and not venue_name:
-                venue_name = answer.rsplit("called ", 1)[-1].rstrip(".") if "called " in answer else None
+            q = str(qa.get("question") or "").casefold()
+            a = str(qa.get("answer") or "")
+            if "capacity" in q:
+                found = re.search(r"(\d[\d,]*)", a)
+                capacity = int(found.group(1).replace(",", "")) if found else None
+            if "opened" in q:
+                found = re.search(r"\b(?:18|19|20)\d{2}\b", a)
+                opened = int(found.group(0)) if found else None
 
-        return {
+        name = details.get("name")
+        if name:
+            self._team_names[str(team_id)] = name
+        return [{
             "team": {
-                "id": details.get("id"),
-                "name": details.get("name"),
+                "id": team_id,
+                "name": name,
                 "code": details.get("shortName"),
-                "country": country or details.get("country"),
-                "logo": sports.get("logo"),
+                "country": address.get("addressCountry") or details.get("country"),
+                "founded": None,
+                "logo": sports.get("logo") or self._logo(team_id),
             },
             "venue": {
-                "name": venue_name,
-                "city": city,
+                "name": location.get("name"),
+                "city": address.get("addressLocality"),
+                "country": address.get("addressCountry"),
                 "capacity": capacity,
                 "opened": opened,
-                "latitude": ((location.get("geo") or {}).get("latitude")),
-                "longitude": ((location.get("geo") or {}).get("longitude")),
+                "latitude": geo.get("latitude"),
+                "longitude": geo.get("longitude"),
+                "image": None,
             },
-        }
-
-    @staticmethod
-    def _manager_from(data: dict, team_name: str) -> list[dict]:
-        overview = data.get("overview") or {}
-        history = overview.get("coachHistory") or []
-        if isinstance(history, dict):
-            history = history.get("coachHistory") or history.get("coaches") or []
-        if not isinstance(history, list) or not history:
-            return []
-
-        current = history[0] or {}
-        name = current.get("name") or current.get("coachName")
-        if not name:
-            return []
-        coach_id = current.get("id") or current.get("coachId")
-        return [{
-            "id": coach_id,
-            "name": name,
-            "age": current.get("age"),
-            "nationality": current.get("country") or current.get("nationality"),
-            "photo": FotMobProvider._image_url("playerimages", coach_id),
-            "career": [{
-                "team": {"name": team_name},
-                "start": current.get("startDate"),
-                "end": current.get("endDate"),
-            }],
         }]
 
-    @staticmethod
-    def _squad_from(data: dict, team_name: str) -> list[dict]:
+    async def _match_details(self, fixture_id: Any) -> dict:
+        key = f"match:{fixture_id}"
+        cached = self._cache_get(key, MATCH_TTL_LIVE)
+        if cached is not None:
+            return cached
+        data = await self._get_first(("api/data/matchDetails", "api/matchDetails"), {"matchId": fixture_id, "ccode3": "GBR"})
+        finished = bool(((data.get("header") or {}).get("status") or {}).get("finished"))
+        self._memory[key] = (monotonic(), data)
+        if finished:
+            self._memory[f"{key}:finished"] = (monotonic(), data)
+        return data
+
+    async def get_fixture_events(self, fixture_id):
+        data = await self._match_details(fixture_id)
+        output = []
+        for event in (data.get("header") or {}).get("events") or []:
+            player = event.get("player") or {}
+            team = event.get("team") or {}
+            output.append({
+                "time": {
+                    "elapsed": event.get("time") or event.get("timeStr"),
+                    "extra": None,
+                },
+                "team": {
+                    "id": team.get("id"),
+                    "name": team.get("name"),
+                },
+                "player": {
+                    "id": player.get("id"),
+                    "name": player.get("name"),
+                },
+                "type": event.get("type") or "Event",
+                "detail": event.get("eventType") or event.get("description"),
+            })
+        return output
+
+    async def get_fixture_statistics(self, fixture_id):
+        data = await self._match_details(fixture_id)
+        general = data.get("general") or {}
+        home = general.get("homeTeam") or {}
+        away = general.get("awayTeam") or {}
+        content = data.get("content") or {}
+        stats_root = content.get("stats") or {}
+        periods = stats_root.get("Periods") or stats_root.get("periods") or {}
+        all_period = periods.get("All") or periods.get("all") or {}
+        rows = all_period.get("stats") or []
+
+        home_stats, away_stats = [], []
+        for row in rows:
+            title = row.get("title") or row.get("name")
+            values = row.get("stats") or row.get("values") or []
+            if not title or not isinstance(values, list) or len(values) < 2:
+                continue
+            home_stats.append({"type": title, "value": values[0]})
+            away_stats.append({"type": title, "value": values[1]})
+
+        return [
+            {
+                "team": {"id": home.get("id"), "name": home.get("name"), "logo": self._logo(home.get("id"))},
+                "statistics": home_stats,
+            },
+            {
+                "team": {"id": away.get("id"), "name": away.get("name"), "logo": self._logo(away.get("id"))},
+                "statistics": away_stats,
+            },
+        ] if home_stats or away_stats else []
+
+    async def get_fixture_lineups(self, fixture_id):
+        data = await self._match_details(fixture_id)
+        lineup = ((data.get("content") or {}).get("lineup") or {})
+        output = []
+        for raw in lineup.get("lineups") or []:
+            team_id = raw.get("teamId")
+            starters, subs = [], []
+            for item in raw.get("players") or []:
+                player = item.get("player") if isinstance(item.get("player"), dict) else item
+                player_id = player.get("id") or item.get("playerId")
+                position = item.get("position") or player.get("position")
+                if isinstance(position, dict):
+                    position = position.get("label") or position.get("name")
+                entry = {
+                    "player": {
+                        "id": player_id,
+                        "name": player.get("name") or item.get("name"),
+                        "number": item.get("shirtNumber") or item.get("number"),
+                        "pos": position,
+                        "photo": self._player_photo(player_id),
+                        "rating": item.get("rating") or player.get("rating"),
+                    }
+                }
+                if item.get("isSubstitute") or item.get("starter") is False:
+                    subs.append(entry)
+                else:
+                    starters.append(entry)
+            output.append({
+                "team": {
+                    "id": team_id,
+                    "name": raw.get("teamName"),
+                    "logo": self._logo(team_id),
+                },
+                "formation": raw.get("formation"),
+                "startXI": starters,
+                "substitutes": subs,
+            })
+        return output
+
+    async def get_top_scorers(self, league_id, season):
+        return await self._league_players(league_id, "goals")
+
+    async def get_top_assists(self, league_id, season):
+        return await self._league_players(league_id, "assists")
+
+    async def _league_players(self, league_id, wanted: str):
+        data = await self._league_data(league_id)
+        output = []
+        seen = set()
+        for node in self._walk(data):
+            if not isinstance(node, dict):
+                continue
+            title = self._norm(node.get("title") or node.get("name") or "")
+            if wanted not in title:
+                continue
+            players = node.get("players") or node.get("items") or []
+            if not isinstance(players, list):
+                continue
+            for row in players:
+                player = row.get("player") if isinstance(row.get("player"), dict) else row
+                player_id = player.get("id") or row.get("playerId")
+                name = player.get("name") or row.get("name")
+                if not name or str(player_id) in seen:
+                    continue
+                seen.add(str(player_id))
+                value = row.get("value") or row.get("statValue") or row.get(wanted) or 0
+                team = row.get("team") or {}
+                output.append({
+                    "player": {
+                        "id": player_id,
+                        "name": name,
+                        "photo": self._player_photo(player_id),
+                    },
+                    "statistics": [{
+                        "team": {
+                            "id": team.get("id"),
+                            "name": team.get("name"),
+                            "logo": self._logo(team.get("id")),
+                        },
+                        "goals": {
+                            "total": value if wanted == "goals" else 0,
+                            "assists": value if wanted == "assists" else 0,
+                        },
+                    }],
+                })
+        return output[:25]
+
+    async def get_team_statistics(self, team_id, league_id, season):
+        fixtures = await self.get_fixtures(league_id, season)
+        played = wins = draws = losses = gf = ga = clean = 0
+        for item in fixtures:
+            fixture = item.get("fixture") or {}
+            if (fixture.get("status") or {}).get("short") != "FT":
+                continue
+            home = ((item.get("teams") or {}).get("home") or {})
+            away = ((item.get("teams") or {}).get("away") or {})
+            is_home = str(home.get("id")) == str(team_id)
+            is_away = str(away.get("id")) == str(team_id)
+            if not (is_home or is_away):
+                continue
+            goals = item.get("goals") or {}
+            scored = int(goals.get("home") or 0) if is_home else int(goals.get("away") or 0)
+            conceded = int(goals.get("away") or 0) if is_home else int(goals.get("home") or 0)
+            played += 1
+            gf += scored
+            ga += conceded
+            clean += int(conceded == 0)
+            wins += int(scored > conceded)
+            draws += int(scored == conceded)
+            losses += int(scored < conceded)
+        return {
+            "fixtures": {
+                "played": {"total": played},
+                "wins": {"total": wins},
+                "draws": {"total": draws},
+                "loses": {"total": losses},
+            },
+            "goals": {
+                "for": {"total": {"total": gf}},
+                "against": {"total": {"total": ga}},
+            },
+            "clean_sheet": {"total": clean},
+        }
+
+    async def get_team_seasons(self, team_id):
+        data = await self._team_data(team_id)
+        return data.get("allAvailableSeasons") or []
+
+    async def get_squad(self, team_id):
+        data = await self._team_data(team_id, "squad")
         raw = data.get("squad") or {}
         groups = raw.get("squad") if isinstance(raw, dict) else raw
-        players: list[dict] = []
-
+        players = []
         if isinstance(groups, list):
             for group in groups:
-                members = group.get("members") or group.get("players") or group.get("squad") or []
+                members = group.get("members") or group.get("players") or []
                 if not members and (group.get("id") or group.get("playerId")):
                     members = [group]
                 for player in members:
                     player_id = player.get("id") or player.get("playerId")
-                    name = player.get("name") or player.get("playerName")
-                    if not name:
-                        continue
                     position = player.get("position")
                     if isinstance(position, dict):
                         position = position.get("label") or position.get("name")
                     players.append({
                         "id": player_id,
-                        "name": name,
+                        "name": player.get("name") or player.get("playerName"),
                         "age": player.get("age"),
                         "number": player.get("shirtNumber") or player.get("number"),
                         "position": position,
-                        "photo": FotMobProvider._image_url("playerimages", player_id),
+                        "photo": self._player_photo(player_id),
                     })
+        return [{
+            "team": {
+                "id": team_id,
+                "name": await self._team_name(team_id),
+                "logo": self._logo(team_id),
+            },
+            "players": [p for p in players if p.get("name")],
+        }] if players else []
 
-        return [{"team": {"name": team_name}, "players": players}] if players else []
+    async def get_coach(self, team_id):
+        """Return the latest manager from FM coach history."""
+        data = await self._team_data(team_id)
+        overview = data.get("overview") or {}
+        history = overview.get("coachHistory") or []
 
-    @staticmethod
-    def _transfers_from(data: dict) -> list[dict]:
-        transfers = data.get("transfers") or {}
-        rows = transfers.get("allTransfers") or []
-        output = []
-        for item in rows[:40]:
-            player_id = item.get("playerId")
-            fee = item.get("fee")
-            if isinstance(fee, dict):
-                fee = fee.get("feeText") or fee.get("localizedFeeText") or fee.get("value")
-            transfer_type = item.get("transferType")
-            if isinstance(transfer_type, dict):
-                transfer_type = transfer_type.get("text")
-            output.append({
-                "player": {
-                    "id": player_id,
-                    "name": item.get("name"),
-                    "photo": FotMobProvider._image_url("playerimages", player_id),
+        if isinstance(history, dict):
+            history = (
+                history.get("coaches")
+                or history.get("coachHistory")
+                or history.get("data")
+                or []
+            )
+
+        if not isinstance(history, list) or not history:
+            return []
+
+        valid = [
+            item
+            for item in history
+            if isinstance(item, dict)
+            and (item.get("name") or item.get("coachName"))
+        ]
+        if not valid:
+            return []
+
+        # FM orders coachHistory from oldest to newest.
+        coach = valid[-1]
+        coach_id = coach.get("id") or coach.get("coachId")
+
+        return [{
+            "id": coach_id,
+            "name": coach.get("name") or coach.get("coachName"),
+            "age": coach.get("age"),
+            "nationality": (
+                coach.get("country")
+                or coach.get("nationality")
+                or coach.get("countryName")
+            ),
+            "photo": self._player_photo(coach_id),
+            "career": [{
+                "team": {
+                    "id": team_id,
+                    "name": await self._team_name(team_id),
                 },
-                "date": item.get("transferDate"),
-                "type": transfer_type or fee,
-                "teams": {
-                    "in": {"name": item.get("toClubFullName") or item.get("toClub")},
-                    "out": {"name": item.get("fromClubFullName") or item.get("fromClub")},
-                },
-            })
-        return output
+                "start": (
+                    coach.get("startDate")
+                    or coach.get("seasonStart")
+                    or coach.get("season")
+                ),
+                "end": coach.get("endDate") or coach.get("seasonEnd"),
+            }],
+        }]
 
-    @staticmethod
-    def _injuries_from(data: dict) -> list[dict]:
+    async def get_injuries(self, team_id, season):
+        data = await self._team_data(team_id, "squad")
         output = []
-        seen = set()
-
-        def walk(value: Any):
-            if isinstance(value, dict):
-                yield value
-                for child in value.values():
-                    yield from walk(child)
-            elif isinstance(value, list):
-                for child in value:
-                    yield from walk(child)
-
-        for node in walk(data.get("squad") or {}):
+        for node in self._walk(data):
+            if not isinstance(node, dict):
+                continue
             text = " ".join(str(node.get(k) or "") for k in ("injury", "status", "reason", "availability")).casefold()
             if not any(word in text for word in ("injur", "suspend", "doubt", "illness", "unavailable")):
                 continue
             player_id = node.get("id") or node.get("playerId")
             name = node.get("name") or node.get("playerName")
-            if not name:
-                continue
-            key = (player_id, text)
-            if key in seen:
-                continue
-            seen.add(key)
-            output.append({
-                "player": {
-                    "id": player_id,
-                    "name": name,
-                    "photo": FotMobProvider._image_url("playerimages", player_id),
-                },
-                "team": {},
-                "type": node.get("status") or node.get("availability"),
-                "reason": node.get("injury") or node.get("reason"),
-                "date": node.get("expectedReturn") or node.get("returnDate"),
-            })
+            if name:
+                output.append({
+                    "player": {"id": player_id, "name": name, "photo": self._player_photo(player_id)},
+                    "team": {"id": team_id},
+                    "type": node.get("status") or node.get("availability"),
+                    "reason": node.get("injury") or node.get("reason"),
+                    "date": node.get("expectedReturn") or node.get("returnDate"),
+                })
         return output
 
-    async def _refresh(self, team_name: str, section: str) -> dict:
-        match = await self._resolve_team(team_name)
-        if not match:
-            return {}
+    async def get_transfers(self, team_id):
+        """Return FM transfers in the API-Football shape used by the frontend."""
+        data = await self._team_data(team_id)
+        transfers_root = data.get("transfers") or {}
+        transfers_data = (
+            transfers_root.get("data")
+            if isinstance(transfers_root, dict)
+            and isinstance(transfers_root.get("data"), dict)
+            else transfers_root
+        )
 
-        team_id = str(match["id"])
-        lock = self._team_locks.setdefault(team_id, asyncio.Lock())
-        async with lock:
-            record = self._data["teams"].setdefault(team_id, {
-                "fotmob_id": team_id,
-                "name": match.get("name") or team_name,
-                "updated": {},
+        rows = (
+            transfers_data.get("allTransfers")
+            if isinstance(transfers_data, dict)
+            else []
+        ) or []
+
+        if not rows and isinstance(transfers_data, dict):
+            for group_name in (
+                "Players in",
+                "Players out",
+                "Contract extension",
+            ):
+                group = transfers_data.get(group_name) or []
+                if isinstance(group, list):
+                    rows.extend(group)
+
+        if not rows:
+            tab_data = await self._team_data(team_id, "transfers")
+            tab_root = tab_data.get("transfers") or tab_data
+            tab_data_root = (
+                tab_root.get("data")
+                if isinstance(tab_root, dict)
+                and isinstance(tab_root.get("data"), dict)
+                else tab_root
+            )
+            rows = (
+                tab_data_root.get("allTransfers")
+                if isinstance(tab_data_root, dict)
+                else []
+            ) or []
+
+        # The Football Hub frontend was built around API-Football's transfer
+        # response: one player object containing a nested transfers list.
+        grouped: dict[str, dict] = {}
+        seen = set()
+
+        for item in rows[:100]:
+            if not isinstance(item, dict):
+                continue
+
+            player_id = item.get("playerId") or item.get("id")
+            player_name = item.get("name") or item.get("playerName")
+            if not player_name:
+                continue
+
+            from_name = item.get("fromClubFullName") or item.get("fromClub")
+            to_name = item.get("toClubFullName") or item.get("toClub")
+            transfer_date = item.get("transferDate") or item.get("fromDate")
+
+            transfer_type = item.get("transferType")
+            if isinstance(transfer_type, dict):
+                transfer_type = (
+                    transfer_type.get("text")
+                    or transfer_type.get("localizationKey")
+                )
+
+            fee_data = item.get("fee")
+            fee_text = None
+            fee_value = None
+            if isinstance(fee_data, dict):
+                fee_text = (
+                    fee_data.get("feeText")
+                    or fee_data.get("localizedFeeText")
+                )
+                fee_value = fee_data.get("value")
+            elif fee_data not in (None, ""):
+                fee_text = str(fee_data)
+
+            if item.get("contractExtension"):
+                transfer_type = "Contract extension"
+            elif item.get("onLoan"):
+                transfer_type = "Loan"
+            elif not transfer_type:
+                transfer_type = fee_text or "Transfer"
+
+            dedupe = (
+                str(player_id or player_name),
+                str(from_name or ""),
+                str(to_name or ""),
+                str(transfer_date or ""),
+            )
+            if dedupe in seen:
+                continue
+            seen.add(dedupe)
+
+            key = str(player_id or player_name)
+            record = grouped.setdefault(
+                key,
+                {
+                    "player": {
+                        "id": player_id,
+                        "name": player_name,
+                        "photo": self._player_photo(player_id),
+                    },
+                    "update": item.get("transferDate"),
+                    "transfers": [],
+                },
+            )
+
+            record["transfers"].append({
+                "date": transfer_date,
+                "type": transfer_type,
+                "fee": fee_text,
+                "fee_value": fee_value,
+                "on_loan": bool(item.get("onLoan")),
+                "contract_extension": bool(item.get("contractExtension")),
+                "teams": {
+                    "in": {
+                        "id": item.get("toClubId"),
+                        "name": to_name,
+                        "logo": self._logo(item.get("toClubId")),
+                    },
+                    "out": {
+                        "id": item.get("fromClubId"),
+                        "name": from_name,
+                        "logo": self._logo(item.get("fromClubId")),
+                    },
+                },
             })
 
-            ttl = {
-                "profile": PROFILE_TTL,
-                "manager": MANAGER_TTL,
-                "squad": SQUAD_TTL,
-                "transfers": TRANSFERS_TTL,
-                "injuries": INJURIES_TTL,
-            }[section]
-            if self._fresh(record, section, ttl) and record.get(section) not in (None, "", [], {}):
-                return record
+        output = list(grouped.values())
+        _LOGGER.warning(
+            "FM transfers parsed for team %s: %s players / %s transfers",
+            team_id,
+            len(output),
+            sum(len(item.get("transfers") or []) for item in output),
+        )
+        return output
 
-            params = {"id": team_id, "ccode3": self.ccode3}
-            if section == "squad" or section == "injuries":
-                params["tab"] = "squad"
-            elif section == "transfers":
-                params["tab"] = "transfers"
+    async def get_team_players(self, team_id, league_id, season, page=1):
+        squad = await self.get_squad(team_id)
+        if not squad:
+            return []
+        team = squad[0].get("team") or {}
+        return [{
+            "player": {
+                "id": player.get("id"),
+                "name": player.get("name"),
+                "age": player.get("age"),
+                "photo": player.get("photo"),
+            },
+            "statistics": [{
+                "team": team,
+                "games": {
+                    "position": player.get("position"),
+                    "number": player.get("number"),
+                },
+                "goals": {"total": 0, "assists": 0},
+            }],
+        } for player in squad[0].get("players", [])]
 
-            response = await self._get("api/data/teams", params)
-            if not response:
-                return record
+    async def get_top_yellow_cards(self, league_id, season):
+        return await self._league_players(league_id, "yellow")
 
-            if section == "profile":
-                value = self._profile_from(response)
-            elif section == "manager":
-                value = self._manager_from(response, record["name"])
-            elif section == "squad":
-                value = self._squad_from(response, record["name"])
-            elif section == "transfers":
-                value = self._transfers_from(response)
-            else:
-                value = self._injuries_from(response)
+    async def get_top_red_cards(self, league_id, season):
+        return await self._league_players(league_id, "red")
 
-            if value not in (None, "", [], {}):
-                record[section] = value
-                record["updated"][section] = self._now()
-                await self._save()
+    async def get_head_to_head(self, team_id, opponent_id):
+        matches = []
+        for _, value in self._memory.values():
+            if not isinstance(value, list):
+                continue
+            for item in value:
+                if not isinstance(item, dict):
+                    continue
+                teams = item.get("teams") or {}
+                ids = {
+                    str((teams.get("home") or {}).get("id")),
+                    str((teams.get("away") or {}).get("id")),
+                }
+                if ids == {str(team_id), str(opponent_id)}:
+                    matches.append(item)
+        return matches[-10:]
 
-            return record
+    async def get_prediction(self, fixture_id):
+        data = await self._match_details(fixture_id)
+        content = data.get("content") or {}
+        prediction = content.get("prediction") or content.get("betting") or {}
+        return [prediction] if prediction else []
 
-    async def get_team(self, team_name: str) -> dict:
-        record = await self._refresh(team_name, "profile")
-        return record.get("profile") or {}
+    async def get_trophies_for_players(self, player_ids):
+        return []
 
-    async def get_coach(self, team_name: str) -> list[dict]:
-        record = await self._refresh(team_name, "manager")
-        return record.get("manager") or []
+    async def get_trophies_for_coach(self, coach_id):
+        return []
 
-    async def get_squad(self, team_name: str) -> list[dict]:
-        record = await self._refresh(team_name, "squad")
-        return record.get("squad") or []
-
-    async def get_injuries(self, team_name: str) -> list[dict]:
-        record = await self._refresh(team_name, "injuries")
-        return record.get("injuries") or []
-
-    async def get_transfers(self, team_name: str) -> list[dict]:
-        record = await self._refresh(team_name, "transfers")
-        return record.get("transfers") or []
+    async def get_sidelined_players(self, player_ids):
+        return []
