@@ -371,7 +371,20 @@ class FMProvider:
         table_rows = []
         table = data.get("table") or {}
         if isinstance(table, list):
-            table_rows = table
+            # Team responses wrap the league table as
+            # table[].data.table.all, while league responses may return rows
+            # directly. Support both without mistaking the wrapper for a team.
+            for section in table:
+                section_data = section.get("data") if isinstance(section, dict) else None
+                section_table = section_data.get("table") if isinstance(section_data, dict) else None
+                if isinstance(section_table, dict) and isinstance(section_table.get("all"), list):
+                    table_rows = section_table["all"]
+                    break
+            if not table_rows and table and all(
+                isinstance(item, dict) and (item.get("teamId") or item.get("id"))
+                for item in table
+            ):
+                table_rows = table
         elif isinstance(table, dict):
             table_rows = (
                 table.get("all")
@@ -598,8 +611,10 @@ class FMProvider:
                 "name": name,
                 "code": details.get("shortName"),
                 "country": address.get("addressCountry") or details.get("country"),
-                "founded": None,
+                "founded": details.get("founded") or details.get("foundedYear"),
                 "logo": sports.get("logo") or self._logo(team_id),
+                "primary_league": details.get("primaryLeagueName"),
+                "latest_season": details.get("latestSeason"),
             },
             "venue": {
                 "name": location.get("name"),
@@ -820,9 +835,10 @@ class FMProvider:
                     members = [group]
                 for player in members:
                     player_id = player.get("id") or player.get("playerId")
-                    position = player.get("position")
+                    position = player.get("position") or player.get("role")
                     if isinstance(position, dict):
-                        position = position.get("label") or position.get("name")
+                        position = position.get("label") or position.get("name") or position.get("fallback")
+                    injury = player.get("injury") if isinstance(player.get("injury"), dict) else {}
                     players.append({
                         "id": player_id,
                         "name": player.get("name") or player.get("playerName"),
@@ -830,6 +846,16 @@ class FMProvider:
                         "number": player.get("shirtNumber") or player.get("number"),
                         "position": position,
                         "photo": self._player_photo(player_id),
+                        "nationality": player.get("cname") or player.get("ccode"),
+                        "height": player.get("height"),
+                        "date_of_birth": player.get("dateOfBirth"),
+                        "transfer_value": player.get("transferValue"),
+                        "goals": player.get("goals") or 0,
+                        "assists": player.get("assists") or 0,
+                        "yellow_cards": player.get("ycards") or 0,
+                        "red_cards": player.get("rcards") or 0,
+                        "injured": bool(player.get("injured") or injury),
+                        "expected_return": injury.get("expectedReturn"),
                     })
         return [{
             "team": {
@@ -844,7 +870,13 @@ class FMProvider:
         """Return the latest manager from FM coach history."""
         data = await self._team_data(team_id)
         overview = data.get("overview") or {}
-        history = overview.get("coachHistory") or []
+        history_root = data.get("history") or {}
+        history = (
+            history_root.get("coachHistory")
+            or data.get("coachHistory")
+            or overview.get("coachHistory")
+            or []
+        )
 
         if isinstance(history, dict):
             history = (
@@ -870,6 +902,22 @@ class FMProvider:
         coach = valid[-1]
         coach_id = coach.get("id") or coach.get("coachId")
 
+        same_coach = [item for item in valid if str(item.get("id") or item.get("coachId")) == str(coach_id)]
+        career = [{
+            "team": {
+                "id": team_id,
+                "name": await self._team_name(team_id),
+            },
+            "start": item.get("startDate") or item.get("seasonStart") or item.get("season"),
+            "end": item.get("endDate") or item.get("seasonEnd"),
+            "league": item.get("leagueName"),
+            "wins": item.get("win"),
+            "draws": item.get("draw"),
+            "losses": item.get("loss"),
+            "points_per_game": item.get("pointsPerGame"),
+            "win_percentage": item.get("winPercentage"),
+        } for item in same_coach]
+
         return [{
             "id": coach_id,
             "name": coach.get("name") or coach.get("coachName"),
@@ -880,18 +928,13 @@ class FMProvider:
                 or coach.get("countryName")
             ),
             "photo": self._player_photo(coach_id),
-            "career": [{
-                "team": {
-                    "id": team_id,
-                    "name": await self._team_name(team_id),
-                },
-                "start": (
-                    coach.get("startDate")
-                    or coach.get("seasonStart")
-                    or coach.get("season")
-                ),
-                "end": coach.get("endDate") or coach.get("seasonEnd"),
-            }],
+            "career": career,
+            "current_season": coach.get("season"),
+            "wins": coach.get("win"),
+            "draws": coach.get("draw"),
+            "losses": coach.get("loss"),
+            "points_per_game": coach.get("pointsPerGame"),
+            "win_percentage": coach.get("winPercentage"),
         }]
 
     async def get_injuries(self, team_id, season):
@@ -900,8 +943,9 @@ class FMProvider:
         for node in self._walk(data):
             if not isinstance(node, dict):
                 continue
+            injury = node.get("injury") if isinstance(node.get("injury"), dict) else {}
             text = " ".join(str(node.get(k) or "") for k in ("injury", "status", "reason", "availability")).casefold()
-            if not any(word in text for word in ("injur", "suspend", "doubt", "illness", "unavailable")):
+            if not node.get("injured") and not injury and not any(word in text for word in ("injur", "suspend", "doubt", "illness", "unavailable")):
                 continue
             player_id = node.get("id") or node.get("playerId")
             name = node.get("name") or node.get("playerName")
@@ -909,9 +953,10 @@ class FMProvider:
                 output.append({
                     "player": {"id": player_id, "name": name, "photo": self._player_photo(player_id)},
                     "team": {"id": team_id},
-                    "type": node.get("status") or node.get("availability"),
-                    "reason": node.get("injury") or node.get("reason"),
-                    "date": node.get("expectedReturn") or node.get("returnDate"),
+                    "type": node.get("status") or node.get("availability") or "Injured",
+                    "reason": injury.get("type") or injury.get("description") or node.get("reason") or "Injured",
+                    "date": injury.get("expectedReturn") or node.get("expectedReturn") or node.get("returnDate"),
+                    "fixture": {"date": injury.get("expectedReturn") or node.get("expectedReturn") or node.get("returnDate")},
                 })
         return output
 
@@ -1073,9 +1118,22 @@ class FMProvider:
                     "position": player.get("position"),
                     "number": player.get("number"),
                 },
-                "goals": {"total": 0, "assists": 0},
+                "goals": {"total": player.get("goals") or 0, "assists": player.get("assists") or 0},
+                "cards": {"yellow": player.get("yellow_cards") or 0, "red": player.get("red_cards") or 0},
             }],
         } for player in squad[0].get("players", [])]
+
+    async def get_team_history(self, team_id):
+        """Return club trophies, historical league finishes and colours."""
+        data = await self._team_data(team_id)
+        history = data.get("history") or {}
+        historical = history.get("historicalTableData") or {}
+        return {
+            "trophies": history.get("trophyList") or [],
+            "league_history": historical.get("ranks") or [],
+            "team_colours": history.get("teamColors") or history.get("teamColorMap") or {},
+            "coach_history": history.get("coachHistory") or [],
+        }
 
     async def get_top_yellow_cards(self, league_id, season):
         return await self._league_players(league_id, "yellow")
