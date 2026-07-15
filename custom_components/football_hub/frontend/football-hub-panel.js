@@ -5,6 +5,24 @@ class FootballHubPanel extends HTMLElement {
     super();
     this.attachShadow({ mode: "open" });
     this._hass = null;
+    this._selectInteracting = false;
+    this._pendingHassRender = false;
+    this._selectSafetyTimer = null;
+    this.shadowRoot.addEventListener("pointerdown", (event) => {
+      if (event.target?.tagName === "SELECT") this._beginSelectInteraction();
+    }, true);
+    this.shadowRoot.addEventListener("focusin", (event) => {
+      if (event.target?.tagName === "SELECT") this._beginSelectInteraction();
+    }, true);
+    this.shadowRoot.addEventListener("change", (event) => {
+      if (event.target?.tagName === "SELECT") queueMicrotask(() => this._endSelectInteraction());
+    }, true);
+    this.shadowRoot.addEventListener("focusout", (event) => {
+      if (event.target?.tagName !== "SELECT") return;
+      setTimeout(() => {
+        if (this.shadowRoot.activeElement?.tagName !== "SELECT") this._endSelectInteraction();
+      }, 0);
+    }, true);
     const savedTab = localStorage.getItem("football_hub_active_page") || "overview";
     this._activeTab = ["overview", "live", "fixtures", "results", "table", "players", "my-club", "supporters", "settings"].includes(savedTab)
       ? savedTab
@@ -32,7 +50,27 @@ class FootballHubPanel extends HTMLElement {
     if (this._pendingCompetition && this._statusInfo().competition_key === this._pendingCompetition) {
       this._pendingCompetition = "";
     }
+    if (this._selectInteracting || this.shadowRoot.activeElement?.tagName === "SELECT") {
+      this._pendingHassRender = true;
+      return;
+    }
     this._render();
+  }
+
+  _beginSelectInteraction() {
+    this._selectInteracting = true;
+    clearTimeout(this._selectSafetyTimer);
+    this._selectSafetyTimer = setTimeout(() => this._endSelectInteraction(), 15000);
+  }
+
+  _endSelectInteraction() {
+    this._selectInteracting = false;
+    clearTimeout(this._selectSafetyTimer);
+    this._selectSafetyTimer = null;
+    if (this._pendingHassRender) {
+      this._pendingHassRender = false;
+      this._render();
+    }
   }
 
   set panel(panel) {
