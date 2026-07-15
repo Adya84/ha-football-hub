@@ -1,4 +1,4 @@
-"""Free ESPN football data provider for Football Hub."""
+"""Free ESPN football data provider for Football Hub with FotMob enrichment."""
 from __future__ import annotations
 
 from datetime import datetime
@@ -7,6 +7,8 @@ from typing import Any
 
 import aiohttp
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
+
+from .fotmob import FotMobProvider
 
 ESPN_SITE_BASE = "https://site.api.espn.com/apis/site/v2/sports/soccer"
 ESPN_STANDINGS_BASE = "https://site.web.api.espn.com/apis/v2/sports/soccer"
@@ -20,19 +22,50 @@ ESPN_LEAGUES = {
 
 
 class FootballHubAPIError(Exception):
-    """ESPN provider error."""
+    """Football Hub provider error."""
 
 
 class FootballHubAPI:
-    """Expose ESPN data in Football Hub's existing API-Football-shaped model."""
+    """Expose ESPN data in Football Hub's existing API-Football-shaped model.
+
+    FotMob is used only to fill missing club data such as stadium, manager,
+    squad images, injuries and transfers. ESPN remains the main provider.
+    """
 
     def __init__(self, hass, api_key: str | None = None):
         self.hass = hass
         self.session = async_get_clientsession(hass)
+        self.fotmob = FotMobProvider(self.session)
         self._scoreboard_cache: dict[tuple[int, int], tuple[float, list[dict]]] = {}
         self._fixture_leagues: dict[str, str] = {}
         self._team_leagues: dict[str, str] = {}
         self._team_cache: dict[str, tuple[float, dict]] = {}
+        self._team_names: dict[str, str] = {}
+
+    @staticmethod
+    def _missing(value: Any) -> bool:
+        return value in (None, "", [], {})
+
+    @classmethod
+    def _fill_missing(cls, primary: dict, fallback: dict) -> dict:
+        for key, value in (fallback or {}).items():
+            if isinstance(value, dict):
+                base = primary.setdefault(key, {})
+                if isinstance(base, dict):
+                    cls._fill_missing(base, value)
+                elif cls._missing(base):
+                    primary[key] = value
+            elif cls._missing(primary.get(key)) and not cls._missing(value):
+                primary[key] = value
+        return primary
+
+    async def _safe_fotmob(self, method: str, team_name: str):
+        if not team_name:
+            return None
+        try:
+            return await getattr(self.fotmob, method)(team_name)
+        except Exception:
+            return None
 
     async def _get(self, url: str, params: dict[str, Any] | None = None) -> dict:
         async with self.session.get(
@@ -166,6 +199,11 @@ class FootballHubAPI:
             fixture_id = (item.get("fixture") or {}).get("id")
             if fixture_id is not None:
                 self._fixture_leagues[str(fixture_id)] = slug
+            for side in ("home", "away"):
+                team = ((item.get("teams") or {}).get(side) or {})
+                if team.get("id") is not None and team.get("name"):
+                    self._team_names[str(team.get("id"))] = team.get("name")
+                    self._team_leagues[str(team.get("id"))] = slug
         self._scoreboard_cache[key] = (monotonic(), fixtures)
         return fixtures
 
@@ -209,6 +247,8 @@ class FootballHubAPI:
             team = wrapper.get("team") or {}
             if team.get("id") is not None:
                 self._team_leagues[str(team.get("id"))] = slug
+                if team.get("displayName"):
+                    self._team_names[str(team.get("id"))] = team.get("displayName")
             output.append({"team": {"id": team.get("id"), "name": team.get("displayName"), "code": team.get("abbreviation"), "country": None, "founded": None, "logo": self._logo(team)}, "venue": {}})
         return output
 
@@ -224,6 +264,9 @@ class FootballHubAPI:
                 data["roster_data"] = await self._get(f"{ESPN_SITE_BASE}/{slug}/teams/{team_id}/roster")
             except FootballHubAPIError:
                 pass
+        team = self._team_object(data)
+        if team.get("displayName") or team.get("name"):
+            self._team_names[key] = team.get("displayName") or team.get("name")
         self._team_leagues[key] = slug
         self._team_cache[key] = (monotonic(), data)
         return data
@@ -259,12 +302,13 @@ class FootballHubAPI:
     async def get_team(self, team_id, league_id):
         data = await self._team_detail(team_id, league_id)
         team = self._team_object(data)
+        team_name = team.get("displayName") or team.get("name") or self._team_names.get(str(team_id))
         venue = team.get("venue") or data.get("venue") or {}
         address = venue.get("address") or {}
-        return [{
+        profile = {
             "team": {
                 "id": team.get("id") or team_id,
-                "name": team.get("displayName") or team.get("name"),
+                "name": team_name,
                 "code": team.get("abbreviation"),
                 "country": address.get("country") or team.get("country"),
                 "founded": team.get("founded"),
@@ -278,7 +322,13 @@ class FootballHubAPI:
                 "surface": venue.get("grass") or venue.get("surface"),
                 "image": ((venue.get("images") or [{}])[0] or {}).get("href") if venue.get("images") else None,
             },
-        }]
+        }
+
+        fallback = await self._safe_fotmob("get_team", team_name)
+        if isinstance(fallback, dict):
+            self._fill_missing(profile, fallback)
+
+        return [profile]
 
     async def _summary(self, fixture_id):
         slug = self._fixture_leagues.get(str(fixture_id), "all")
@@ -313,10 +363,16 @@ class FootballHubAPI:
         for roster in data.get("rosters", []) or []:
             team = roster.get("team") or {}
             players = []
-            for item in roster.get("roster", []) or []:
+            source_roster = roster.get("roster", []) or []
+            for item in source_roster:
                 athlete = item.get("athlete") or {}
                 players.append({"player": {"id": athlete.get("id"), "name": athlete.get("displayName"), "number": item.get("jersey"), "pos": (item.get("position") or {}).get("abbreviation")}})
-            output.append({"team": {"id": team.get("id"), "name": team.get("displayName"), "logo": self._logo(team)}, "formation": roster.get("formation"), "startXI": [p for p, source in zip(players, roster.get("roster", []), strict=False) if source.get("starter")], "substitutes": [p for p, source in zip(players, roster.get("roster", []), strict=False) if not source.get("starter")]})
+            output.append({
+                "team": {"id": team.get("id"), "name": team.get("displayName"), "logo": self._logo(team)},
+                "formation": roster.get("formation"),
+                "startXI": [p for p, source in zip(players, source_roster) if source.get("starter")],
+                "substitutes": [p for p, source in zip(players, source_roster) if not source.get("starter")],
+            })
         return output
 
     async def get_top_scorers(self, league_id, season):
@@ -382,10 +438,14 @@ class FootballHubAPI:
             "goals": {"for": {"total": {"total": goals_for}}, "against": {"total": {"total": goals_against}}},
             "clean_sheet": {"total": clean_sheets},
         }
-    async def get_team_seasons(self, team_id): return []
+
+    async def get_team_seasons(self, team_id):
+        return []
+
     async def get_squad(self, team_id):
         data = await self._team_detail(team_id)
         team = self._team_object(data)
+        team_name = team.get("displayName") or team.get("name") or self._team_names.get(str(team_id))
         players = []
         for athlete in self._athletes(data):
             position = athlete.get("position") or {}
@@ -402,11 +462,25 @@ class FootballHubAPI:
                 "position": position.get("displayName") or position.get("abbreviation") if isinstance(position, dict) else position,
                 "photo": photo,
             })
-        return [{"team": {"id": team.get("id") or team_id, "name": team.get("displayName") or team.get("name"), "logo": self._logo(team)}, "players": players}] if players else []
+
+        fotmob_squad = await self._safe_fotmob("get_squad", team_name)
+        if isinstance(fotmob_squad, list) and fotmob_squad:
+            fallback_players = ((fotmob_squad[0] or {}).get("players") or [])
+            if not players:
+                players = fallback_players
+            else:
+                by_name = {str(p.get("name", "")).casefold(): p for p in fallback_players}
+                for player in players:
+                    fp = by_name.get(str(player.get("name", "")).casefold())
+                    if fp:
+                        self._fill_missing(player, fp)
+
+        return [{"team": {"id": team.get("id") or team_id, "name": team_name, "logo": self._logo(team)}, "players": players}] if players else []
 
     async def get_coach(self, team_id):
         data = await self._team_detail(team_id)
         team = self._team_object(data)
+        team_name = team.get("displayName") or team.get("name") or self._team_names.get(str(team_id))
         coaches = data.get("coaches") or team.get("coaches") or []
         if isinstance(data.get("coach") or team.get("coach"), dict):
             coaches = [data.get("coach") or team.get("coach"), *coaches]
@@ -421,15 +495,24 @@ class FootballHubAPI:
                 "age": coach.get("age"),
                 "nationality": coach.get("citizenship") or coach.get("nationality"),
                 "photo": headshot.get("href") if isinstance(headshot, dict) else headshot,
-                "career": [{"team": {"id": team.get("id") or team_id, "name": team.get("displayName") or team.get("name")}, "start": None, "end": None}],
+                "career": [{"team": {"id": team.get("id") or team_id, "name": team_name}, "start": None, "end": None}],
             })
-        return [item for item in output if item.get("name")]
+        output = [item for item in output if item.get("name")]
+
+        fotmob_coaches = await self._safe_fotmob("get_coach", team_name)
+        if isinstance(fotmob_coaches, list) and fotmob_coaches:
+            if not output:
+                return fotmob_coaches
+            self._fill_missing(output[0], fotmob_coaches[0])
+
+        return output
+
     async def get_injuries(self, team_id, season):
         slug = self._team_leagues.get(str(team_id), "all")
         try:
             data = await self._get(f"{ESPN_SITE_BASE}/{slug}/teams/{team_id}/injuries")
         except FootballHubAPIError:
-            return []
+            data = {}
         injuries = data.get("injuries") or data.get("items") or []
         output = []
         for record in injuries:
@@ -441,16 +524,46 @@ class FootballHubAPI:
                 "reason": record.get("details") or record.get("description") or (record.get("status") or {}).get("name"),
                 "date": record.get("date"),
             })
-        return [item for item in output if item.get("player", {}).get("name")]
-    async def get_transfers(self, team_id): return []
+        output = [item for item in output if item.get("player", {}).get("name")]
+
+        if not output:
+            team_name = self._team_names.get(str(team_id))
+            if not team_name:
+                try:
+                    team = self._team_object(await self._team_detail(team_id))
+                    team_name = team.get("displayName") or team.get("name")
+                except Exception:
+                    team_name = None
+            fotmob_injuries = await self._safe_fotmob("get_injuries", team_name)
+            if isinstance(fotmob_injuries, list):
+                output = fotmob_injuries
+
+        return output
+
+    async def get_transfers(self, team_id):
+        team_name = self._team_names.get(str(team_id))
+        if not team_name:
+            try:
+                team = self._team_object(await self._team_detail(team_id))
+                team_name = team.get("displayName") or team.get("name")
+            except Exception:
+                team_name = None
+        transfers = await self._safe_fotmob("get_transfers", team_name)
+        return transfers if isinstance(transfers, list) else []
+
     async def get_team_players(self, team_id, league_id, season, page=1):
         squad = await self.get_squad(team_id)
         if not squad:
             return []
         team = squad[0].get("team") or {}
         return [{"player": {"id": player.get("id"), "name": player.get("name"), "age": player.get("age"), "photo": player.get("photo")}, "statistics": [{"team": team, "games": {"position": player.get("position"), "number": player.get("number")}, "goals": {"total": 0, "assists": 0}}]} for player in squad[0].get("players", [])]
-    async def get_top_yellow_cards(self, league_id, season): return []
-    async def get_top_red_cards(self, league_id, season): return []
+
+    async def get_top_yellow_cards(self, league_id, season):
+        return []
+
+    async def get_top_red_cards(self, league_id, season):
+        return []
+
     async def get_head_to_head(self, team_id, opponent_id):
         matches = []
         wanted = {str(team_id), str(opponent_id)}
@@ -461,7 +574,15 @@ class FootballHubAPI:
                 if ids == wanted:
                     matches.append(item)
         return matches[-10:]
-    async def get_prediction(self, fixture_id): return []
-    async def get_trophies_for_players(self, player_ids): return []
-    async def get_trophies_for_coach(self, coach_id): return []
-    async def get_sidelined_players(self, player_ids): return []
+
+    async def get_prediction(self, fixture_id):
+        return []
+
+    async def get_trophies_for_players(self, player_ids):
+        return []
+
+    async def get_trophies_for_coach(self, coach_id):
+        return []
+
+    async def get_sidelined_players(self, player_ids):
+        return []
