@@ -30,6 +30,7 @@ CLUB_STATS_TTL = 12 * 60 * 60
 CLUB_SQUAD_TTL = 7 * 24 * 60 * 60
 CLUB_INJURIES_TTL = 4 * 60 * 60
 CLUB_TRANSFERS_TTL = 24 * 60 * 60
+CLUB_HISTORY_TTL = 7 * 24 * 60 * 60
 LIVE_RATE_LIMIT_BACKOFF = 30
 PRE_LIVE_WINDOW = timedelta(minutes=5)
 POST_LIVE_WINDOW = timedelta(hours=3, minutes=15)
@@ -234,6 +235,7 @@ class FootballHubCoordinator(DataUpdateCoordinator):
                 ("club_coach", CLUB_PROFILE_TTL, lambda: self.api.get_coach(team_id)),
                 ("club_injuries", CLUB_INJURIES_TTL, lambda: self.api.get_injuries(team_id, self.season)),
                 ("club_transfers", CLUB_TRANSFERS_TTL, lambda: self.api.get_transfers(team_id)),
+                ("club_history", CLUB_HISTORY_TTL, lambda: self.api.get_team_history(team_id)),
                 ("club_players", CLUB_STATS_TTL, lambda: self.api.get_team_players(team_id, league_id, self.season)),
                 ("club_yellow_cards", PLAYERS_TTL, lambda: self.api.get_top_yellow_cards(league_id, self.season)),
                 ("club_red_cards", PLAYERS_TTL, lambda: self.api.get_top_red_cards(league_id, self.season)),
@@ -384,6 +386,7 @@ class FootballHubCoordinator(DataUpdateCoordinator):
             "club_coach": self._cache.get("club_coach", []),
             "club_injuries": self._cache.get("club_injuries", []),
             "club_transfers": self._cache.get("club_transfers", []),
+            "club_history": self._cache.get("club_history", {}),
             "club_players": self._cache.get("club_players", []),
             "club_yellow_cards": self._cache.get("club_yellow_cards", []),
             "club_red_cards": self._cache.get("club_red_cards", []),
