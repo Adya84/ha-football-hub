@@ -45,8 +45,8 @@ FM_LEAGUES = {
 }
 
 LEAGUE_TTL = 6 * 60 * 60
-TODAY_TTL = 30
-MATCH_TTL_LIVE = 15
+TODAY_TTL = 60
+MATCH_TTL_LIVE = 60
 MATCH_TTL_FINISHED = 24 * 60 * 60
 TEAM_PROFILE_TTL = 30 * 24 * 60 * 60
 TEAM_SQUAD_TTL = 7 * 24 * 60 * 60
@@ -75,6 +75,7 @@ class FMProvider:
         self._load_lock = asyncio.Lock()
         self._save_lock = asyncio.Lock()
         self._memory: dict[str, tuple[float, Any]] = {}
+        self._match_locks: dict[str, asyncio.Lock] = {}
         self._team_names: dict[str, str] = {}
         self._fixture_context: dict[str, dict] = {}
 
@@ -666,12 +667,20 @@ class FMProvider:
         cached = self._cache_get(key, MATCH_TTL_LIVE)
         if cached is not None:
             return cached
-        data = await self._get_first(("api/data/matchDetails", "api/matchDetails"), {"matchId": fixture_id, "ccode3": "GBR"})
-        finished = bool(((data.get("header") or {}).get("status") or {}).get("finished"))
-        self._memory[key] = (monotonic(), data)
-        if finished:
-            self._memory[f"{key}:finished"] = (monotonic(), data)
-        return data
+        lock = self._match_locks.setdefault(str(fixture_id), asyncio.Lock())
+        async with lock:
+            # Events, statistics and line-ups are requested concurrently by
+            # the coordinator. Recheck after acquiring the shared lock so all
+            # three consumers reuse one FM match-details response.
+            cached = self._cache_get(key, MATCH_TTL_LIVE)
+            if cached is not None:
+                return cached
+            data = await self._get_first(("api/data/matchDetails", "api/matchDetails"), {"matchId": fixture_id, "ccode3": "GBR"})
+            finished = bool(((data.get("header") or {}).get("status") or {}).get("finished"))
+            self._memory[key] = (monotonic(), data)
+            if finished:
+                self._memory[f"{key}:finished"] = (monotonic(), data)
+            return data
 
     async def get_fixture_events(self, fixture_id):
         data = await self._match_details(fixture_id)
