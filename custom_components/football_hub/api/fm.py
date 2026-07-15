@@ -608,7 +608,7 @@ class FMProvider:
         cached = self._cache_get(key, ttl)
         if cached is not None:
             return cached
-        cache_variant = "squad-v2" if tab == "squad" else (tab or "overview")
+        cache_variant = "squad-v3" if tab == "squad" else (tab or "overview")
         persistent_key = f"{team_id}:{cache_variant}"
         persisted = await self._persistent_get("teams", persistent_key, ttl)
         if isinstance(persisted, dict):
@@ -873,40 +873,27 @@ class FMProvider:
         players = []
         if isinstance(groups, list):
             for group in groups:
-                group_title = self._norm(
-                    group.get("title")
-                    or group.get("name")
-                    or group.get("groupName")
-                    or ""
-                )
-                player_group = any(
-                    label in group_title
-                    for label in (
-                        "goalkeeper", "keeper", "defender", "back",
-                        "midfielder", "midfield", "attacker", "forward",
-                        "striker", "winger",
-                    )
-                )
-                staff_group = any(
-                    label in group_title
-                    for label in ("coach", "manager", "staff", "technical")
-                )
-                if staff_group or (group_title and not player_group):
+                if not isinstance(group, dict):
                     continue
                 members = group.get("members") or group.get("players") or []
                 if not members and (group.get("id") or group.get("playerId")):
                     members = [group]
                 for player in members:
-                    role = player.get("role") or {}
-                    role_text = self._norm(
-                        role.get("fallback") if isinstance(role, dict) else role
-                    )
-                    if any(label in role_text for label in ("coach", "manager", "staff")):
+                    if not isinstance(player, dict):
                         continue
+                    role = player.get("role") or {}
                     player_id = player.get("id") or player.get("playerId")
                     position = player.get("position") or role
                     if isinstance(position, dict):
                         position = position.get("label") or position.get("name") or position.get("fallback")
+                    role_value = (
+                        role.get("fallback") or role.get("label") or role.get("name") or role.get("key")
+                        if isinstance(role, dict)
+                        else role
+                    )
+                    staff_text = self._norm(f"{role_value or ''} {position or ''}")
+                    if any(label in staff_text for label in ("coach", "manager", "staff")):
+                        continue
                     injury = player.get("injury") if isinstance(player.get("injury"), dict) else {}
                     players.append({
                         "id": player_id,
