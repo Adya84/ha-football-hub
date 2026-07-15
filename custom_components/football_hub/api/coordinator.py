@@ -18,12 +18,12 @@ from .api import FootballHubAPI
 
 _LOGGER = logging.getLogger(__name__)
 
-LIVE_TTL = 10
+LIVE_TTL = 60
 FIXTURES_TTL = 6 * 60 * 60
 STANDINGS_TTL = 6 * 60 * 60
 PLAYERS_TTL = 12 * 60 * 60
-LIVE_EVENTS_TTL = 10
-LIVE_STATISTICS_TTL = 15
+LIVE_EVENTS_TTL = 60
+LIVE_STATISTICS_TTL = 60
 LINEUPS_TTL = 5 * 60
 CLUB_PROFILE_TTL = 24 * 60 * 60
 CLUB_STATS_TTL = 12 * 60 * 60
@@ -53,8 +53,12 @@ class FootballHubCoordinator(DataUpdateCoordinator):
             else "premier_league"
         )
         self.competition = COMPETITIONS[self.competition_key]
+        requested_cup = entry.options.get("active_cup", "")
+        self.cup_key = requested_cup if requested_cup in COMPETITIONS and COMPETITIONS[requested_cup].get("type") == "cup" else ""
+        self.cup_competition = COMPETITIONS.get(self.cup_key)
         self.season = entry.data["season"]
         self.engine = FootballHubEngine()
+        self.cup_engine = FootballHubEngine()
         self._cache: dict[str, Any] = {}
         self._updated_at: dict[str, float] = {}
         self._live_rate_limited_until = 0.0
@@ -161,6 +165,27 @@ class FootballHubCoordinator(DataUpdateCoordinator):
         self.async_set_updated_data(empty_data)
         await self.async_request_refresh()
 
+    async def async_set_cup(self, competition_key: str) -> None:
+        """Select a cup without changing the active domestic league."""
+        competition = COMPETITIONS.get(competition_key)
+        if not competition or competition.get("type") != "cup":
+            raise ValueError(f"Unknown cup competition: {competition_key}")
+        if competition_key == self.cup_key and self._cache.get("cup_fixtures") is not None:
+            return
+        self.cup_key = competition_key
+        self.cup_competition = competition
+        for key in list(self._cache):
+            if key.startswith("cup_"):
+                self._cache.pop(key, None)
+                self._updated_at.pop(key, None)
+        self.cup_engine.update({"live": [], "fixtures": [], "standings": [], "top_scorers": [], "top_assists": []})
+        options = {**self.entry.options, "active_cup": competition_key}
+        self.hass.config_entries.async_update_entry(self.entry, options=options)
+        current = dict(self.data or {})
+        current.update({"cup_key": self.cup_key, "cup_fixtures": [], "cup_standings": []})
+        self.async_set_updated_data(current)
+        await self.async_request_refresh()
+
     async def async_set_supported_team(self, team: str) -> None:
         """Persist the team whose live match receives detailed API polling."""
         self.supported_team = str(team or "").strip()
@@ -220,6 +245,17 @@ class FootballHubCoordinator(DataUpdateCoordinator):
             requests.append(
                 ("top_assists", self.api.get_top_assists(league_id, self.season))
             )
+
+        # Cup datasets are independent so selecting a cup never replaces the
+        # active domestic league used by the main dashboard tabs.
+        if self.cup_competition:
+            cup_league_id = self.cup_competition["league_id"]
+            if self._is_stale("cup_fixtures", FIXTURES_TTL):
+                requests.append(("cup_fixtures", self.api.get_fixtures(cup_league_id, self.season)))
+            if self.cup_competition.get("has_table") and self._is_stale("cup_standings", STANDINGS_TTL):
+                requests.append(("cup_standings", self.api.get_standings(cup_league_id, self.season)))
+            if self._is_stale("cup_top_scorers", PLAYERS_TTL):
+                requests.append(("cup_top_scorers", self.api.get_top_scorers(cup_league_id, self.season)))
 
         team_id, opponent_id, next_fixture_id = self._club_context()
         if self.my_club and team_id:
@@ -367,6 +403,14 @@ class FootballHubCoordinator(DataUpdateCoordinator):
                     venue.setdefault("city", fixture_venue.get("city"))
                 break
 
+        self.cup_engine.update({
+            "live": [],
+            "fixtures": self._cache.get("cup_fixtures", []),
+            "standings": self._cache.get("cup_standings", []),
+            "top_scorers": self._cache.get("cup_top_scorers", []),
+            "top_assists": [],
+        })
+
         data = {
             "live": raw_live,
             "fixtures": self._cache.get("fixtures", []),
@@ -395,6 +439,10 @@ class FootballHubCoordinator(DataUpdateCoordinator):
             "club_player_trophies": self._cache.get("club_player_trophies", []),
             "club_coach_trophies": self._cache.get("club_coach_trophies", []),
             "club_sidelined": self._cache.get("club_sidelined", []),
+            "cup_key": self.cup_key,
+            "cup_fixtures": self._cache.get("cup_fixtures", []),
+            "cup_standings": self._cache.get("cup_standings", []),
+            "cup_top_scorers": self._cache.get("cup_top_scorers", []),
         }
         self.engine.update(data)
         return data
