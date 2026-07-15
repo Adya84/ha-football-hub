@@ -39,6 +39,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry, async_add_e
             FootballHubClubDataSensor(coordinator, entry, "club_coach", "My Club Coach"),
             FootballHubClubDataSensor(coordinator, entry, "club_injuries", "My Club Injuries"),
             FootballHubClubDataSensor(coordinator, entry, "club_transfers", "My Club Transfers"),
+            FootballHubClubDataSensor(coordinator, entry, "club_history", "My Club History"),
             FootballHubClubDataSensor(coordinator, entry, "club_players", "My Club Player Statistics"),
             FootballHubClubDataSensor(coordinator, entry, "club_yellow_cards", "My Club Yellow Cards"),
             FootballHubClubDataSensor(coordinator, entry, "club_red_cards", "My Club Red Cards"),
