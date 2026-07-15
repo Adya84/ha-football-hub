@@ -1,4 +1,4 @@
-const PANEL_VERSION = "0.7.1-my-club-data";
+const PANEL_VERSION = "0.7.3-espn-media-fallbacks";
 
 class FootballHubPanel extends HTMLElement {
   constructor() {
@@ -15,6 +15,10 @@ class FootballHubPanel extends HTMLElement {
     this._selectedLiveTeam = localStorage.getItem("football_hub_live_team") || "";
     this._selectedPrefix = localStorage.getItem("football_hub_selected_prefix") || "";
     this._selectedCountry = localStorage.getItem("football_hub_selected_country") || "";
+    const savedViewMode = localStorage.getItem("football_hub_view_mode") || "desktop";
+    this._viewMode = ["desktop", "tablet", "mobile"].includes(savedViewMode) ? savedViewMode : "desktop";
+    const savedLanguage = localStorage.getItem("football_hub_language") || "en";
+    this._language = ["en", "es", "de", "it", "fr", "nl", "pt", "tr"].includes(savedLanguage) ? savedLanguage : "en";
     this._selectedClub = localStorage.getItem("football_hub_my_club") || "";
     this._pendingCompetition = "";
     this._supporters = [];
@@ -255,6 +259,64 @@ class FootballHubPanel extends HTMLElement {
     this._render();
   }
 
+  _setViewMode(mode) {
+    this._viewMode = ["desktop", "tablet", "mobile"].includes(mode) ? mode : "desktop";
+    localStorage.setItem("football_hub_view_mode", this._viewMode);
+    this._render();
+  }
+
+  _setLanguage(language) {
+    this._language = ["en", "es", "de", "it", "fr", "nl", "pt", "tr"].includes(language) ? language : "en";
+    localStorage.setItem("football_hub_language", this._language);
+    this._render();
+  }
+
+  _t(key) {
+    const translations = {
+      en:{overview:"Overview",live:"Live",fixtures:"Fixtures",results:"Results",table:"Table",players:"Players",myClub:"My Club",supporters:"Supporters",settings:"Settings",country:"Country",league:"League",view:"View",desktop:"Desktop",tablet:"Tablet",mobile:"Mobile",language:"Language",chooseClub:"Choose your club"},
+      es:{overview:"Resumen",live:"En vivo",fixtures:"Partidos",results:"Resultados",table:"Clasificación",players:"Jugadores",myClub:"Mi club",supporters:"Seguidores",settings:"Ajustes",country:"País",league:"Liga",view:"Vista",desktop:"Escritorio",tablet:"Tableta",mobile:"Móvil",language:"Idioma",chooseClub:"Elige tu club"},
+      de:{overview:"Übersicht",live:"Live",fixtures:"Spielplan",results:"Ergebnisse",table:"Tabelle",players:"Spieler",myClub:"Mein Verein",supporters:"Unterstützer",settings:"Einstellungen",country:"Land",league:"Liga",view:"Ansicht",desktop:"Desktop",tablet:"Tablet",mobile:"Mobil",language:"Sprache",chooseClub:"Verein auswählen"},
+      it:{overview:"Panoramica",live:"Live",fixtures:"Partite",results:"Risultati",table:"Classifica",players:"Giocatori",myClub:"Il mio club",supporters:"Sostenitori",settings:"Impostazioni",country:"Paese",league:"Campionato",view:"Vista",desktop:"Desktop",tablet:"Tablet",mobile:"Mobile",language:"Lingua",chooseClub:"Scegli il tuo club"},
+      fr:{overview:"Aperçu",live:"Direct",fixtures:"Matchs",results:"Résultats",table:"Classement",players:"Joueurs",myClub:"Mon club",supporters:"Supporters",settings:"Réglages",country:"Pays",league:"Ligue",view:"Affichage",desktop:"Bureau",tablet:"Tablette",mobile:"Mobile",language:"Langue",chooseClub:"Choisissez votre club"},
+      nl:{overview:"Overzicht",live:"Live",fixtures:"Wedstrijden",results:"Uitslagen",table:"Stand",players:"Spelers",myClub:"Mijn club",supporters:"Supporters",settings:"Instellingen",country:"Land",league:"Competitie",view:"Weergave",desktop:"Desktop",tablet:"Tablet",mobile:"Mobiel",language:"Taal",chooseClub:"Kies je club"},
+      pt:{overview:"Visão geral",live:"Ao vivo",fixtures:"Jogos",results:"Resultados",table:"Classificação",players:"Jogadores",myClub:"Meu clube",supporters:"Apoiantes",settings:"Definições",country:"País",league:"Liga",view:"Vista",desktop:"Computador",tablet:"Tablet",mobile:"Telemóvel",language:"Idioma",chooseClub:"Escolha o seu clube"},
+      tr:{overview:"Genel Bakış",live:"Canlı",fixtures:"Fikstür",results:"Sonuçlar",table:"Puan Durumu",players:"Oyuncular",myClub:"Kulübüm",supporters:"Destekçiler",settings:"Ayarlar",country:"Ülke",league:"Lig",view:"Görünüm",desktop:"Masaüstü",tablet:"Tablet",mobile:"Mobil",language:"Dil",chooseClub:"Kulübünü seç"},
+    };
+    return translations[this._language]?.[key] || translations.en[key] || key;
+  }
+
+  _translateRenderedPage() {
+    if (this._language === "en" || !this.shadowRoot) return;
+    const phrases = {
+      es:{"YOUR MATCHDAY STARTS HERE":"TU JORNADA EMPIEZA AQUÍ","Next fixture":"Próximo partido","Live centre":"Centro en vivo","Latest result":"Último resultado","Season":"Temporada","Total fixtures":"Partidos totales","League table":"Clasificación","Top scorers":"Máximos goleadores","Top assists":"Máximos asistentes","CURRENT STANDINGS":"CLASIFICACIÓN ACTUAL","CURRENT LIVE FEED":"SEÑAL EN DIRECTO","Current live feed":"Señal en directo","The feed updates automatically when a match begins.":"La información se actualiza automáticamente cuando comienza un partido.","Supported team":"Equipo favorito","Choose a team":"Elige un equipo","No live matches right now.":"No hay partidos en directo ahora.","MATCH SCHEDULE":"CALENDARIO","Upcoming fixtures":"Próximos partidos","Show fixtures for":"Mostrar partidos de","Next 6 fixtures":"Próximos 6 partidos","COMPLETED MATCHES":"PARTIDOS FINALIZADOS","No results available yet.":"Todavía no hay resultados.","PLAYER LEADERBOARDS":"CLASIFICACIÓN DE JUGADORES","Player data is not available yet.":"Los datos de jugadores aún no están disponibles.","YOUR TEAM CENTRE":"CENTRO DE TU EQUIPO","CLUB PROFILE":"PERFIL DEL CLUB","HOME GROUND":"ESTADIO","Club code":"Código del club","Founded":"Fundado","City":"Ciudad","Capacity":"Capacidad","Surface":"Superficie","LEAGUE POSITION":"POSICIÓN EN LA LIGA","Played":"Jugados","Goal difference":"Diferencia de goles","Points":"Puntos","NEXT MATCH":"PRÓXIMO PARTIDO","SEASON RECORD":"REGISTRO DE TEMPORADA","Club statistics":"Estadísticas del club","Wins":"Victorias","Draws":"Empates","Defeats":"Derrotas","Goals scored":"Goles marcados","Clean sheets":"Porterías a cero","MANAGER":"ENTRENADOR","Age":"Edad","Career appointments":"Cargos anteriores","Recorded trophies":"Trofeos registrados","LATEST SCORES":"ÚLTIMOS RESULTADOS","Recent results":"Resultados recientes","Club top scorers":"Goleadores del club","Club top assists":"Asistentes del club","FIRST TEAM":"PRIMER EQUIPO","Current squad":"Plantilla actual","AVAILABILITY":"DISPONIBILIDAD","Injuries & suspensions":"Lesiones y sanciones","TRANSFER CENTRE":"MERCADO DE FICHAJES","Recent transfers":"Fichajes recientes","Prediction":"Predicción","Advice":"Consejo","Home chance":"Probabilidad local","Draw chance":"Probabilidad de empate","Away chance":"Probabilidad visitante","CLUB HISTORY":"HISTORIA DEL CLUB","Records":"Registros","Head-to-head matches":"Enfrentamientos directos","Player trophies":"Trofeos de jugadores","Manager trophies":"Trofeos del entrenador","COMMUNITY SUPPORT":"APOYO DE LA COMUNIDAD","Supporters around the world":"Seguidores de todo el mundo","Latest supporters":"Últimos seguidores","All supporters":"Todos los seguidores","Total supporters":"Seguidores totales","Countries supporting":"Países participantes","Latest support date":"Última fecha de apoyo","FOOTBALL HUB":"FOOTBALL HUB","Settings & diagnostics":"Ajustes y diagnóstico","Competition":"Competición","Provider mode":"Modo de proveedor","Diagnostics":"Diagnóstico","Integration":"Integración","Configured competitions":"Competiciones configuradas","Panel build":"Versión del panel","Entity prefix":"Prefijo de entidad","No fixtures available.":"No hay partidos disponibles.","No recent results available.":"No hay resultados recientes.","No transfer data available.":"No hay datos de fichajes.","No current injuries supplied.":"No hay lesiones actuales.","Squad information is not available yet.":"La plantilla aún no está disponible.","Football Hub is ready":"Football Hub está listo"},
+      de:{"YOUR MATCHDAY STARTS HERE":"DEIN SPIELTAG BEGINNT HIER","Next fixture":"Nächstes Spiel","Live centre":"Live-Zentrale","Latest result":"Letztes Ergebnis","Season":"Saison","Total fixtures":"Spiele gesamt","League table":"Tabelle","Top scorers":"Torschützen","Top assists":"Meiste Vorlagen","CURRENT STANDINGS":"AKTUELLE TABELLE","Current live feed":"Aktueller Live-Feed","The feed updates automatically when a match begins.":"Die Daten werden bei Spielbeginn automatisch aktualisiert.","Supported team":"Lieblingsverein","Choose a team":"Team auswählen","No live matches right now.":"Derzeit keine Live-Spiele.","MATCH SCHEDULE":"SPIELPLAN","Upcoming fixtures":"Kommende Spiele","Show fixtures for":"Spiele anzeigen für","Next 6 fixtures":"Nächste 6 Spiele","COMPLETED MATCHES":"BEENDETE SPIELE","No results available yet.":"Noch keine Ergebnisse verfügbar.","PLAYER LEADERBOARDS":"SPIELER-RANGLISTEN","Player data is not available yet.":"Spielerdaten sind noch nicht verfügbar.","YOUR TEAM CENTRE":"DEIN VEREINSZENTRUM","CLUB PROFILE":"VEREINSPROFIL","HOME GROUND":"HEIMSTADION","Club code":"Vereinskürzel","Founded":"Gegründet","City":"Stadt","Capacity":"Kapazität","Surface":"Spielfläche","LEAGUE POSITION":"TABELLENPLATZ","Played":"Spiele","Goal difference":"Tordifferenz","Points":"Punkte","NEXT MATCH":"NÄCHSTES SPIEL","SEASON RECORD":"SAISONBILANZ","Club statistics":"Vereinsstatistik","Wins":"Siege","Draws":"Unentschieden","Defeats":"Niederlagen","Goals scored":"Erzielte Tore","Clean sheets":"Zu-null-Spiele","MANAGER":"TRAINER","Age":"Alter","Career appointments":"Karrierestationen","Recorded trophies":"Erfasste Titel","LATEST SCORES":"LETZTE ERGEBNISSE","Recent results":"Letzte Ergebnisse","Club top scorers":"Vereins-Torschützen","Club top assists":"Vereins-Vorlagen","FIRST TEAM":"ERSTE MANNSCHAFT","Current squad":"Aktueller Kader","AVAILABILITY":"VERFÜGBARKEIT","Injuries & suspensions":"Verletzungen und Sperren","TRANSFER CENTRE":"TRANSFERZENTRALE","Recent transfers":"Letzte Transfers","Prediction":"Prognose","Advice":"Empfehlung","Home chance":"Heimchance","Draw chance":"Remischance","Away chance":"Auswärtschance","CLUB HISTORY":"VEREINSHISTORIE","Records":"Rekorde","Head-to-head matches":"Direkte Duelle","Player trophies":"Spielertitel","Manager trophies":"Trainertitel","COMMUNITY SUPPORT":"COMMUNITY-UNTERSTÜTZUNG","Supporters around the world":"Unterstützer weltweit","Latest supporters":"Neueste Unterstützer","All supporters":"Alle Unterstützer","Total supporters":"Unterstützer gesamt","Countries supporting":"Unterstützende Länder","Latest support date":"Letztes Unterstützungsdatum","Settings & diagnostics":"Einstellungen und Diagnose","Competition":"Wettbewerb","Provider mode":"Anbietermodus","Diagnostics":"Diagnose","Integration":"Integration","Configured competitions":"Konfigurierte Wettbewerbe","Panel build":"Panel-Version","Entity prefix":"Entitätspräfix","No fixtures available.":"Keine Spiele verfügbar.","No recent results available.":"Keine aktuellen Ergebnisse.","No transfer data available.":"Keine Transferdaten verfügbar.","No current injuries supplied.":"Keine aktuellen Verletzungen gemeldet.","Squad information is not available yet.":"Kaderdaten sind noch nicht verfügbar.","Football Hub is ready":"Football Hub ist bereit"},
+      fr:{"YOUR MATCHDAY STARTS HERE":"VOTRE JOURNÉE COMMENCE ICI","Next fixture":"Prochain match","Live centre":"Centre en direct","Latest result":"Dernier résultat","Season":"Saison","Total fixtures":"Total des matchs","League table":"Classement","Top scorers":"Meilleurs buteurs","Top assists":"Meilleurs passeurs","CURRENT STANDINGS":"CLASSEMENT ACTUEL","Current live feed":"Direct actuel","The feed updates automatically when a match begins.":"Les données se mettent à jour automatiquement au début du match.","Supported team":"Équipe favorite","Choose a team":"Choisir une équipe","No live matches right now.":"Aucun match en direct actuellement.","MATCH SCHEDULE":"CALENDRIER","Upcoming fixtures":"Prochains matchs","Show fixtures for":"Afficher les matchs de","Next 6 fixtures":"6 prochains matchs","COMPLETED MATCHES":"MATCHS TERMINÉS","No results available yet.":"Aucun résultat disponible.","PLAYER LEADERBOARDS":"CLASSEMENTS DES JOUEURS","Player data is not available yet.":"Les données des joueurs ne sont pas encore disponibles.","YOUR TEAM CENTRE":"CENTRE DE VOTRE ÉQUIPE","CLUB PROFILE":"PROFIL DU CLUB","HOME GROUND":"STADE","Club code":"Code du club","Founded":"Fondé","City":"Ville","Capacity":"Capacité","Surface":"Surface","LEAGUE POSITION":"POSITION EN CHAMPIONNAT","Played":"Joués","Goal difference":"Différence de buts","Points":"Points","NEXT MATCH":"PROCHAIN MATCH","SEASON RECORD":"BILAN DE SAISON","Club statistics":"Statistiques du club","Wins":"Victoires","Draws":"Nuls","Defeats":"Défaites","Goals scored":"Buts marqués","Clean sheets":"Matchs sans encaisser","MANAGER":"ENTRAÎNEUR","Age":"Âge","Career appointments":"Postes occupés","Recorded trophies":"Trophées enregistrés","LATEST SCORES":"DERNIERS RÉSULTATS","Recent results":"Résultats récents","Club top scorers":"Buteurs du club","Club top assists":"Passeurs du club","FIRST TEAM":"ÉQUIPE PREMIÈRE","Current squad":"Effectif actuel","AVAILABILITY":"DISPONIBILITÉ","Injuries & suspensions":"Blessures et suspensions","TRANSFER CENTRE":"MERCATO","Recent transfers":"Transferts récents","Prediction":"Pronostic","Advice":"Conseil","Home chance":"Chance domicile","Draw chance":"Chance de nul","Away chance":"Chance extérieur","CLUB HISTORY":"HISTOIRE DU CLUB","Records":"Records","Head-to-head matches":"Confrontations directes","Player trophies":"Trophées des joueurs","Manager trophies":"Trophées de l'entraîneur","COMMUNITY SUPPORT":"SOUTIEN DE LA COMMUNAUTÉ","Supporters around the world":"Supporters dans le monde","Latest supporters":"Derniers supporters","All supporters":"Tous les supporters","Total supporters":"Total des supporters","Countries supporting":"Pays représentés","Latest support date":"Dernière date de soutien","Settings & diagnostics":"Réglages et diagnostic","Competition":"Compétition","Provider mode":"Mode fournisseur","Diagnostics":"Diagnostic","Integration":"Intégration","Configured competitions":"Compétitions configurées","Panel build":"Version du panneau","Entity prefix":"Préfixe d'entité","No fixtures available.":"Aucun match disponible.","No recent results available.":"Aucun résultat récent.","No transfer data available.":"Aucune donnée de transfert.","No current injuries supplied.":"Aucune blessure actuelle signalée.","Squad information is not available yet.":"L'effectif n'est pas encore disponible.","Football Hub is ready":"Football Hub est prêt"},
+      it:{"YOUR MATCHDAY STARTS HERE":"LA TUA GIORNATA INIZIA QUI","Next fixture":"Prossima partita","Live centre":"Centro live","Latest result":"Ultimo risultato","Season":"Stagione","Total fixtures":"Partite totali","League table":"Classifica","Top scorers":"Capocannonieri","Top assists":"Migliori assist","CURRENT STANDINGS":"CLASSIFICA ATTUALE","Current live feed":"Diretta attuale","Supported team":"Squadra preferita","Choose a team":"Scegli una squadra","No live matches right now.":"Nessuna partita in diretta.","MATCH SCHEDULE":"CALENDARIO","Upcoming fixtures":"Prossime partite","Show fixtures for":"Mostra partite di","Next 6 fixtures":"Prossime 6 partite","COMPLETED MATCHES":"PARTITE TERMINATE","No results available yet.":"Nessun risultato disponibile.","PLAYER LEADERBOARDS":"CLASSIFICHE GIOCATORI","Player data is not available yet.":"Dati giocatori non ancora disponibili.","YOUR TEAM CENTRE":"CENTRO DELLA TUA SQUADRA","CLUB PROFILE":"PROFILO CLUB","HOME GROUND":"STADIO","Club code":"Codice club","Founded":"Fondato","City":"Città","Capacity":"Capienza","Surface":"Superficie","LEAGUE POSITION":"POSIZIONE IN CLASSIFICA","Played":"Giocate","Goal difference":"Differenza reti","Points":"Punti","NEXT MATCH":"PROSSIMA PARTITA","SEASON RECORD":"RENDIMENTO STAGIONALE","Club statistics":"Statistiche club","Wins":"Vittorie","Draws":"Pareggi","Defeats":"Sconfitte","Goals scored":"Gol segnati","Clean sheets":"Porte inviolate","MANAGER":"ALLENATORE","Age":"Età","Career appointments":"Incarichi in carriera","Recorded trophies":"Trofei registrati","LATEST SCORES":"ULTIMI RISULTATI","Recent results":"Risultati recenti","Club top scorers":"Marcatori del club","Club top assists":"Assist del club","FIRST TEAM":"PRIMA SQUADRA","Current squad":"Rosa attuale","AVAILABILITY":"DISPONIBILITÀ","Injuries & suspensions":"Infortuni e squalifiche","TRANSFER CENTRE":"CALCIOMERCATO","Recent transfers":"Trasferimenti recenti","Prediction":"Pronostico","Advice":"Consiglio","Home chance":"Probabilità casa","Draw chance":"Probabilità pareggio","Away chance":"Probabilità trasferta","CLUB HISTORY":"STORIA DEL CLUB","Records":"Record","Head-to-head matches":"Scontri diretti","Player trophies":"Trofei giocatori","Manager trophies":"Trofei allenatore","Supporters around the world":"Sostenitori nel mondo","Latest supporters":"Ultimi sostenitori","All supporters":"Tutti i sostenitori","Total supporters":"Sostenitori totali","Countries supporting":"Paesi rappresentati","Settings & diagnostics":"Impostazioni e diagnostica","Competition":"Competizione","Diagnostics":"Diagnostica","Configured competitions":"Competizioni configurate","Panel build":"Versione pannello","No fixtures available.":"Nessuna partita disponibile.","No recent results available.":"Nessun risultato recente.","No transfer data available.":"Nessun dato sui trasferimenti.","No current injuries supplied.":"Nessun infortunio attuale.","Squad information is not available yet.":"La rosa non è ancora disponibile."},
+      nl:{"YOUR MATCHDAY STARTS HERE":"JOUW WEDSTRIJDDAG BEGINT HIER","Next fixture":"Volgende wedstrijd","Live centre":"Livecentrum","Latest result":"Laatste uitslag","Season":"Seizoen","Total fixtures":"Totaal wedstrijden","League table":"Stand","Top scorers":"Topscorers","Top assists":"Meeste assists","CURRENT STANDINGS":"HUIDIGE STAND","Current live feed":"Huidige livefeed","Supported team":"Favoriete club","Choose a team":"Kies een team","No live matches right now.":"Momenteel geen livewedstrijden.","MATCH SCHEDULE":"WEDSTRIJDSCHEMA","Upcoming fixtures":"Komende wedstrijden","Show fixtures for":"Toon wedstrijden voor","Next 6 fixtures":"Volgende 6 wedstrijden","COMPLETED MATCHES":"GESPEELDE WEDSTRIJDEN","No results available yet.":"Nog geen uitslagen beschikbaar.","PLAYER LEADERBOARDS":"SPELERSRANGLIJSTEN","Player data is not available yet.":"Spelersgegevens zijn nog niet beschikbaar.","YOUR TEAM CENTRE":"JOUW CLUBCENTRUM","CLUB PROFILE":"CLUBPROFIEL","HOME GROUND":"THUISSTADION","Club code":"Clubcode","Founded":"Opgericht","City":"Stad","Capacity":"Capaciteit","Surface":"Ondergrond","LEAGUE POSITION":"COMPETITIEPOSITIE","Played":"Gespeeld","Goal difference":"Doelsaldo","Points":"Punten","NEXT MATCH":"VOLGENDE WEDSTRIJD","SEASON RECORD":"SEIZOENSRESULTAAT","Club statistics":"Clubstatistieken","Wins":"Gewonnen","Draws":"Gelijk","Defeats":"Verloren","Goals scored":"Doelpunten","Clean sheets":"Nul gehouden","MANAGER":"TRAINER","Age":"Leeftijd","Career appointments":"Loopbaanfuncties","Recorded trophies":"Geregistreerde prijzen","LATEST SCORES":"LAATSTE UITSLAGEN","Recent results":"Recente uitslagen","Club top scorers":"Clubtopscorers","Club top assists":"Clubassists","FIRST TEAM":"EERSTE ELFTAL","Current squad":"Huidige selectie","AVAILABILITY":"BESCHIKBAARHEID","Injuries & suspensions":"Blessures en schorsingen","TRANSFER CENTRE":"TRANSFER CENTRUM","Recent transfers":"Recente transfers","Prediction":"Voorspelling","Advice":"Advies","Home chance":"Kans thuis","Draw chance":"Kans gelijkspel","Away chance":"Kans uit","CLUB HISTORY":"CLUBGESCHIEDENIS","Records":"Records","Head-to-head matches":"Onderlinge duels","Player trophies":"Spelersprijzen","Manager trophies":"Trainersprijzen","Supporters around the world":"Supporters wereldwijd","Latest supporters":"Nieuwste supporters","All supporters":"Alle supporters","Total supporters":"Totaal supporters","Countries supporting":"Landen vertegenwoordigd","Settings & diagnostics":"Instellingen en diagnose","Competition":"Competitie","Diagnostics":"Diagnose","Configured competitions":"Ingestelde competities","Panel build":"Paneelversie","No fixtures available.":"Geen wedstrijden beschikbaar.","No recent results available.":"Geen recente uitslagen.","No transfer data available.":"Geen transfergegevens beschikbaar.","No current injuries supplied.":"Geen huidige blessures gemeld.","Squad information is not available yet.":"Selectiegegevens zijn nog niet beschikbaar."},
+      pt:{"YOUR MATCHDAY STARTS HERE":"O TEU DIA DE JOGO COMEÇA AQUI","Next fixture":"Próximo jogo","Live centre":"Centro ao vivo","Latest result":"Último resultado","Season":"Época","Total fixtures":"Total de jogos","League table":"Classificação","Top scorers":"Melhores marcadores","Top assists":"Mais assistências","CURRENT STANDINGS":"CLASSIFICAÇÃO ATUAL","Current live feed":"Direto atual","Supported team":"Equipa favorita","Choose a team":"Escolha uma equipa","No live matches right now.":"Não há jogos em direto.","MATCH SCHEDULE":"CALENDÁRIO","Upcoming fixtures":"Próximos jogos","Show fixtures for":"Mostrar jogos de","Next 6 fixtures":"Próximos 6 jogos","COMPLETED MATCHES":"JOGOS TERMINADOS","No results available yet.":"Ainda não há resultados.","PLAYER LEADERBOARDS":"CLASSIFICAÇÕES DE JOGADORES","Player data is not available yet.":"Os dados dos jogadores ainda não estão disponíveis.","YOUR TEAM CENTRE":"CENTRO DA TUA EQUIPA","CLUB PROFILE":"PERFIL DO CLUBE","HOME GROUND":"ESTÁDIO","Club code":"Código do clube","Founded":"Fundado","City":"Cidade","Capacity":"Capacidade","Surface":"Superfície","LEAGUE POSITION":"POSIÇÃO NA LIGA","Played":"Jogos","Goal difference":"Diferença de golos","Points":"Pontos","NEXT MATCH":"PRÓXIMO JOGO","SEASON RECORD":"REGISTO DA ÉPOCA","Club statistics":"Estatísticas do clube","Wins":"Vitórias","Draws":"Empates","Defeats":"Derrotas","Goals scored":"Golos marcados","Clean sheets":"Jogos sem sofrer","MANAGER":"TREINADOR","Age":"Idade","Career appointments":"Cargos na carreira","Recorded trophies":"Troféus registados","LATEST SCORES":"ÚLTIMOS RESULTADOS","Recent results":"Resultados recentes","Club top scorers":"Marcadores do clube","Club top assists":"Assistências do clube","FIRST TEAM":"EQUIPA PRINCIPAL","Current squad":"Plantel atual","AVAILABILITY":"DISPONIBILIDADE","Injuries & suspensions":"Lesões e suspensões","TRANSFER CENTRE":"CENTRO DE TRANSFERÊNCIAS","Recent transfers":"Transferências recentes","Prediction":"Previsão","Advice":"Conselho","Home chance":"Hipótese da casa","Draw chance":"Hipótese de empate","Away chance":"Hipótese visitante","CLUB HISTORY":"HISTÓRIA DO CLUBE","Records":"Recordes","Head-to-head matches":"Confrontos diretos","Player trophies":"Troféus dos jogadores","Manager trophies":"Troféus do treinador","Supporters around the world":"Apoiantes em todo o mundo","Latest supporters":"Apoiantes recentes","All supporters":"Todos os apoiantes","Total supporters":"Total de apoiantes","Countries supporting":"Países representados","Settings & diagnostics":"Definições e diagnóstico","Competition":"Competição","Diagnostics":"Diagnóstico","Configured competitions":"Competições configuradas","Panel build":"Versão do painel","No fixtures available.":"Não há jogos disponíveis.","No recent results available.":"Não há resultados recentes.","No transfer data available.":"Não há dados de transferências.","No current injuries supplied.":"Não há lesões atuais.","Squad information is not available yet.":"O plantel ainda não está disponível."},
+      tr:{"YOUR MATCHDAY STARTS HERE":"MAÇ GÜNÜN BURADA BAŞLIYOR","Next fixture":"Sıradaki maç","Live centre":"Canlı merkez","Latest result":"Son sonuç","Season":"Sezon","Total fixtures":"Toplam maç","League table":"Puan durumu","Top scorers":"Gol krallığı","Top assists":"Asist krallığı","CURRENT STANDINGS":"GÜNCEL PUAN DURUMU","Current live feed":"Güncel canlı yayın","Supported team":"Desteklenen takım","Choose a team":"Takım seç","No live matches right now.":"Şu anda canlı maç yok.","MATCH SCHEDULE":"MAÇ PROGRAMI","Upcoming fixtures":"Yaklaşan maçlar","Show fixtures for":"Maçları göster","Next 6 fixtures":"Sıradaki 6 maç","COMPLETED MATCHES":"TAMAMLANAN MAÇLAR","No results available yet.":"Henüz sonuç yok.","PLAYER LEADERBOARDS":"OYUNCU SIRALAMALARI","Player data is not available yet.":"Oyuncu verileri henüz mevcut değil.","YOUR TEAM CENTRE":"TAKIM MERKEZİN","CLUB PROFILE":"KULÜP PROFİLİ","HOME GROUND":"STADYUM","Club code":"Kulüp kodu","Founded":"Kuruluş","City":"Şehir","Capacity":"Kapasite","Surface":"Zemin","LEAGUE POSITION":"LİG SIRASI","Played":"Oynanan","Goal difference":"Averaj","Points":"Puan","NEXT MATCH":"SIRADAKİ MAÇ","SEASON RECORD":"SEZON KARNESİ","Club statistics":"Kulüp istatistikleri","Wins":"Galibiyet","Draws":"Beraberlik","Defeats":"Mağlubiyet","Goals scored":"Atılan gol","Clean sheets":"Gol yemeden","MANAGER":"TEKNİK DİREKTÖR","Age":"Yaş","Career appointments":"Kariyer görevleri","Recorded trophies":"Kayıtlı kupalar","LATEST SCORES":"SON SONUÇLAR","Recent results":"Son sonuçlar","Club top scorers":"Kulüp golcüleri","Club top assists":"Kulüp asistleri","FIRST TEAM":"A TAKIM","Current squad":"Güncel kadro","AVAILABILITY":"UYGUNLUK","Injuries & suspensions":"Sakatlıklar ve cezalar","TRANSFER CENTRE":"TRANSFER MERKEZİ","Recent transfers":"Son transferler","Prediction":"Tahmin","Advice":"Öneri","Home chance":"Ev sahibi şansı","Draw chance":"Beraberlik şansı","Away chance":"Deplasman şansı","CLUB HISTORY":"KULÜP TARİHİ","Records":"Rekorlar","Head-to-head matches":"İkili rekabet","Player trophies":"Oyuncu kupaları","Manager trophies":"Teknik direktör kupaları","Supporters around the world":"Dünyadaki destekçiler","Latest supporters":"Son destekçiler","All supporters":"Tüm destekçiler","Total supporters":"Toplam destekçi","Countries supporting":"Destek veren ülkeler","Settings & diagnostics":"Ayarlar ve tanılama","Competition":"Organizasyon","Diagnostics":"Tanılama","Configured competitions":"Yapılandırılan organizasyonlar","Panel build":"Panel sürümü","No fixtures available.":"Maç bulunmuyor.","No recent results available.":"Sonuç bulunmuyor.","No transfer data available.":"Transfer verisi yok.","No current injuries supplied.":"Güncel sakatlık bildirilmedi.","Squad information is not available yet.":"Kadro bilgisi henüz mevcut değil."},
+    };
+    const supporterTranslations = {
+      es:{"COMMUNITY SUPPORT":"APOYO DE LA COMUNIDAD","Supporters":"Seguidores","HELP BUILD THE FUTURE":"AYUDA A CONSTRUIR EL FUTURO","Support Football Hub":"Apoya Football Hub","This project started as a personal Home Assistant football dashboard and has grown thanks to community feedback, testing, ideas and support.":"Este proyecto comenzó como un panel personal de fútbol para Home Assistant y ha crecido gracias a los comentarios, las pruebas, las ideas y el apoyo de la comunidad.","Support via Ko-fi":"Apoyar mediante Ko-fi","Support via PayPal":"Apoyar mediante PayPal","Thank you":"Gracias","Every contribution helps":"Cada contribución ayuda","Live data costs":"Costes de datos en directo","Helps cover reliable football data and matchday services.":"Ayuda a cubrir datos de fútbol fiables y servicios de jornada.","Fixes & improvements":"Correcciones y mejoras","Supports testing, maintenance and regular updates.":"Apoya las pruebas, el mantenimiento y las actualizaciones periódicas.","Future features":"Funciones futuras","Helps build more competitions, statistics and dashboard tools.":"Ayuda a crear más competiciones, estadísticas y herramientas para el panel.","Community development":"Desarrollo comunitario","Keeps the project community-led and available to Home Assistant users.":"Mantiene el proyecto dirigido por la comunidad y disponible para los usuarios de Home Assistant.","PREMIUM SUPPORTERS":"SEGUIDORES PREMIUM","Extra recognition inside Football Hub":"Reconocimiento adicional dentro de Football Hub","Premium profile":"Perfil premium","Name & country flag":"Nombre y bandera del país","Personal message":"Mensaje personal","LATEST THANK YOUS":"ÚLTIMOS AGRADECIMIENTOS","THE COMMUNITY":"LA COMUNIDAD","To be added as a supporter":"Para aparecer como seguidor","After donating, include your name, country and optional short message.":"Después de donar, incluye tu nombre, país y un mensaje breve opcional.","Support the project and have your name added here as a thank you.":"Apoya el proyecto y añadiremos tu nombre aquí como agradecimiento.","No supporters loaded yet":"Todavía no hay seguidores cargados"},
+      de:{"COMMUNITY SUPPORT":"COMMUNITY-UNTERSTÜTZUNG","Supporters":"Unterstützer","HELP BUILD THE FUTURE":"HILF, DIE ZUKUNFT ZU GESTALTEN","Support Football Hub":"Football Hub unterstützen","This project started as a personal Home Assistant football dashboard and has grown thanks to community feedback, testing, ideas and support.":"Dieses Projekt begann als persönliches Home-Assistant-Fußball-Dashboard und ist dank Feedback, Tests, Ideen und Unterstützung der Community gewachsen.","Support via Ko-fi":"Über Ko-fi unterstützen","Support via PayPal":"Über PayPal unterstützen","Thank you":"Danke","Every contribution helps":"Jeder Beitrag hilft","Live data costs":"Kosten für Live-Daten","Helps cover reliable football data and matchday services.":"Hilft, zuverlässige Fußballdaten und Spieltagsdienste zu finanzieren.","Fixes & improvements":"Korrekturen und Verbesserungen","Supports testing, maintenance and regular updates.":"Unterstützt Tests, Wartung und regelmäßige Updates.","Future features":"Zukünftige Funktionen","Helps build more competitions, statistics and dashboard tools.":"Hilft beim Ausbau von Wettbewerben, Statistiken und Dashboard-Werkzeugen.","Community development":"Community-Entwicklung","Keeps the project community-led and available to Home Assistant users.":"Hält das Projekt communitygeführt und für Home-Assistant-Nutzer verfügbar.","PREMIUM SUPPORTERS":"PREMIUM-UNTERSTÜTZER","Extra recognition inside Football Hub":"Zusätzliche Anerkennung in Football Hub","Premium profile":"Premium-Profil","Name & country flag":"Name und Landesflagge","Personal message":"Persönliche Nachricht","LATEST THANK YOUS":"NEUESTE DANKSAGUNGEN","THE COMMUNITY":"DIE COMMUNITY","To be added as a supporter":"Als Unterstützer aufgenommen werden","After donating, include your name, country and optional short message.":"Gib nach der Spende deinen Namen, dein Land und optional eine kurze Nachricht an."},
+      fr:{"COMMUNITY SUPPORT":"SOUTIEN DE LA COMMUNAUTÉ","Supporters":"Supporters","HELP BUILD THE FUTURE":"AIDEZ À CONSTRUIRE L’AVENIR","Support Football Hub":"Soutenir Football Hub","This project started as a personal Home Assistant football dashboard and has grown thanks to community feedback, testing, ideas and support.":"Ce projet a commencé comme un tableau de bord de football personnel pour Home Assistant et a grandi grâce aux retours, tests, idées et soutien de la communauté.","Support via Ko-fi":"Soutenir via Ko-fi","Support via PayPal":"Soutenir via PayPal","Thank you":"Merci","Every contribution helps":"Chaque contribution compte","Live data costs":"Coûts des données en direct","Helps cover reliable football data and matchday services.":"Aide à financer des données fiables et les services de jour de match.","Fixes & improvements":"Corrections et améliorations","Supports testing, maintenance and regular updates.":"Soutient les tests, la maintenance et les mises à jour régulières.","Future features":"Fonctions futures","Helps build more competitions, statistics and dashboard tools.":"Aide à créer davantage de compétitions, statistiques et outils.","Community development":"Développement communautaire","Keeps the project community-led and available to Home Assistant users.":"Maintient le projet dirigé par la communauté et disponible pour les utilisateurs de Home Assistant.","PREMIUM SUPPORTERS":"SUPPORTERS PREMIUM","Extra recognition inside Football Hub":"Reconnaissance supplémentaire dans Football Hub","Premium profile":"Profil premium","Name & country flag":"Nom et drapeau du pays","Personal message":"Message personnel","LATEST THANK YOUS":"DERNIERS REMERCIEMENTS","THE COMMUNITY":"LA COMMUNAUTÉ","To be added as a supporter":"Pour être ajouté comme supporter","After donating, include your name, country and optional short message.":"Après votre don, indiquez votre nom, votre pays et un court message facultatif."},
+      it:{"COMMUNITY SUPPORT":"SUPPORTO DELLA COMUNITÀ","Supporters":"Sostenitori","HELP BUILD THE FUTURE":"AIUTA A COSTRUIRE IL FUTURO","Support Football Hub":"Sostieni Football Hub","This project started as a personal Home Assistant football dashboard and has grown thanks to community feedback, testing, ideas and support.":"Questo progetto è nato come dashboard personale di calcio per Home Assistant ed è cresciuto grazie a feedback, test, idee e supporto della comunità.","Support via Ko-fi":"Sostieni con Ko-fi","Support via PayPal":"Sostieni con PayPal","Thank you":"Grazie","Every contribution helps":"Ogni contributo aiuta","Live data costs":"Costi dei dati live","Helps cover reliable football data and matchday services.":"Aiuta a coprire dati calcistici affidabili e servizi partita.","Fixes & improvements":"Correzioni e miglioramenti","Supports testing, maintenance and regular updates.":"Supporta test, manutenzione e aggiornamenti regolari.","Future features":"Funzioni future","Helps build more competitions, statistics and dashboard tools.":"Aiuta a creare più competizioni, statistiche e strumenti.","Community development":"Sviluppo della comunità","Keeps the project community-led and available to Home Assistant users.":"Mantiene il progetto guidato dalla comunità e disponibile per gli utenti Home Assistant.","PREMIUM SUPPORTERS":"SOSTENITORI PREMIUM","Extra recognition inside Football Hub":"Riconoscimento extra in Football Hub","Premium profile":"Profilo premium","Name & country flag":"Nome e bandiera","Personal message":"Messaggio personale","LATEST THANK YOUS":"ULTIMI RINGRAZIAMENTI","THE COMMUNITY":"LA COMUNITÀ","To be added as a supporter":"Per essere aggiunto come sostenitore","After donating, include your name, country and optional short message.":"Dopo la donazione, indica nome, paese e un breve messaggio facoltativo."},
+      nl:{"COMMUNITY SUPPORT":"COMMUNITYSTEUN","Supporters":"Supporters","HELP BUILD THE FUTURE":"HELP DE TOEKOMST BOUWEN","Support Football Hub":"Steun Football Hub","This project started as a personal Home Assistant football dashboard and has grown thanks to community feedback, testing, ideas and support.":"Dit project begon als een persoonlijk Home Assistant-voetbaldashboard en groeide dankzij feedback, tests, ideeën en steun van de community.","Support via Ko-fi":"Steun via Ko-fi","Support via PayPal":"Steun via PayPal","Thank you":"Bedankt","Every contribution helps":"Elke bijdrage helpt","Live data costs":"Kosten voor livegegevens","Helps cover reliable football data and matchday services.":"Helpt betrouwbare voetbalgegevens en wedstrijddiensten te betalen.","Fixes & improvements":"Oplossingen en verbeteringen","Supports testing, maintenance and regular updates.":"Ondersteunt tests, onderhoud en regelmatige updates.","Future features":"Toekomstige functies","Helps build more competitions, statistics and dashboard tools.":"Helpt meer competities, statistieken en hulpmiddelen te bouwen.","Community development":"Communityontwikkeling","Keeps the project community-led and available to Home Assistant users.":"Houdt het project communitygestuurd en beschikbaar voor Home Assistant-gebruikers.","PREMIUM SUPPORTERS":"PREMIUM SUPPORTERS","Extra recognition inside Football Hub":"Extra erkenning in Football Hub","Premium profile":"Premiumprofiel","Name & country flag":"Naam en landenvlag","Personal message":"Persoonlijk bericht","LATEST THANK YOUS":"NIEUWSTE BEDANKJES","THE COMMUNITY":"DE COMMUNITY","To be added as a supporter":"Om als supporter toegevoegd te worden","After donating, include your name, country and optional short message.":"Vermeld na het doneren je naam, land en eventueel een kort bericht."},
+      pt:{"COMMUNITY SUPPORT":"APOIO DA COMUNIDADE","Supporters":"Apoiantes","HELP BUILD THE FUTURE":"AJUDE A CONSTRUIR O FUTURO","Support Football Hub":"Apoiar Football Hub","This project started as a personal Home Assistant football dashboard and has grown thanks to community feedback, testing, ideas and support.":"Este projeto começou como um painel pessoal de futebol para Home Assistant e cresceu graças ao feedback, testes, ideias e apoio da comunidade.","Support via Ko-fi":"Apoiar via Ko-fi","Support via PayPal":"Apoiar via PayPal","Thank you":"Obrigado","Every contribution helps":"Cada contribuição ajuda","Live data costs":"Custos de dados em direto","Helps cover reliable football data and matchday services.":"Ajuda a financiar dados fiáveis e serviços de jogo.","Fixes & improvements":"Correções e melhorias","Supports testing, maintenance and regular updates.":"Apoia testes, manutenção e atualizações regulares.","Future features":"Funcionalidades futuras","Helps build more competitions, statistics and dashboard tools.":"Ajuda a criar mais competições, estatísticas e ferramentas.","Community development":"Desenvolvimento comunitário","Keeps the project community-led and available to Home Assistant users.":"Mantém o projeto liderado pela comunidade e disponível para utilizadores Home Assistant.","PREMIUM SUPPORTERS":"APOIANTES PREMIUM","Extra recognition inside Football Hub":"Reconhecimento adicional no Football Hub","Premium profile":"Perfil premium","Name & country flag":"Nome e bandeira do país","Personal message":"Mensagem pessoal","LATEST THANK YOUS":"AGRADECIMENTOS RECENTES","THE COMMUNITY":"A COMUNIDADE","To be added as a supporter":"Para ser adicionado como apoiante","After donating, include your name, country and optional short message.":"Após doar, indique o seu nome, país e uma mensagem curta opcional."},
+      tr:{"COMMUNITY SUPPORT":"TOPLULUK DESTEĞİ","Supporters":"Destekçiler","HELP BUILD THE FUTURE":"GELECEĞİ KURMAYA YARDIM ET","Support Football Hub":"Football Hub’ı destekle","This project started as a personal Home Assistant football dashboard and has grown thanks to community feedback, testing, ideas and support.":"Bu proje kişisel bir Home Assistant futbol paneli olarak başladı ve topluluk geri bildirimi, testleri, fikirleri ve desteğiyle büyüdü.","Support via Ko-fi":"Ko-fi ile destekle","Support via PayPal":"PayPal ile destekle","Thank you":"Teşekkürler","Every contribution helps":"Her katkı yardımcı olur","Live data costs":"Canlı veri maliyetleri","Helps cover reliable football data and matchday services.":"Güvenilir futbol verileri ve maç günü hizmetlerinin maliyetini karşılamaya yardımcı olur.","Fixes & improvements":"Düzeltmeler ve iyileştirmeler","Supports testing, maintenance and regular updates.":"Testleri, bakımı ve düzenli güncellemeleri destekler.","Future features":"Gelecek özellikler","Helps build more competitions, statistics and dashboard tools.":"Daha fazla lig, istatistik ve panel aracı oluşturmaya yardımcı olur.","Community development":"Topluluk geliştirmesi","Keeps the project community-led and available to Home Assistant users.":"Projeyi topluluk odaklı ve Home Assistant kullanıcılarına açık tutar.","PREMIUM SUPPORTERS":"PREMİUM DESTEKÇİLER","Extra recognition inside Football Hub":"Football Hub içinde ek görünürlük","Premium profile":"Premium profil","Name & country flag":"Ad ve ülke bayrağı","Personal message":"Kişisel mesaj","LATEST THANK YOUS":"SON TEŞEKKÜRLER","THE COMMUNITY":"TOPLULUK","To be added as a supporter":"Destekçi olarak eklenmek için","After donating, include your name, country and optional short message.":"Bağıştan sonra adınızı, ülkenizi ve isteğe bağlı kısa mesajınızı belirtin."},
+    };
+    Object.assign(phrases[this._language] || {}, supporterTranslations[this._language] || {});
+    const active = phrases[this._language];
+    if (!active) return;
+    const walker = document.createTreeWalker(this.shadowRoot, NodeFilter.SHOW_TEXT);
+    let node;
+    while ((node = walker.nextNode())) {
+      const raw = node.nodeValue || "";
+      const trimmed = raw.trim();
+      if (active[trimmed]) node.nodeValue = raw.replace(trimmed, active[trimmed]);
+    }
+  }
+
   _setCountry(country) {
     this._selectedCountry = country;
     localStorage.setItem("football_hub_selected_country", country);
@@ -359,15 +421,12 @@ class FootballHubPanel extends HTMLElement {
   }
 
   _logo(url, name, size = "56") {
+    const initials = this._escape((name || "?").slice(0, 2).toUpperCase());
     if (!url) {
-      return `<div class="logo-placeholder" style="width:${size}px;height:${size}px">${this._escape(
-        (name || "?").slice(0, 2).toUpperCase()
-      )}</div>`;
+      return `<div class="logo-placeholder" style="width:${size}px;height:${size}px">${initials}</div>`;
     }
 
-    return `<img class="team-logo" style="width:${size}px;height:${size}px" src="${this._escape(
-      url
-    )}" alt="${this._escape(name || "Team")}" loading="lazy">`;
+    return `<div class="logo-placeholder image-fallback" style="width:${size}px;height:${size}px">${initials}<img class="team-logo" style="width:${size}px;height:${size}px" src="${this._escape(url)}" alt="${this._escape(name || "Team")}" loading="lazy" onerror="this.remove()"></div>`;
   }
 
   _score(value) {
@@ -449,12 +508,20 @@ class FootballHubPanel extends HTMLElement {
     )}</p>
         </div>
         <div class="hero-actions">
+          <label class="view-mode-picker language-picker"><span>${this._t("language")}</span><select id="language-select" aria-label="Language">
+            <option value="en" ${this._language === "en" ? "selected" : ""}>English</option><option value="es" ${this._language === "es" ? "selected" : ""}>Español</option><option value="de" ${this._language === "de" ? "selected" : ""}>Deutsch</option><option value="it" ${this._language === "it" ? "selected" : ""}>Italiano</option><option value="fr" ${this._language === "fr" ? "selected" : ""}>Français</option><option value="nl" ${this._language === "nl" ? "selected" : ""}>Nederlands</option><option value="pt" ${this._language === "pt" ? "selected" : ""}>Português</option><option value="tr" ${this._language === "tr" ? "selected" : ""}>Türkçe</option>
+          </select></label>
+          <label class="view-mode-picker"><span>${this._t("view")}</span><select id="view-mode-select" aria-label="Display mode">
+            <option value="desktop" ${this._viewMode === "desktop" ? "selected" : ""}>${this._t("desktop")}</option>
+            <option value="tablet" ${this._viewMode === "tablet" ? "selected" : ""}>${this._t("tablet")}</option>
+            <option value="mobile" ${this._viewMode === "mobile" ? "selected" : ""}>${this._t("mobile")}</option>
+          </select></label>
           ${catalogue.length ? `
             <div class="competition-picker">
-              <label><span>Country</span><select id="country-select" aria-label="Country">
+              <label><span>${this._t("country")}</span><select id="country-select" aria-label="Country">
                 ${countries.map((country) => `<option value="${this._escape(country)}" ${country === this._selectedCountry ? "selected" : ""}>${this._escape(country)}</option>`).join("")}
               </select></label>
-              <label><span>League</span><select id="league-select" aria-label="League">
+              <label><span>${this._t("league")}</span><select id="league-select" aria-label="League">
                 ${countryLeagues.map((league) => `<option value="${this._escape(league.key)}" ${league.key === status.competition_key ? "selected" : ""}>${this._escape(league.name)}</option>`).join("")}
               </select></label>
             </div>
@@ -474,15 +541,15 @@ class FootballHubPanel extends HTMLElement {
 
   _nav() {
     const tabs = [
-      ["overview", "mdi:view-dashboard-outline", "Overview"],
-      ["live", "mdi:access-point", "Live"],
-      ["fixtures", "mdi:calendar-month-outline", "Fixtures"],
-      ["results", "mdi:check-decagram-outline", "Results"],
-      ["table", "mdi:table-large", "Table"],
-      ["players", "mdi:account-star-outline", "Players"],
-      ["my-club", "mdi:shield-star-outline", "My Club"],
-      ["supporters", "mdi:heart-outline", "Supporters"],
-      ["settings", "mdi:cog-outline", "Settings"],
+      ["overview", "mdi:view-dashboard-outline", this._t("overview")],
+      ["live", "mdi:access-point", this._t("live")],
+      ["fixtures", "mdi:calendar-month-outline", this._t("fixtures")],
+      ["results", "mdi:check-decagram-outline", this._t("results")],
+      ["table", "mdi:table-large", this._t("table")],
+      ["players", "mdi:account-star-outline", this._t("players")],
+      ["my-club", "mdi:shield-star-outline", this._t("myClub")],
+      ["supporters", "mdi:heart-outline", this._t("supporters")],
+      ["settings", "mdi:cog-outline", this._t("settings")],
     ];
 
     return `
@@ -950,13 +1017,10 @@ class FootballHubPanel extends HTMLElement {
     const coachTrophies = Array.isArray(dataset("my_club_coach_trophies")) ? dataset("my_club_coach_trophies") : [];
     const sidelined = Array.isArray(dataset("my_club_sidelined")) ? dataset("my_club_sidelined") : [];
     const teams = [...new Set([
+      this._selectedClub,
       ...table.map((row) => row.team || row.team_name),
       ...fixtures.flatMap((match) => [match.home_team, match.away_team]),
     ].filter(Boolean))].sort((a, b) => a.localeCompare(b));
-
-    if (this._selectedClub && !teams.includes(this._selectedClub)) {
-      this._selectedClub = "";
-    }
 
     const clubFixtures = fixtures.filter((match) => match.home_team === club || match.away_team === club);
     const clubResults = results.filter((match) => match.home_team === club || match.away_team === club);
@@ -973,12 +1037,12 @@ class FootballHubPanel extends HTMLElement {
 
     return `
       <section class="page-heading">
-        <div><span class="eyebrow">YOUR TEAM CENTRE</span><h2>My Club</h2></div>
+        <div><span class="eyebrow">YOUR TEAM CENTRE</span><h2>${this._t("myClub")}</h2></div>
         ${club ? `<div class="count-badge">${this._escape(club)}</div>` : ""}
       </section>
       <section class="page-card live-picker">
         <div class="live-picker-control">
-          <label for="my-club-select">Choose your club</label>
+          <label for="my-club-select">${this._t("chooseClub")}</label>
           <select id="my-club-select" aria-label="Choose your club">
             <option value="">Select a team</option>
             ${teams.map((team) => `<option value="${this._escape(team)}" ${team === club ? "selected" : ""}>${this._escape(team)}</option>`).join("")}
@@ -1088,7 +1152,7 @@ class FootballHubPanel extends HTMLElement {
 
     this.shadowRoot.innerHTML = `
       <style>${this._styles()}</style>
-      <div class="app-shell">
+      <div class="app-shell view-${this._viewMode}">
         ${this._hero()}
         ${this._nav()}
         <main>${this._content()}</main>
@@ -1096,8 +1160,18 @@ class FootballHubPanel extends HTMLElement {
       </div>
     `;
 
+    this._translateRenderedPage();
+
     this.shadowRoot.querySelectorAll("[data-tab]").forEach((button) => {
       button.addEventListener("click", () => this._setTab(button.dataset.tab));
+    });
+
+    this.shadowRoot.querySelector("#view-mode-select")?.addEventListener("change", (event) => {
+      this._setViewMode(event.target.value);
+    });
+
+    this.shadowRoot.querySelector("#language-select")?.addEventListener("change", (event) => {
+      this._setLanguage(event.target.value);
     });
 
     this.shadowRoot.querySelector("#fixture-team-select")?.addEventListener("change", (event) => {
@@ -1159,6 +1233,8 @@ class FootballHubPanel extends HTMLElement {
       .venue-image { width:100%; height:170px; object-fit:cover; border-radius:14px; margin:12px 0 16px; border:1px solid var(--line); }
       .squad-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(210px,1fr)); gap:12px; }
       .squad-player { display:flex; align-items:center; gap:12px; padding:14px; }
+      .image-fallback { position:relative; overflow:hidden; flex:0 0 auto; }
+      .image-fallback .team-logo { position:absolute; inset:0; background:var(--panel-solid); }
       .squad-player div { display:flex; flex-direction:column; gap:4px; }
       .squad-player small { color:var(--muted); }
       .transfer-row { display:grid; grid-template-columns:44px minmax(0,1fr) auto; align-items:center; gap:12px; padding:12px 0; border-bottom:1px solid var(--line); }
@@ -2003,6 +2079,58 @@ class FootballHubPanel extends HTMLElement {
         font-size: .72rem;
       }
 
+      .view-mode-picker { display:flex; flex-direction:column; gap:4px; color:var(--secondary-text-color); font-size:.62rem; font-weight:900; text-transform:uppercase; letter-spacing:.08em; }
+      .view-mode-picker select { min-width:104px; min-height:42px; padding:0 34px 0 12px; border:1px solid var(--fh-border); border-radius:12px; background:rgba(2,12,24,.78); color:#fff; font:inherit; font-size:.76rem; text-transform:none; letter-spacing:0; }
+
+      /* World Cup-style remembered tablet mode. */
+      .app-shell.view-tablet main { max-width:1180px; padding:18px; }
+      .app-shell.view-tablet .hero { min-height:138px; padding:22px 28px; }
+      .app-shell.view-tablet .hero h1 { font-size:clamp(2rem,5vw,3.2rem); }
+      .app-shell.view-tablet .tabs { overflow-x:auto; justify-content:flex-start; scrollbar-width:thin; }
+      .app-shell.view-tablet .tabs button { min-height:58px; padding:0 15px; flex:0 0 auto; }
+      .app-shell.view-tablet .two-column { grid-template-columns:repeat(2,minmax(0,1fr)); gap:14px; }
+      .app-shell.view-tablet .match-list { grid-template-columns:1fr; }
+      .app-shell.view-tablet .page-card { padding:18px; }
+      .app-shell.view-tablet select, .app-shell.view-tablet button { min-height:44px; }
+      .app-shell.view-tablet .squad-grid { grid-template-columns:repeat(2,minmax(0,1fr)); }
+
+      /* World Cup-style remembered mobile mode. */
+      .app-shell.view-mobile { max-width:520px; margin:0 auto; }
+      .app-shell.view-mobile .hero { min-height:auto; padding:20px 14px; align-items:stretch; flex-direction:column; }
+      .app-shell.view-mobile .hero h1 { font-size:2.3rem; }
+      .app-shell.view-mobile .hero-actions, .app-shell.view-mobile .competition-picker { width:100%; align-items:stretch; flex-direction:column; }
+      .app-shell.view-mobile .hero-actions select, .app-shell.view-mobile .competition-picker select { width:100%; max-width:none; min-height:48px; }
+      .app-shell.view-mobile .tabs { position:sticky; top:0; z-index:20; overflow-x:auto; justify-content:flex-start; padding:0 6px; scrollbar-width:none; }
+      .app-shell.view-mobile .tabs::-webkit-scrollbar { display:none; }
+      .app-shell.view-mobile .tabs button { min-width:58px; min-height:58px; padding:0 14px; flex:0 0 auto; }
+      .app-shell.view-mobile .tabs button span { display:none; }
+      .app-shell.view-mobile main { padding:12px; }
+      .app-shell.view-mobile .dashboard-grid { display:block; }
+      .app-shell.view-mobile .dashboard-grid > *, .app-shell.view-mobile .stat-card, .app-shell.view-mobile .feature-card, .app-shell.view-mobile .list-card { margin-bottom:12px; }
+      .app-shell.view-mobile .two-column, .app-shell.view-mobile .three-column, .app-shell.view-mobile .match-list, .app-shell.view-mobile .lineup-grid, .app-shell.view-mobile .supporter-grid, .app-shell.view-mobile .support-summary, .app-shell.view-mobile .support-benefits { grid-template-columns:1fr; }
+      .app-shell.view-mobile .page-card { padding:15px; border-radius:16px; }
+      .app-shell.view-mobile .page-heading { align-items:flex-start; flex-direction:column; gap:10px; }
+      .app-shell.view-mobile .fixture-filter, .app-shell.view-mobile .live-picker-control, .app-shell.view-mobile .premium-info { align-items:stretch; flex-direction:column; }
+      .app-shell.view-mobile .fixture-filter select, .app-shell.view-mobile .live-picker-control select { width:100%; min-width:0; min-height:48px; }
+      .app-shell.view-mobile .feature-match, .app-shell.view-mobile .live-matchup { grid-template-columns:1fr 76px 1fr; gap:6px; }
+      .app-shell.view-mobile .score-board strong { font-size:2.25rem; }
+      .app-shell.view-mobile .table { overflow-x:auto; }
+      .app-shell.view-mobile .table-head, .app-shell.view-mobile .table-row { min-width:470px; }
+      .app-shell.view-mobile .squad-grid { grid-template-columns:1fr; }
+      .app-shell.view-mobile .club-profile-head { align-items:flex-start; }
+      .app-shell.view-mobile .transfer-row { grid-template-columns:42px minmax(0,1fr); }
+      .app-shell.view-mobile .transfer-row time { grid-column:2; }
+      .app-shell.view-mobile .fixture-pagination { flex-wrap:wrap; }
+
+      @media (min-width:701px) and (max-width:1100px) {
+        .app-shell.view-desktop main { padding:18px; }
+        .app-shell.view-desktop .hero { padding:22px 26px; }
+        .app-shell.view-desktop .tabs { overflow-x:auto; justify-content:flex-start; }
+        .app-shell.view-desktop .tabs button { flex:0 0 auto; }
+        .app-shell.view-desktop .two-column { gap:14px; }
+        .app-shell.view-desktop .squad-grid { grid-template-columns:repeat(2,minmax(0,1fr)); }
+      }
+
       @media (max-width: 980px) {
         .feature-card { grid-column: span 12; }
         .stat-card { grid-column: span 6; }
@@ -2085,6 +2213,14 @@ class FootballHubPanel extends HTMLElement {
 
         .team.away { flex-direction: column; text-align: center; }
         .match-footer { flex-direction: column; align-items: flex-start; }
+        .view-mode-picker { width:100%; }
+        .view-mode-picker select { width:100%; }
+        .tabs { overflow-x:auto; justify-content:flex-start; scrollbar-width:none; }
+        .tabs::-webkit-scrollbar { display:none; }
+        .tabs button { min-width:56px; min-height:58px; flex:0 0 auto; }
+        .squad-grid { grid-template-columns:1fr; }
+        .transfer-row { grid-template-columns:42px minmax(0,1fr); }
+        .transfer-row time { grid-column:2; }
       }
     `;
   }
