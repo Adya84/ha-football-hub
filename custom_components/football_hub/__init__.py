@@ -1,5 +1,4 @@
 """Football Hub integration setup."""
-
 from __future__ import annotations
 
 from pathlib import Path
@@ -13,10 +12,9 @@ from .api.coordinator import FootballHubCoordinator
 from .const import DOMAIN
 
 PLATFORMS = ["sensor"]
-
 PANEL_URL = "football-hub"
 PANEL_NAME = "football-hub-panel"
-PANEL_VERSION = "0.2.8"
+PANEL_VERSION = "0.3.4-cups"
 PANEL_STATIC_URL = "/football_hub/football-hub-panel.js"
 PANEL_MODULE_URL = f"{PANEL_STATIC_URL}?v={PANEL_VERSION}"
 PANEL_SCRIPT_PATH = Path(__file__).parent / "frontend" / "football-hub-panel.js"
@@ -25,134 +23,83 @@ PANEL_BACKGROUND_PATH = Path(__file__).parent / "frontend" / "football-hub-backg
 
 
 async def async_migrate_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
-    """Migrate existing API-key entries to the free ESPN provider."""
     data = dict(entry.data)
     data.setdefault("country", "England")
     data.setdefault("competition", "premier_league")
     data.setdefault("season", 2026)
-    data["provider_mode"] = "espn"
-
-    hass.config_entries.async_update_entry(
-        entry,
-        data=data,
-        version=3,
-    )
+    data["provider_mode"] = "fm"
+    hass.config_entries.async_update_entry(entry, data=data, version=3)
     return True
 
 
 async def async_setup(hass: HomeAssistant, config: dict) -> bool:
-    """Set up Football Hub and register its sidebar panel."""
     hass.data.setdefault(DOMAIN, {})
-
-    await hass.http.async_register_static_paths(
-        [
-            StaticPathConfig(
-                PANEL_STATIC_URL,
-                str(PANEL_SCRIPT_PATH),
-                False,
-            ),
-            StaticPathConfig(
-                PANEL_BACKGROUND_URL,
-                str(PANEL_BACKGROUND_PATH),
-                False,
-            )
-        ]
-    )
-
+    await hass.http.async_register_static_paths([
+        StaticPathConfig(PANEL_STATIC_URL, str(PANEL_SCRIPT_PATH), False),
+        StaticPathConfig(PANEL_BACKGROUND_URL, str(PANEL_BACKGROUND_PATH), False),
+    ])
     async_register_built_in_panel(
         hass,
         component_name="custom",
         sidebar_title="Football Hub",
         sidebar_icon="mdi:soccer",
         frontend_url_path=PANEL_URL,
-        config={
-            "_panel_custom": {
-                "name": PANEL_NAME,
-                "module_url": PANEL_MODULE_URL,
-                "embed_iframe": False,
-                "trust_external": False,
-            }
-        },
+        config={"_panel_custom": {"name": PANEL_NAME, "module_url": PANEL_MODULE_URL, "embed_iframe": False, "trust_external": False}},
         require_admin=False,
         update=PANEL_URL in hass.data.get("frontend_panels", {}),
     )
 
-    async def async_select_live_team(call: ServiceCall) -> None:
-        """Select the supported team for detailed live polling."""
-        team = str(call.data.get("team") or "").strip()
-        for runtime in hass.data.get(DOMAIN, {}).values():
-            if not isinstance(runtime, dict):
+    async def _coordinators(call: ServiceCall):
+        entry_id = str(call.data.get("entry_id") or "").strip()
+        for runtime_entry_id, runtime in hass.data.get(DOMAIN, {}).items():
+            if entry_id and runtime_entry_id != entry_id:
                 continue
-            coordinator = runtime.get("coordinator")
-            if coordinator is not None:
-                await coordinator.async_set_supported_team(team)
+            if isinstance(runtime, dict) and runtime.get("coordinator") is not None:
+                yield runtime["coordinator"]
 
-    if not hass.services.has_service(DOMAIN, "select_live_team"):
-        hass.services.async_register(
-            DOMAIN,
-            "select_live_team",
-            async_select_live_team,
-        )
+    async def async_select_live_team(call: ServiceCall) -> None:
+        team = str(call.data.get("team") or "").strip()
+        async for coordinator in _coordinators(call):
+            await coordinator.async_set_supported_team(team)
 
     async def async_select_competition(call: ServiceCall) -> None:
-        """Switch the active competition for a config entry."""
-        competition_key = str(call.data.get("competition") or "").strip()
-        entry_id = str(call.data.get("entry_id") or "").strip()
-        for runtime_entry_id, runtime in hass.data.get(DOMAIN, {}).items():
-            if entry_id and runtime_entry_id != entry_id:
-                continue
-            if not isinstance(runtime, dict):
-                continue
-            coordinator = runtime.get("coordinator")
-            if coordinator is not None:
-                await coordinator.async_set_competition(competition_key)
+        competition = str(call.data.get("competition") or "").strip()
+        async for coordinator in _coordinators(call):
+            await coordinator.async_set_competition(competition)
 
-    if not hass.services.has_service(DOMAIN, "select_competition"):
-        hass.services.async_register(
-            DOMAIN,
-            "select_competition",
-            async_select_competition,
-        )
+    async def async_select_cup(call: ServiceCall) -> None:
+        competition = str(call.data.get("competition") or "").strip()
+        async for coordinator in _coordinators(call):
+            await coordinator.async_set_cup(competition)
 
     async def async_select_my_club(call: ServiceCall) -> None:
-        """Select the club used by the My Club data sensors."""
         team = str(call.data.get("team") or "").strip()
-        entry_id = str(call.data.get("entry_id") or "").strip()
-        for runtime_entry_id, runtime in hass.data.get(DOMAIN, {}).items():
-            if entry_id and runtime_entry_id != entry_id:
-                continue
-            if not isinstance(runtime, dict):
-                continue
-            coordinator = runtime.get("coordinator")
-            if coordinator is not None:
-                await coordinator.async_set_my_club(team)
+        async for coordinator in _coordinators(call):
+            await coordinator.async_set_my_club(team)
 
-    if not hass.services.has_service(DOMAIN, "select_my_club"):
-        hass.services.async_register(DOMAIN, "select_my_club", async_select_my_club)
-
+    services = {
+        "select_live_team": async_select_live_team,
+        "select_competition": async_select_competition,
+        "select_cup": async_select_cup,
+        "select_my_club": async_select_my_club,
+    }
+    for name, handler in services.items():
+        if not hass.services.has_service(DOMAIN, name):
+            hass.services.async_register(DOMAIN, name, handler)
     return True
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
-    """Set up a Football Hub config entry."""
     hass.data.setdefault(DOMAIN, {})
-
     coordinator = FootballHubCoordinator(hass, entry)
     await coordinator.async_config_entry_first_refresh()
-
-    hass.data[DOMAIN][entry.entry_id] = {
-        "coordinator": coordinator,
-    }
-
+    hass.data[DOMAIN][entry.entry_id] = {"coordinator": coordinator}
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
     return True
 
 
 async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
-    """Unload a Football Hub config entry."""
     unload_ok = await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
-
     if unload_ok:
         hass.data[DOMAIN].pop(entry.entry_id, None)
-
     return unload_ok
