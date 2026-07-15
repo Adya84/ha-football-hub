@@ -168,6 +168,8 @@ class FootballHubStatusSensor(FootballHubBaseSensor):
                     "name": item["name"],
                     "country": item["country"],
                     "league_id": item["league_id"],
+                    "type": item.get("type", "league"),
+                    "has_table": item.get("has_table", True),
                 }
                 for key, item in COMPETITIONS.items()
             ],
