@@ -8,7 +8,7 @@ from typing import Any
 import aiohttp
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 
-from .fm import FotMobProvider
+from .fotmob import FotMobProvider
 
 ESPN_SITE_BASE = "https://site.api.espn.com/apis/site/v2/sports/soccer"
 ESPN_STANDINGS_BASE = "https://site.web.api.espn.com/apis/v2/sports/soccer"
@@ -35,7 +35,7 @@ class FootballHubAPI:
     def __init__(self, hass, api_key: str | None = None):
         self.hass = hass
         self.session = async_get_clientsession(hass)
-        self.fotmob = FotMobProvider(self.session)
+        self.fotmob = FotMobProvider(self.hass, self.session)
         self._scoreboard_cache: dict[tuple[int, int], tuple[float, list[dict]]] = {}
         self._fixture_leagues: dict[str, str] = {}
         self._team_leagues: dict[str, str] = {}
