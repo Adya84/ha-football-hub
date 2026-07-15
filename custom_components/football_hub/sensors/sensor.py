@@ -33,6 +33,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry, async_add_e
             FootballHubStandingsSensor(coordinator, entry),
             FootballHubTopScorersSensor(coordinator, entry),
             FootballHubTopAssistsSensor(coordinator, entry),
+            FootballHubCupCentreSensor(coordinator, entry),
             FootballHubClubDataSensor(coordinator, entry, "club_profile", "My Club Profile"),
             FootballHubClubDataSensor(coordinator, entry, "club_statistics", "My Club Statistics"),
             FootballHubClubDataSensor(coordinator, entry, "club_squad", "My Club Squad"),
@@ -394,4 +395,33 @@ class FootballHubTopAssistsSensor(FootballHubBaseSensor):
         return {
             "total_top_assists": len(self.engine.top_assists),
             "top_assists": limit_items(self.engine.top_assists, ATTRIBUTE_LIMIT),
+        }
+
+
+class FootballHubCupCentreSensor(FootballHubBaseSensor):
+    """Expose the independently selected cup in one frontend-only dataset."""
+
+    _unrecorded_attributes = frozenset({"fixtures", "results", "table", "top_scorers"})
+
+    def __init__(self, coordinator, entry):
+        super().__init__(coordinator, entry, "cup_centre", "Cup Centre")
+
+    @property
+    def native_value(self):
+        competition = self.coordinator.cup_competition or {}
+        return competition.get("name", "Not selected")
+
+    @property
+    def extra_state_attributes(self):
+        engine = self.coordinator.cup_engine
+        competition = self.coordinator.cup_competition or {}
+        return {
+            "competition_key": self.coordinator.cup_key,
+            "competition": competition.get("name"),
+            "country": competition.get("country"),
+            "has_table": competition.get("has_table", False),
+            "fixtures": engine.fixtures.all(),
+            "results": engine.results.all(),
+            "table": engine.standings.table(),
+            "top_scorers": limit_items(engine.top_scorers, 10),
         }
