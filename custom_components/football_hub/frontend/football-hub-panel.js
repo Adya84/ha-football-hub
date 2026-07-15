@@ -1091,7 +1091,7 @@ class FootballHubPanel extends HTMLElement {
         </section>
         <section class="two-column">
           <article class="page-card"><span class="eyebrow">NEXT MATCH</span><h2>Prediction</h2><div class="settings-list"><div><span>Advice</span><strong>${this._escape(prediction.predictions?.advice || "Not available")}</strong></div><div><span>Home chance</span><strong>${this._escape(prediction.predictions?.percent?.home || "—")}</strong></div><div><span>Draw chance</span><strong>${this._escape(prediction.predictions?.percent?.draw || "—")}</strong></div><div><span>Away chance</span><strong>${this._escape(prediction.predictions?.percent?.away || "—")}</strong></div></div></article>
-          <article class="page-card"><span class="eyebrow">CLUB HISTORY</span><h2>Records</h2><div class="settings-list"><div><span>Total trophies</span><strong>${this._escape(totalTrophies)}</strong></div><div><span>Competitions won</span><strong>${this._escape(clubTrophies.filter((item) => Number(Array.isArray(item.won) ? item.won[0] : item.won || 0) > 0).length)}</strong></div><div><span>League seasons recorded</span><strong>${this._escape(leagueHistory.length)}</strong></div><div><span>Head-to-head matches</span><strong>${this._escape(headToHead.length)}</strong></div></div>${clubTrophies.length ? `<div class="player-list">${clubTrophies.slice(0, 6).map((item) => `<div class="player-row"><span class="player-name"><strong>${this._escape(Array.isArray(item.name) ? item.name[0] : item.name || "Competition")}</strong><small>${this._escape(Array.isArray(item.season_won) ? item.season_won[0] : item.season_won || "")}</small></span><strong>${this._escape(Array.isArray(item.won) ? item.won[0] : item.won || 0)}</strong></div>`).join("")}</div>` : ""}</article>
+          <article class="page-card"><span class="eyebrow">CLUB HISTORY</span><h2>Records</h2><div class="settings-list"><div><span>Total trophies</span><strong>${this._escape(totalTrophies)}</strong></div><div><span>Competitions won</span><strong>${this._escape(clubTrophies.filter((item) => Number(Array.isArray(item.won) ? item.won[0] : item.won || 0) > 0).length)}</strong></div><div><span>League seasons recorded</span><strong>${this._escape(leagueHistory.length)}</strong></div><div><span>Head-to-head matches</span><strong>${this._escape(headToHead.length)}</strong></div></div>${clubTrophies.length ? `<div class="trophy-list">${clubTrophies.slice(0, 6).map((item) => { const seasons = String(Array.isArray(item.season_won) ? item.season_won[0] : item.season_won || "").split(",").filter(Boolean); return `<div class="trophy-row"><span><strong>${this._escape(Array.isArray(item.name) ? item.name[0] : item.name || "Competition")}</strong><small>${this._escape(seasons.slice(0, 3).join(", "))}${seasons.length > 3 ? ` +${seasons.length - 3} more` : ""}</small></span><b>${this._escape(Array.isArray(item.won) ? item.won[0] : item.won || 0)}</b></div>`; }).join("")}</div>` : ""}</article>
         </section>
       `}
     `;
@@ -1691,6 +1691,13 @@ class FootballHubPanel extends HTMLElement {
       }
 
       .player-name small { color: var(--secondary-text-color); }
+
+      .trophy-list { display:flex; flex-direction:column; margin-top:12px; }
+      .trophy-row { display:grid; grid-template-columns:minmax(0,1fr) auto; align-items:center; gap:16px; padding:12px 0; border-top:1px solid var(--fh-border); }
+      .trophy-row span { display:flex; flex-direction:column; min-width:0; gap:4px; }
+      .trophy-row strong, .trophy-row small { overflow-wrap:anywhere; }
+      .trophy-row small { color:var(--secondary-text-color); }
+      .trophy-row b { color:var(--accent); font-size:1.15rem; }
 
       .player-stat {
         font-size: 1.2rem;
