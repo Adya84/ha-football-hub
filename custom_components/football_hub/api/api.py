@@ -390,13 +390,17 @@ class FootballHubAPI:
         for athlete in self._athletes(data):
             position = athlete.get("position") or {}
             headshot = athlete.get("headshot") or {}
+            athlete_id = athlete.get("id")
+            photo = headshot.get("href") if isinstance(headshot, dict) else headshot
+            if not photo and athlete_id:
+                photo = f"https://a.espncdn.com/i/headshots/soccer/players/full/{athlete_id}.png"
             players.append({
-                "id": athlete.get("id"),
+                "id": athlete_id,
                 "name": athlete.get("displayName") or athlete.get("fullName"),
                 "age": athlete.get("age"),
                 "number": athlete.get("jersey"),
                 "position": position.get("displayName") or position.get("abbreviation") if isinstance(position, dict) else position,
-                "photo": headshot.get("href") if isinstance(headshot, dict) else headshot,
+                "photo": photo,
             })
         return [{"team": {"id": team.get("id") or team_id, "name": team.get("displayName") or team.get("name"), "logo": self._logo(team)}, "players": players}] if players else []
 
