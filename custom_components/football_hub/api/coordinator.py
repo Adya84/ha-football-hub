@@ -343,6 +343,28 @@ class FootballHubCoordinator(DataUpdateCoordinator):
 
         primary_fixture_id = live_fixture_ids[0] if live_fixture_ids else None
 
+        club_profile = copy.deepcopy(self._cache.get("club_profile", []))
+        if isinstance(club_profile, list) and club_profile:
+            profile = club_profile[0] or {}
+            if not isinstance(profile, dict):
+                profile = {}
+                club_profile[0] = profile
+            venue = profile.get("venue")
+            if not isinstance(venue, dict):
+                venue = {}
+                profile["venue"] = venue
+            for match in self._cache.get("fixtures", []) or []:
+                teams = (match or {}).get("teams", {}) or {}
+                home = teams.get("home", {}) or {}
+                if str(home.get("name", "")).casefold() != self.my_club.casefold():
+                    continue
+                fixture_venue = ((match or {}).get("fixture", {}) or {}).get("venue", {}) or {}
+                if fixture_venue.get("name"):
+                    venue.setdefault("name", fixture_venue.get("name"))
+                if fixture_venue.get("city"):
+                    venue.setdefault("city", fixture_venue.get("city"))
+                break
+
         data = {
             "live": raw_live,
             "fixtures": self._cache.get("fixtures", []),
@@ -355,7 +377,7 @@ class FootballHubCoordinator(DataUpdateCoordinator):
             "live_details": live_details,
             "my_club": self.my_club,
             "my_club_team_id": team_id,
-            "club_profile": self._cache.get("club_profile", []),
+            "club_profile": club_profile,
             "club_statistics": self._cache.get("club_statistics", []),
             "club_seasons": self._cache.get("club_seasons", []),
             "club_squad": self._cache.get("club_squad", []),
