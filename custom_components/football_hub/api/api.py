@@ -8,7 +8,7 @@ from typing import Any
 import aiohttp
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 
-from .fotmob import FotMobProvider
+from .fm import FotMobProvider
 
 ESPN_SITE_BASE = "https://site.api.espn.com/apis/site/v2/sports/soccer"
 ESPN_STANDINGS_BASE = "https://site.web.api.espn.com/apis/v2/sports/soccer"
