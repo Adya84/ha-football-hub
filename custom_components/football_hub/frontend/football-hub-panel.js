@@ -1,4 +1,4 @@
-const PANEL_VERSION = "0.9.3-transfer-fixture-layout";
+const PANEL_VERSION = "0.10.0-news-tv-transfers";
 
 class FootballHubPanel extends HTMLElement {
   constructor() {
@@ -24,7 +24,7 @@ class FootballHubPanel extends HTMLElement {
       }, 0);
     }, true);
     const savedTab = localStorage.getItem("football_hub_active_page") || "overview";
-    this._activeTab = ["overview", "live", "fixtures", "results", "table", "players", "my-club", "cups", "supporters", "settings"].includes(savedTab)
+    this._activeTab = ["overview", "live", "fixtures", "results", "table", "players", "my-club", "cups", "news", "tv-guide", "transfers", "supporters", "settings"].includes(savedTab)
       ? savedTab
       : "overview";
     this._selectedFixtureTeam = localStorage.getItem("football_hub_fixture_team") || "__all__";
@@ -35,6 +35,7 @@ class FootballHubPanel extends HTMLElement {
     this._selectedCountry = localStorage.getItem("football_hub_selected_country") || "";
     this._selectedCupCountry = localStorage.getItem("football_hub_cup_country") || "Europe";
     this._cupView = localStorage.getItem("football_hub_cup_view") || "overview";
+    this._transferView = localStorage.getItem("football_hub_transfer_view") || "latest";
     this._pendingCup = "";
     const savedViewMode = localStorage.getItem("football_hub_view_mode") || "desktop";
     this._viewMode = ["desktop", "tablet", "mobile"].includes(savedViewMode) ? savedViewMode : "desktop";
@@ -612,6 +613,9 @@ class FootballHubPanel extends HTMLElement {
       ["players", "mdi:account-star-outline", this._t("players")],
       ["my-club", "mdi:shield-star-outline", this._t("myClub")],
       ["cups", "mdi:trophy-variant-outline", "Cups"],
+      ["news", "mdi:newspaper-variant-outline", "News"],
+      ["tv-guide", "mdi:television-guide", "TV Guide"],
+      ["transfers", "mdi:swap-horizontal-bold", "Transfers"],
       ["supporters", "mdi:heart-outline", this._t("supporters")],
       ["settings", "mdi:cog-outline", this._t("settings")],
     ];
@@ -1239,6 +1243,54 @@ class FootballHubPanel extends HTMLElement {
     `;
   }
 
+  _newsPage() {
+    const items = this._attrs("news").items || [];
+    return `
+      <section class="page-title"><div><span>Latest stories</span><h1>Football News</h1></div><strong>${items.length} stories</strong></section>
+      <section class="news-grid">
+        ${items.length ? items.map((item) => `
+          <a class="page-card news-card" href="${this._escape(item.url || "#")}" target="_blank" rel="noopener noreferrer">
+            ${item.image ? `<img src="${this._escape(item.image)}" alt="" loading="lazy">` : `<div class="news-placeholder"><ha-icon icon="mdi:newspaper-variant-outline"></ha-icon></div>`}
+            <div class="news-body">
+              <div class="news-source">${item.source_icon ? `<img src="${this._escape(item.source_icon)}" alt="">` : ""}<span>${this._escape(item.source || "Football news")}</span><time>${this._formatDate(item.published)}</time></div>
+              <h2>${this._escape(item.title)}</h2>
+            </div>
+          </a>`).join("") : `<article class="page-card empty">News is loading. It will be stored after the first successful refresh.</article>`}
+      </section>`;
+  }
+
+  _tvGuidePage() {
+    const items = this._attrs("tv_guide").items || [];
+    return `
+      <section class="page-title"><div><span>UK listings</span><h1>TV Guide</h1></div><strong>${items.length} matches</strong></section>
+      <section class="portal-list">
+        ${items.length ? items.map((item) => `
+          <article class="page-card tv-row">
+            <div class="tv-time"><strong>${this._formatDate(item.kickoff)}</strong><span>${this._escape(item.competition || "Football")}</span></div>
+            <div class="tv-match"><strong>${this._escape(item.home)}</strong><span>vs</span><strong>${this._escape(item.away)}</strong></div>
+            <div class="tv-channels">${(item.channels || []).length ? item.channels.map((channel) => `<span>${this._escape(channel)}</span>`).join("") : `<span>Channel to be confirmed</span>`}</div>
+          </article>`).join("") : `<article class="page-card empty">No TV listings are available right now.</article>`}
+      </section>`;
+  }
+
+  _transferMarketPage() {
+    const market = this._attrs("transfer_market");
+    const view = this._transferView === "top" ? "top" : "latest";
+    const items = market[view] || [];
+    return `
+      <section class="page-title"><div><span>Transfer centre</span><h1>Transfer Market</h1></div><strong>${items.length} moves</strong></section>
+      <nav class="cup-tabs transfer-tabs"><button data-transfer-view="latest" class="${view === "latest" ? "active" : ""}">Latest transfers</button><button data-transfer-view="top" class="${view === "top" ? "active" : ""}">Top transfers</button></nav>
+      <section class="transfer-market-grid">
+        ${items.length ? items.map((item) => `
+          <article class="page-card market-transfer">
+            ${item.player?.photo ? `<img src="${this._escape(item.player.photo)}" alt="" loading="lazy" onerror="this.style.display='none'">` : `<span class="player-fallback">${this._escape((item.player?.name || "?").slice(0, 2).toUpperCase())}</span>`}
+            <div class="market-player"><strong>${this._escape(item.player?.name || "Unknown player")}</strong><span>${this._escape(item.date || item.type || "")}</span></div>
+            <div class="market-route"><span>${this._escape(item.from?.name || "Free agent")}</span><ha-icon icon="mdi:arrow-right"></ha-icon><strong>${this._escape(item.to?.name || "Free agent")}</strong></div>
+            <strong class="market-fee">${this._escape(item.fee_display || item.type || "Undisclosed")}</strong>
+          </article>`).join("") : `<article class="page-card empty">Transfer data is loading.</article>`}
+      </section>`;
+  }
+
   _settingsPage() {
     const status = this._statusInfo();
     const prefixes = this._competitionPrefixes();
@@ -1292,6 +1344,12 @@ class FootballHubPanel extends HTMLElement {
         return this._myClubPage();
       case "cups":
         return this._cupsPage();
+      case "news":
+        return this._newsPage();
+      case "tv-guide":
+        return this._tvGuidePage();
+      case "transfers":
+        return this._transferMarketPage();
       case "supporters":
         return this._supportersPage();
       case "settings":
@@ -1379,6 +1437,14 @@ class FootballHubPanel extends HTMLElement {
         this._render();
       });
     });
+
+    this.shadowRoot.querySelectorAll("[data-transfer-view]").forEach((button) => {
+      button.addEventListener("click", () => {
+        this._transferView = button.dataset.transferView;
+        localStorage.setItem("football_hub_transfer_view", this._transferView);
+        this._render();
+      });
+    });
   }
 
   _styles() {
@@ -1405,6 +1471,31 @@ class FootballHubPanel extends HTMLElement {
       }
       .club-profile-head { display:flex; align-items:center; gap:18px; margin-bottom:18px; }
       .club-profile-head h2 { margin:4px 0; }
+
+      .news-grid { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:18px; }
+      .news-card { padding:0; overflow:hidden; color:inherit; text-decoration:none; min-width:0; }
+      .news-card > img, .news-placeholder { width:100%; aspect-ratio:16/9; object-fit:cover; display:flex; align-items:center; justify-content:center; background:rgba(0,0,0,.3); }
+      .news-placeholder ha-icon { --mdc-icon-size:48px; opacity:.6; }
+      .news-body { padding:18px; }
+      .news-body h2 { margin:12px 0 2px; font-size:1.05rem; line-height:1.35; }
+      .news-source { display:flex; align-items:center; gap:8px; min-width:0; font-size:.72rem; color:var(--secondary-text-color); }
+      .news-source img { width:20px; height:20px; object-fit:contain; border-radius:4px; }
+      .news-source time { margin-left:auto; text-align:right; }
+      .portal-list { display:grid; gap:12px; }
+      .tv-row { display:grid; grid-template-columns:220px minmax(260px,1fr) minmax(180px,auto); align-items:center; gap:20px; }
+      .tv-time, .tv-match { display:flex; flex-direction:column; gap:5px; }
+      .tv-time span, .tv-match span { color:var(--secondary-text-color); font-size:.78rem; }
+      .tv-channels { display:flex; justify-content:flex-end; flex-wrap:wrap; gap:7px; }
+      .tv-channels span { padding:7px 10px; border:1px solid rgba(49,233,129,.35); border-radius:999px; background:rgba(49,233,129,.08); font-size:.76rem; }
+      .transfer-tabs { margin-bottom:18px; }
+      .transfer-market-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:14px; }
+      .market-transfer { display:grid; grid-template-columns:54px minmax(130px,.8fr) minmax(180px,1.3fr) auto; align-items:center; gap:14px; min-width:0; }
+      .market-transfer > img, .player-fallback { width:48px; height:48px; object-fit:contain; border-radius:50%; background:rgba(0,75,43,.8); display:flex; align-items:center; justify-content:center; font-weight:900; }
+      .market-player, .market-route { min-width:0; display:flex; flex-direction:column; gap:4px; }
+      .market-player span, .market-route span { color:var(--secondary-text-color); font-size:.76rem; overflow-wrap:anywhere; }
+      .market-route { display:grid; grid-template-columns:minmax(0,1fr) auto minmax(0,1fr); align-items:center; }
+      .market-route ha-icon { --mdc-icon-size:18px; color:var(--fh-cyan); }
+      .market-fee { color:var(--fh-cyan); white-space:nowrap; }
       .club-profile-head p { margin:0; color:var(--muted); }
       .venue-image { width:100%; height:170px; object-fit:cover; border-radius:14px; margin:12px 0 16px; border:1px solid var(--line); }
       .squad-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(210px,1fr)); gap:12px; }
@@ -2381,6 +2472,10 @@ class FootballHubPanel extends HTMLElement {
       }
 
       @media (max-width: 980px) {
+        .news-grid { grid-template-columns:repeat(2,minmax(0,1fr)); }
+        .transfer-market-grid { grid-template-columns:1fr; }
+        .tv-row { grid-template-columns:170px minmax(220px,1fr); }
+        .tv-channels { grid-column:1 / -1; justify-content:flex-start; }
         .cup-overview > .stat-card { grid-column: span 12; }
         .feature-card { grid-column: span 12; }
         .stat-card { grid-column: span 6; }
@@ -2394,6 +2489,11 @@ class FootballHubPanel extends HTMLElement {
       }
 
       @media (max-width: 700px) {
+        .news-grid { grid-template-columns:1fr; }
+        .tv-row { grid-template-columns:1fr; gap:12px; }
+        .tv-channels { grid-column:auto; }
+        .market-transfer { grid-template-columns:48px minmax(0,1fr) auto; }
+        .market-route { grid-column:2 / -1; }
         .hero {
           min-height: 160px;
           padding: 26px 18px 22px;
