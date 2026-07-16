@@ -4,7 +4,6 @@
 ![Version](https://img.shields.io/badge/version-v0.3.7-green)
 ![Home Assistant](https://img.shields.io/badge/Home%20Assistant-2024.1%2B-blue)
 ![HACS](https://img.shields.io/badge/HACS-Custom-orange)
-![Provider](https://img.shields.io/badge/Data-API--Football-success)
 ![Cloud Polling](https://img.shields.io/badge/IoT--Class-Cloud%20Polling-blue)
 
 A dedicated multi-competition football application and football portal for Home Assistant.
