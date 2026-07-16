@@ -1111,17 +1111,48 @@ class FMProvider:
                     or transfer_type.get("localizationKey")
                 )
 
-            fee_data = item.get("fee")
+            fee_data = (
+                item.get("fee")
+                or item.get("transferFee")
+                or item.get("transfer_fee")
+                or item.get("feeData")
+            )
             fee_text = None
-            fee_value = None
+            fee_value = item.get("feeValue") or item.get("fee_value") or item.get("amount")
+            fee_currency = item.get("currency") or item.get("feeCurrency")
             if isinstance(fee_data, dict):
                 fee_text = (
                     fee_data.get("feeText")
                     or fee_data.get("localizedFeeText")
+                    or fee_data.get("text")
+                    or fee_data.get("label")
+                    or fee_data.get("formatted")
                 )
-                fee_value = fee_data.get("value")
+                fee_value = fee_value or fee_data.get("value") or fee_data.get("amount") or fee_data.get("rawValue")
+                fee_currency = fee_currency or fee_data.get("currency") or fee_data.get("currencyCode")
             elif fee_data not in (None, ""):
-                fee_text = str(fee_data)
+                if isinstance(fee_data, (int, float)):
+                    fee_value = fee_value or fee_data
+                else:
+                    fee_text = str(fee_data)
+
+            if not fee_text:
+                fee_text = item.get("feeText") or item.get("localizedFeeText") or item.get("transferFeeText")
+
+            fee_display = fee_text
+            try:
+                numeric_fee = float(fee_value) if fee_value not in (None, "") else 0
+            except (TypeError, ValueError):
+                numeric_fee = 0
+            if numeric_fee > 0:
+                if numeric_fee >= 1_000_000:
+                    fee_display = f"€{numeric_fee / 1_000_000:.1f}m".replace(".0m", "m")
+                elif numeric_fee >= 1_000:
+                    fee_display = f"€{numeric_fee / 1_000:.1f}k".replace(".0k", "k")
+                else:
+                    fee_display = f"€{numeric_fee:,.0f}"
+            elif fee_display:
+                fee_display = str(fee_display).replace("_", " ").strip().title()
 
             if item.get("contractExtension"):
                 transfer_type = "Contract extension"
@@ -1159,6 +1190,8 @@ class FMProvider:
                 "type": transfer_type,
                 "fee": fee_text,
                 "fee_value": fee_value,
+                "fee_currency": fee_currency,
+                "fee_display": fee_display,
                 "on_loan": bool(item.get("onLoan")),
                 "contract_extension": bool(item.get("contractExtension")),
                 "teams": {
