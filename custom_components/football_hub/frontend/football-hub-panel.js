@@ -1,4 +1,4 @@
-const PANEL_VERSION = "0.10.0-news-tv-transfers";
+const PANEL_VERSION = "0.10.1-country-live-centre";
 
 class FootballHubPanel extends HTMLElement {
   constructor() {
@@ -786,6 +786,31 @@ class FootballHubPanel extends HTMLElement {
     }).join("")}</div>`;
   }
 
+  _liveCompetitionGroups(matches, selectedId = "") {
+    const matchId = (match, index = 0) => String(match.fixture_id ?? match.id ?? `${match.home_team}-${match.away_team}-${index}`);
+    const groups = new Map();
+    matches.forEach((match) => {
+      const competition = match.competition || match.league_name || "Other live matches";
+      if (!groups.has(competition)) groups.set(competition, []);
+      groups.get(competition).push(match);
+    });
+    if (!groups.size) return `<div class="empty">No live matches right now.</div>`;
+    return `<div class="country-live-groups">${[...groups.entries()].map(([competition, games]) => `
+      <article class="country-live-group">
+        <header><ha-icon icon="mdi:trophy-outline"></ha-icon><strong>${this._escape(competition)}</strong><span>${games.length} live</span></header>
+        <div>${games.map((match, index) => {
+          const id = matchId(match, index);
+          const minute = match.elapsed ? `${match.elapsed}'` : (match.status_short || "LIVE");
+          return `<button class="country-live-row ${id === selectedId ? "active" : ""}" data-live-score="${this._escape(id)}">
+            <span class="country-live-minute">${this._escape(minute)}</span>
+            <span class="country-live-team home">${this._escape(match.home_team)}${this._logo(match.home_logo, match.home_team, "24")}</span>
+            <strong>${this._score(match.home_goals)}<i>–</i>${this._score(match.away_goals)}</strong>
+            <span class="country-live-team away">${this._logo(match.away_logo, match.away_team, "24")}${this._escape(match.away_team)}</span>
+          </button>`;
+        }).join("")}</div>
+      </article>`).join("")}</div>`;
+  }
+
   _livePage() {
     const primary = this._attrs("live_match");
     const matches = this._attrs("live_matches").matches || [];
@@ -843,10 +868,8 @@ class FootballHubPanel extends HTMLElement {
       </section>
       <section class="live-picker page-card">
         ${teamOptions(this._selectedLiveTeam || live.home_team)}
-        <div class="live-score-strip">
-          ${liveMatches.map((match, index) => `<div class="${matchId(match, index) === this._selectedLiveMatch ? "active" : ""}"><span>${this._escape(match.status_short || match.elapsed || "LIVE")}</span><strong>${this._escape(match.home_team)} ${this._score(match.home_goals)}–${this._score(match.away_goals)} ${this._escape(match.away_team)}</strong></div>`).join("")}
-        </div>
       </section>
+      <section class="section country-live-section"><div class="page-heading"><div><span class="eyebrow">LIVE ACROSS YOUR COUNTRY</span><h2>All live scores</h2></div><div class="count-badge">${liveMatches.length} live</div></div>${this._liveCompetitionGroups(liveMatches, this._selectedLiveMatch)}</section>
       <section class="live-centre-card">
         <div class="live-banner"><span class="pulse"></span> LIVE · ${this._escape(
           this._entity("live_match")?.state || live.status_short || ""
@@ -1398,6 +1421,14 @@ class FootballHubPanel extends HTMLElement {
 
     this.shadowRoot.querySelector("#live-team-select")?.addEventListener("change", (event) => {
       this._setLiveTeam(event.target.value);
+    });
+
+    this.shadowRoot.querySelectorAll("[data-live-score]").forEach((button) => {
+      button.addEventListener("click", () => {
+        this._selectedLiveMatch = button.dataset.liveScore;
+        localStorage.setItem("football_hub_live_match", this._selectedLiveMatch);
+        this._render();
+      });
     });
 
     this.shadowRoot.querySelector("#my-club-select")?.addEventListener("change", (event) => {
@@ -2195,6 +2226,22 @@ class FootballHubPanel extends HTMLElement {
       .live-score-strip > div span { color: #86efac; font-size: .68rem; font-weight: 900; }
       .live-score-strip > div strong { font-size: .82rem; }
       .live-score-strip > div.active { border-color: rgba(74,222,128,.72); background: rgba(34,197,94,.16); box-shadow: 0 0 14px rgba(34,197,94,.2); }
+      .country-live-section { margin-bottom:22px; }
+      .country-live-groups { display:grid; gap:14px; }
+      .country-live-group { overflow:hidden; border:1px solid rgba(255,255,255,.14); border-radius:16px; background:rgba(3,14,25,.68); }
+      .country-live-group > header { display:flex; align-items:center; gap:9px; min-height:48px; padding:0 16px; background:rgba(255,255,255,.08); }
+      .country-live-group > header ha-icon { --mdc-icon-size:20px; color:var(--fh-cyan); }
+      .country-live-group > header span { margin-left:auto; color:#86efac; font-size:.7rem; font-weight:900; text-transform:uppercase; }
+      .country-live-row { width:100%; display:grid; grid-template-columns:56px minmax(150px,1fr) 76px minmax(150px,1fr); align-items:center; gap:12px; min-height:58px; padding:8px 16px; border:0; border-bottom:1px solid rgba(255,255,255,.1); color:#fff; background:transparent; cursor:pointer; font:inherit; }
+      .country-live-row:last-child { border-bottom:0; }
+      .country-live-row:hover, .country-live-row.active { background:rgba(49,233,129,.1); }
+      .country-live-row.active { box-shadow:inset 3px 0 0 var(--fh-cyan); }
+      .country-live-minute { justify-self:start; min-width:38px; padding:5px 7px; border-radius:999px; color:#032117; background:var(--fh-cyan); font-size:.7rem; font-weight:950; text-align:center; }
+      .country-live-team { display:flex; align-items:center; gap:9px; min-width:0; font-size:.84rem; font-weight:750; }
+      .country-live-team.home { justify-content:flex-end; text-align:right; }
+      .country-live-team.away { justify-content:flex-start; text-align:left; }
+      .country-live-row > strong { display:flex; justify-content:center; gap:7px; font-size:1rem; }
+      .country-live-row > strong i { opacity:.55; font-style:normal; }
 
       .live-control-hero, .live-control-empty {
         display: flex;
@@ -2489,6 +2536,13 @@ class FootballHubPanel extends HTMLElement {
       }
 
       @media (max-width: 700px) {
+        .country-live-row { grid-template-columns:44px minmax(0,1fr) 54px; gap:7px; padding:9px 10px; }
+        .country-live-team { font-size:.76rem; }
+        .country-live-team.home { justify-content:flex-start; text-align:left; }
+        .country-live-team.home .image-fallback { order:-1; }
+        .country-live-team.away { grid-column:2; }
+        .country-live-row > strong { grid-column:3; grid-row:1 / span 2; }
+        .country-live-minute { grid-row:1 / span 2; }
         .news-grid { grid-template-columns:1fr; }
         .tv-row { grid-template-columns:1fr; gap:12px; }
         .tv-channels { grid-column:auto; }
