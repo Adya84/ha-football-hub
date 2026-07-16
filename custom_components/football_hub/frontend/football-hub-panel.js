@@ -1,4 +1,4 @@
-const PANEL_VERSION = "0.10.1-country-live-centre";
+const PANEL_VERSION = "0.10.2-back-navigation";
 
 class FootballHubPanel extends HTMLElement {
   constructor() {
@@ -304,6 +304,15 @@ class FootballHubPanel extends HTMLElement {
     this._render();
   }
 
+  _goBack() {
+    localStorage.setItem("football_hub_active_page", this._activeTab);
+    if (window.history.length > 1) {
+      window.history.back();
+      return;
+    }
+    window.location.assign("/");
+  }
+
   _setViewMode(mode) {
     this._viewMode = ["desktop", "tablet", "mobile"].includes(mode) ? mode : "desktop";
     localStorage.setItem("football_hub_view_mode", this._viewMode);
@@ -562,6 +571,9 @@ class FootballHubPanel extends HTMLElement {
     return `
       <header class="hero">
         <div>
+          <button class="panel-back-button" id="panel-back-button" type="button" aria-label="Back" title="Back">
+            <ha-icon icon="mdi:arrow-left"></ha-icon><span>Back</span>
+          </button>
           <div class="eyebrow">YOUR MATCHDAY STARTS HERE</div>
           <h1><span>Football</span> Hub</h1>
           <p>${this._escape(activeCompetition.name || "Choose a competition")} · ${this._escape(
@@ -1401,6 +1413,10 @@ class FootballHubPanel extends HTMLElement {
       button.addEventListener("click", () => this._setTab(button.dataset.tab));
     });
 
+    this.shadowRoot.querySelector("#panel-back-button")?.addEventListener("click", () => {
+      this._goBack();
+    });
+
     this.shadowRoot.querySelector("#view-mode-select")?.addEventListener("change", (event) => {
       this._setViewMode(event.target.value);
     });
@@ -1613,6 +1629,30 @@ class FootballHubPanel extends HTMLElement {
       }
 
       .hero > * { position: relative; z-index: 1; }
+
+      .panel-back-button {
+        display: inline-flex;
+        align-items: center;
+        gap: 7px;
+        min-height: 38px;
+        margin: 0 0 12px;
+        padding: 7px 12px;
+        border: 1px solid rgba(255,255,255,.24);
+        border-radius: 999px;
+        color: white;
+        background: rgba(2,11,22,.58);
+        cursor: pointer;
+        font-weight: 750;
+        transition: border-color .18s ease, background .18s ease, transform .18s ease;
+      }
+
+      .panel-back-button:hover {
+        border-color: var(--fh-cyan);
+        background: rgba(14,229,139,.14);
+        transform: translateX(-2px);
+      }
+
+      .panel-back-button ha-icon { --mdc-icon-size: 20px; }
 
       .hero h1 {
         margin: 6px 0;
