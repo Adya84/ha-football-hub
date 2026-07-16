@@ -79,6 +79,10 @@ MATCH_TTL_FINISHED = 24 * 60 * 60
 TEAM_PROFILE_TTL = 30 * 24 * 60 * 60
 TEAM_SQUAD_TTL = 7 * 24 * 60 * 60
 TEAM_TRANSFERS_TTL = 24 * 60 * 60
+NEWS_TTL = 60 * 60
+TV_GUIDE_TTL = 6 * 60 * 60
+TRANSFER_MARKET_TTL = 60 * 60
+COMPETITION_CATALOGUE_TTL = 7 * 24 * 60 * 60
 
 
 class FMProviderError(Exception):
@@ -98,6 +102,7 @@ class FMProvider:
             "match_ids": {},
             "teams": {},
             "league_data": {},
+            "global_data": {},
         }
         self._loaded = False
         self._load_lock = asyncio.Lock()
@@ -116,7 +121,7 @@ class FMProvider:
             stored = await self._store.async_load()
             if isinstance(stored, dict):
                 self._persistent.update(stored)
-            for key in ("league_ids", "team_ids", "match_ids", "teams", "league_data"):
+            for key in ("league_ids", "team_ids", "match_ids", "teams", "league_data", "global_data"):
                 self._persistent.setdefault(key, {})
             self._loaded = True
 
@@ -185,7 +190,7 @@ class FMProvider:
         await self._save()
         return value
 
-    async def _get(self, path: str, params: dict[str, Any] | None = None) -> dict:
+    async def _get(self, path: str, params: dict[str, Any] | None = None) -> Any:
         url = f"{FM_BASE}/{path.lstrip('/')}"
         try:
             async with self.session.get(
@@ -208,7 +213,7 @@ class FMProvider:
                 if response.status >= 400:
                     raise FMProviderError(f"FM returned HTTP {response.status}")
                 data = await response.json(content_type=None)
-                if not isinstance(data, dict):
+                if not isinstance(data, (dict, list)):
                     raise FMProviderError("Invalid FM response")
                 return data
         except asyncio.TimeoutError as err:
@@ -220,7 +225,7 @@ class FMProvider:
         self,
         paths: tuple[str, ...],
         params: dict[str, Any] | None = None,
-    ) -> dict:
+    ) -> Any:
         """Try current and legacy FM endpoint paths without failing on 404."""
         last_error: Exception | None = None
         for path in paths:
@@ -234,6 +239,146 @@ class FMProvider:
         if last_error:
             raise last_error
         return {}
+
+    async def _global_fetch(
+        self,
+        key: str,
+        paths: tuple[str, ...],
+        params: dict[str, Any],
+        ttl: int,
+    ) -> Any:
+        """Fetch a slow-changing global dataset with restart-safe caching."""
+        memory_key = f"global:{key}"
+        cached = self._cache_get(memory_key, ttl)
+        if cached is not None:
+            return cached
+        persisted = await self._persistent_get("global_data", key, ttl)
+        if persisted is not None:
+            return self._cache_put(memory_key, persisted)
+        data = await self._get_first(paths, params)
+        await self._persistent_put("global_data", key, data)
+        return self._cache_put(memory_key, data)
+
+    @staticmethod
+    def _name(value: Any) -> str:
+        if isinstance(value, dict):
+            return str(value.get("name") or value.get("shortName") or value.get("title") or "")
+        return str(value or "")
+
+    def _normalise_market_transfers(self, data: Any) -> list[dict]:
+        """Normalise both latest and top-transfer response shapes."""
+        output: list[dict] = []
+        seen: set[str] = set()
+        for node in self._walk(data):
+            player = node.get("player") if isinstance(node.get("player"), dict) else {}
+            player_id = player.get("id") or node.get("playerId")
+            player_name = self._name(player) or str(node.get("playerName") or "")
+            from_team = node.get("fromClub") or node.get("fromTeam") or node.get("from") or {}
+            to_team = node.get("toClub") or node.get("toTeam") or node.get("to") or {}
+            from_name, to_name = self._name(from_team), self._name(to_team)
+            if not player_name or not (from_name or to_name):
+                continue
+            transfer_id = str(node.get("id") or f"{player_id}:{from_name}:{to_name}:{node.get('date') or node.get('transferDate')}")
+            if transfer_id in seen:
+                continue
+            seen.add(transfer_id)
+            fee = node.get("fee") or node.get("transferFee") or node.get("amount")
+            fee_text = ""
+            fee_value = None
+            if isinstance(fee, dict):
+                fee_value = fee.get("value") or fee.get("amount")
+                fee_text = str(fee.get("valueString") or fee.get("formatted") or fee.get("text") or "")
+            elif fee not in (None, ""):
+                fee_text = str(fee)
+                fee_value = fee if isinstance(fee, (int, float)) else None
+            transfer_type = str(node.get("transferType") or node.get("type") or "")
+            if not fee_text:
+                fee_text = transfer_type or "Undisclosed"
+            output.append({
+                "id": transfer_id,
+                "player": {"id": player_id, "name": player_name, "photo": self._player_photo(player_id)},
+                "from": {"id": from_team.get("id") if isinstance(from_team, dict) else None, "name": from_name},
+                "to": {"id": to_team.get("id") if isinstance(to_team, dict) else None, "name": to_name},
+                "date": node.get("date") or node.get("transferDate") or node.get("lastUpdated"),
+                "fee_value": fee_value,
+                "fee_display": fee_text,
+                "type": transfer_type,
+            })
+        return output
+
+    async def get_trending_news(self) -> list[dict]:
+        data = await self._global_fetch(
+            "news", ("api/trendingnews",), {"lang": "en-GB", "ccode3": "GBR"}, NEWS_TTL
+        )
+        records = data if isinstance(data, list) else data.get("news") or data.get("items") or []
+        output = []
+        for item in records:
+            if not isinstance(item, dict) or not item.get("title"):
+                continue
+            page = item.get("page") or {}
+            url = page.get("url") if isinstance(page, dict) else page
+            if url and str(url).startswith("/"):
+                url = f"{FM_BASE}{url}"
+            output.append({
+                "id": item.get("id"), "title": item.get("title"),
+                "image": item.get("imageUrl"), "published": item.get("gmtTime"),
+                "source": item.get("sourceStr"), "source_icon": item.get("sourceIconUrl"),
+                "url": url,
+            })
+        return output[:30]
+
+    async def get_tv_guide(self) -> list[dict]:
+        data = await self._global_fetch(
+            "tv_guide", ("api/data/tvguide", "api/tvguide"),
+            {"country": "gb", "timezone": "Europe/London"}, TV_GUIDE_TTL,
+        )
+        output: list[dict] = []
+        seen: set[str] = set()
+        for node in self._walk(data):
+            home = node.get("home") or node.get("homeTeam") or {}
+            away = node.get("away") or node.get("awayTeam") or {}
+            home_name, away_name = self._name(home), self._name(away)
+            if not home_name or not away_name:
+                continue
+            match_id = str(node.get("id") or node.get("matchId") or f"{home_name}:{away_name}")
+            if match_id in seen:
+                continue
+            seen.add(match_id)
+            channels = node.get("channels") or node.get("channel") or node.get("tv") or []
+            if isinstance(channels, str):
+                channels = [channels]
+            elif isinstance(channels, dict):
+                channels = [self._name(value) for value in channels.values()]
+            elif isinstance(channels, list):
+                channels = [self._name(value) for value in channels]
+            output.append({
+                "id": match_id, "home": home_name, "away": away_name,
+                "kickoff": node.get("utcTime") or node.get("date") or node.get("time"),
+                "competition": node.get("leagueName") or self._name(node.get("league")),
+                "channels": [item for item in channels if item],
+            })
+        return output[:60]
+
+    async def get_latest_transfers(self) -> list[dict]:
+        data = await self._global_fetch(
+            "latest_transfers", ("api/data/transfers", "api/transfers"),
+            {"orderBy": "lastModified", "page": 1, "minFeeCurrency": "GBP", "popular": "true"},
+            TRANSFER_MARKET_TTL,
+        )
+        return self._normalise_market_transfers(data)[:40]
+
+    async def get_top_transfers(self) -> list[dict]:
+        data = await self._global_fetch(
+            "top_transfers", ("api/data/top-transfers", "api/top-transfers"),
+            {"minFeeCurrency": "GBP", "page": 1}, TRANSFER_MARKET_TTL,
+        )
+        return self._normalise_market_transfers(data)[:40]
+
+    async def get_competition_catalogue(self) -> Any:
+        return await self._global_fetch(
+            "competition_catalogue", ("api/data/allLeagues", "api/allLeagues"),
+            {"locale": "en-GB", "country": "GBR"}, COMPETITION_CATALOGUE_TTL,
+        )
 
     @staticmethod
     def _walk(value: Any):
