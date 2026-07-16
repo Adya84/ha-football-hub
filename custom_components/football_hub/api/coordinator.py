@@ -31,6 +31,10 @@ CLUB_SQUAD_TTL = 7 * 24 * 60 * 60
 CLUB_INJURIES_TTL = 4 * 60 * 60
 CLUB_TRANSFERS_TTL = 24 * 60 * 60
 CLUB_HISTORY_TTL = 7 * 24 * 60 * 60
+NEWS_TTL = 60 * 60
+TV_GUIDE_TTL = 6 * 60 * 60
+TRANSFER_MARKET_TTL = 60 * 60
+COMPETITION_CATALOGUE_TTL = 7 * 24 * 60 * 60
 LIVE_RATE_LIMIT_BACKOFF = 30
 PRE_LIVE_WINDOW = timedelta(minutes=5)
 POST_LIVE_WINDOW = timedelta(hours=3, minutes=15)
@@ -246,6 +250,21 @@ class FootballHubCoordinator(DataUpdateCoordinator):
                 ("top_assists", self.api.get_top_assists(league_id, self.season))
             )
 
+        # Portal feeds are cached independently and never join the one-minute
+        # live loop. They refresh only when their own longer TTL expires.
+        portal_requests = [
+            ("news", NEWS_TTL, self.api.get_trending_news),
+            ("tv_guide", TV_GUIDE_TTL, self.api.get_tv_guide),
+            ("latest_transfers", TRANSFER_MARKET_TTL, self.api.get_latest_transfers),
+            ("top_transfers", TRANSFER_MARKET_TTL, self.api.get_top_transfers),
+            ("competition_catalogue", COMPETITION_CATALOGUE_TTL, self.api.get_competition_catalogue),
+        ]
+        portal_request_budget = 2
+        for key, ttl, request_factory in portal_requests:
+            if portal_request_budget and self._is_stale(key, ttl):
+                requests.append((key, request_factory()))
+                portal_request_budget -= 1
+
         # Cup datasets are independent so selecting a cup never replaces the
         # active domestic league used by the main dashboard tabs.
         if self.cup_competition:
@@ -443,6 +462,11 @@ class FootballHubCoordinator(DataUpdateCoordinator):
             "cup_fixtures": self._cache.get("cup_fixtures", []),
             "cup_standings": self._cache.get("cup_standings", []),
             "cup_top_scorers": self._cache.get("cup_top_scorers", []),
+            "news": self._cache.get("news", []),
+            "tv_guide": self._cache.get("tv_guide", []),
+            "latest_transfers": self._cache.get("latest_transfers", []),
+            "top_transfers": self._cache.get("top_transfers", []),
+            "competition_catalogue": self._cache.get("competition_catalogue", {}),
         }
         self.engine.update(data)
         return data
