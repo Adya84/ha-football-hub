@@ -34,6 +34,9 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry, async_add_e
             FootballHubTopScorersSensor(coordinator, entry),
             FootballHubTopAssistsSensor(coordinator, entry),
             FootballHubCupCentreSensor(coordinator, entry),
+            FootballHubPortalDataSensor(coordinator, entry, "news", "News"),
+            FootballHubPortalDataSensor(coordinator, entry, "tv_guide", "TV Guide"),
+            FootballHubTransferMarketSensor(coordinator, entry),
             FootballHubClubDataSensor(coordinator, entry, "club_profile", "My Club Profile"),
             FootballHubClubDataSensor(coordinator, entry, "club_statistics", "My Club Statistics"),
             FootballHubClubDataSensor(coordinator, entry, "club_squad", "My Club Squad"),
@@ -123,6 +126,46 @@ class FootballHubClubDataSensor(FootballHubBaseSensor):
             "team_id": (self.coordinator.data or {}).get("my_club_team_id"),
             "dataset": self.key,
             "data": safe_value,
+        }
+
+
+class FootballHubPortalDataSensor(FootballHubBaseSensor):
+    """Expose a cached portal feed without recording its large attributes."""
+
+    _unrecorded_attributes = frozenset({"items"})
+
+    def __init__(self, coordinator, entry, key: str, name: str):
+        super().__init__(coordinator, entry, key, name)
+        self.key = key
+
+    @property
+    def native_value(self):
+        return len((self.coordinator.data or {}).get(self.key, []) or [])
+
+    @property
+    def extra_state_attributes(self):
+        return {"items": ((self.coordinator.data or {}).get(self.key, []) or [])[:40]}
+
+
+class FootballHubTransferMarketSensor(FootballHubBaseSensor):
+    """Expose latest and leading transfers in one frontend entity."""
+
+    _unrecorded_attributes = frozenset({"latest", "top"})
+
+    def __init__(self, coordinator, entry):
+        super().__init__(coordinator, entry, "transfer_market", "Transfer Market")
+
+    @property
+    def native_value(self):
+        return len((self.coordinator.data or {}).get("latest_transfers", []) or [])
+
+    @property
+    def extra_state_attributes(self):
+        data = self.coordinator.data or {}
+        return {
+            "latest": (data.get("latest_transfers", []) or [])[:40],
+            "top": (data.get("top_transfers", []) or [])[:40],
+            "currency": "GBP",
         }
 
 
