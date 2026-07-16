@@ -72,6 +72,13 @@ FM_LEAGUES = {
     2302: 194,   # Turkish Super Cup
 }
 
+FM_COUNTRY_CODES = {
+    39: "ENG", 40: "ENG", 41: "ENG", 42: "ENG", 43: "ENG",
+    179: "SCO", 110: "WAL", 408: "NIR", 357: "IRL",
+    140: "ESP", 78: "GER", 135: "ITA", 61: "FRA", 88: "NED",
+    94: "POR", 144: "BEL", 203: "TUR",
+}
+
 LEAGUE_TTL = 6 * 60 * 60
 TODAY_TTL = 60
 MATCH_TTL_LIVE = 60
@@ -270,11 +277,22 @@ class FMProvider:
         output: list[dict] = []
         seen: set[str] = set()
         for node in self._walk(data):
-            player = node.get("player") if isinstance(node.get("player"), dict) else {}
-            player_id = player.get("id") or node.get("playerId")
-            player_name = self._name(player) or str(node.get("playerName") or "")
-            from_team = node.get("fromClub") or node.get("fromTeam") or node.get("from") or {}
-            to_team = node.get("toClub") or node.get("toTeam") or node.get("to") or {}
+            raw_player = node.get("player")
+            player = raw_player if isinstance(raw_player, dict) else {}
+            player_id = player.get("id") or node.get("playerId") or node.get("idPlayer")
+            player_name = (
+                self._name(player)
+                or (str(raw_player) if isinstance(raw_player, str) else "")
+                or str(node.get("playerName") or node.get("name") or "")
+            )
+            from_team = (
+                node.get("fromClub") or node.get("fromTeam") or node.get("from")
+                or node.get("fromClubName") or {}
+            )
+            to_team = (
+                node.get("toClub") or node.get("toTeam") or node.get("to")
+                or node.get("toClubName") or {}
+            )
             from_name, to_name = self._name(from_team), self._name(to_team)
             if not player_name or not (from_name or to_name):
                 continue
@@ -282,7 +300,7 @@ class FMProvider:
             if transfer_id in seen:
                 continue
             seen.add(transfer_id)
-            fee = node.get("fee") or node.get("transferFee") or node.get("amount")
+            fee = node.get("fee") or node.get("feeText") or node.get("transferFee") or node.get("amount")
             fee_text = ""
             fee_value = None
             if isinstance(fee, dict):
@@ -291,15 +309,21 @@ class FMProvider:
             elif fee not in (None, ""):
                 fee_text = str(fee)
                 fee_value = fee if isinstance(fee, (int, float)) else None
-            transfer_type = str(node.get("transferType") or node.get("type") or "")
+            raw_type = node.get("transferType") or node.get("type") or ""
+            if isinstance(raw_type, dict):
+                transfer_type = str(raw_type.get("text") or raw_type.get("name") or "")
+            elif isinstance(raw_type, list):
+                transfer_type = " ".join(str(item) for item in raw_type if item)
+            else:
+                transfer_type = str(raw_type)
             if not fee_text:
                 fee_text = transfer_type or "Undisclosed"
             output.append({
                 "id": transfer_id,
                 "player": {"id": player_id, "name": player_name, "photo": self._player_photo(player_id)},
-                "from": {"id": from_team.get("id") if isinstance(from_team, dict) else None, "name": from_name},
-                "to": {"id": to_team.get("id") if isinstance(to_team, dict) else None, "name": to_name},
-                "date": node.get("date") or node.get("transferDate") or node.get("lastUpdated"),
+                "from": {"id": (from_team.get("id") if isinstance(from_team, dict) else None) or node.get("fromClubId"), "name": from_name},
+                "to": {"id": (to_team.get("id") if isinstance(to_team, dict) else None) or node.get("toClubId"), "name": to_name},
+                "date": node.get("date") or node.get("transferDate") or node.get("fromDate") or node.get("lastUpdated"),
                 "fee_value": fee_value,
                 "fee_display": fee_text,
                 "type": transfer_type,
@@ -416,7 +440,12 @@ class FMProvider:
             "elapsed": elapsed,
         }
 
-    def _fixture(self, match: dict, league_name: str | None = None) -> dict | None:
+    def _fixture(
+        self,
+        match: dict,
+        league_name: str | None = None,
+        country_code: str | None = None,
+    ) -> dict | None:
         match_id = match.get("id") or match.get("matchId")
         home = match.get("home") or match.get("homeTeam") or {}
         away = match.get("away") or match.get("awayTeam") or {}
@@ -456,6 +485,7 @@ class FMProvider:
             "league": {
                 "id": match.get("leagueId"),
                 "name": league_name or match.get("leagueName"),
+                "country_code": country_code or match.get("ccode"),
                 "round": match.get("roundName") or match.get("round"),
             },
             "teams": {
@@ -518,19 +548,44 @@ class FMProvider:
         output = []
         for league in data.get("leagues") or []:
             league_name = league.get("name")
+            country_code = league.get("ccode") or league.get("countryCode")
             for match in league.get("matches") or []:
-                item = self._fixture(match, league_name)
+                item = self._fixture(match, league_name, country_code)
                 if item:
                     output.append(item)
         return self._cache_put(key, output)
 
-    async def get_live(self, league_id, season):
-        fm_id = self._league_id(league_id)
+    @staticmethod
+    def _live_scope_match(item: dict, selected_country: str | None) -> bool:
+        league = item.get("league") or {}
+        competition_key = str(league.get("name") or "").casefold()
+        country_code = str(league.get("country_code") or "").upper()
+        is_selected_country = bool(selected_country and country_code == selected_country)
+        is_uefa_club_competition = any(
+            label in competition_key
+            for label in ("champions league", "europa league", "conference league")
+        )
+        is_international = country_code in {"INT", "FIFA", "UEFA"} or any(
+            label in competition_key
+            for label in (
+                "world cup", "nations league", "international friendly",
+                "friendlies", "european championship", "euro qualification",
+                "copa america", "africa cup of nations", "asian cup",
+            )
+        )
+        return is_selected_country or is_uefa_club_competition or is_international
+
+    async def get_live_feed(self, league_id, season):
+        """Return today's relevant schedule so polling can follow kickoff times."""
+        selected_country = FM_COUNTRY_CODES.get(int(league_id)) if str(league_id).isdigit() else None
         matches = await self._matches_for_date(datetime.now(timezone.utc))
+        return [item for item in matches if self._live_scope_match(item, selected_country)]
+
+    async def get_live(self, league_id, season):
+        feed = await self.get_live_feed(league_id, season)
         return [
-            item for item in matches
-            if (item.get("league") or {}).get("id") in (fm_id, str(fm_id), None)
-            and ((item.get("fixture") or {}).get("status") or {}).get("short") == "LIVE"
+            item for item in feed
+            if ((item.get("fixture") or {}).get("status") or {}).get("short") == "LIVE"
         ]
 
     async def get_fixtures(self, league_id, season):
@@ -1196,14 +1251,14 @@ class FMProvider:
         transfers_data = (
             transfers_root.get("data")
             if isinstance(transfers_root, dict)
-            and isinstance(transfers_root.get("data"), dict)
+            and isinstance(transfers_root.get("data"), (dict, list))
             else transfers_root
         )
 
         rows = (
             transfers_data.get("allTransfers")
             if isinstance(transfers_data, dict)
-            else []
+            else transfers_data if isinstance(transfers_data, list) else []
         ) or []
 
         if not rows and isinstance(transfers_data, dict):
@@ -1222,19 +1277,41 @@ class FMProvider:
             tab_data_root = (
                 tab_root.get("data")
                 if isinstance(tab_root, dict)
-                and isinstance(tab_root.get("data"), dict)
+                and isinstance(tab_root.get("data"), (dict, list))
                 else tab_root
             )
             rows = (
                 tab_data_root.get("allTransfers")
                 if isinstance(tab_data_root, dict)
-                else []
+                else tab_data_root if isinstance(tab_data_root, list) else []
             ) or []
 
         # The Football Hub frontend was built around API-Football's transfer
         # response: one player object containing a nested transfers list.
         grouped: dict[str, dict] = {}
         seen = set()
+
+        def transfer_text(value: Any) -> str | None:
+            """Extract the human fee label used by FM's team transfer tab."""
+            strings: list[str] = []
+
+            def collect(part: Any) -> None:
+                if isinstance(part, str) and part.strip():
+                    strings.append(part.strip())
+                elif isinstance(part, dict):
+                    for key in ("text", "value", "label", "fallback", "feeText"):
+                        if key in part:
+                            collect(part.get(key))
+                elif isinstance(part, list):
+                    for child in part:
+                        collect(child)
+
+            collect(value)
+            preferred = [
+                text for text in strings
+                if re.search(r"[£€$]|\b(?:free|loan|undisclosed|contract)\b|\d+[.,]?\d*\s*[mk]\b", text, re.I)
+            ]
+            return " ".join(preferred or strings) or None
 
         for item in rows[:100]:
             if not isinstance(item, dict):
@@ -1282,7 +1359,12 @@ class FMProvider:
                     fee_text = str(fee_data)
 
             if not fee_text:
-                fee_text = item.get("feeText") or item.get("localizedFeeText") or item.get("transferFeeText")
+                fee_text = (
+                    item.get("feeText")
+                    or item.get("localizedFeeText")
+                    or item.get("transferFeeText")
+                    or transfer_text(item.get("transferText"))
+                )
 
             fee_display = fee_text
             try:
@@ -1290,12 +1372,15 @@ class FMProvider:
             except (TypeError, ValueError):
                 numeric_fee = 0
             if numeric_fee > 0:
+                symbol = {"GBP": "£", "EUR": "€", "USD": "$"}.get(
+                    str(fee_currency or "EUR").upper(), "€"
+                )
                 if numeric_fee >= 1_000_000:
-                    fee_display = f"€{numeric_fee / 1_000_000:.1f}m".replace(".0m", "m")
+                    fee_display = f"{symbol}{numeric_fee / 1_000_000:.1f}m".replace(".0m", "m")
                 elif numeric_fee >= 1_000:
-                    fee_display = f"€{numeric_fee / 1_000:.1f}k".replace(".0k", "k")
+                    fee_display = f"{symbol}{numeric_fee / 1_000:.1f}k".replace(".0k", "k")
                 else:
-                    fee_display = f"€{numeric_fee:,.0f}"
+                    fee_display = f"{symbol}{numeric_fee:,.0f}"
             elif fee_display:
                 fee_display = str(fee_display).replace("_", " ").strip().title()
 
