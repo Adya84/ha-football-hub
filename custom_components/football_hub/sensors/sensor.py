@@ -241,10 +241,24 @@ class FootballHubLiveSensor(FootballHubBaseSensor):
     @property
     def extra_state_attributes(self):
         matches = self.engine.live.matches()
+        raw_matches = (self.coordinator.data or {}).get("live", []) or []
+        raw_by_id = {
+            str(((item or {}).get("fixture") or {}).get("id")): item
+            for item in raw_matches
+            if ((item or {}).get("fixture") or {}).get("id") is not None
+        }
         enriched_matches = []
         for match in matches:
             details = self.engine.live.details(match.get("fixture_id"))
-            enriched_matches.append({**match, **details})
+            raw = raw_by_id.get(str(match.get("fixture_id")), {})
+            league = (raw.get("league") or {}) if isinstance(raw, dict) else {}
+            enriched_matches.append({
+                **match,
+                "competition": league.get("name") or match.get("competition") or "Other matches",
+                "competition_id": league.get("id"),
+                "country_code": league.get("country_code"),
+                **details,
+            })
         return {
             "total_live": len(matches),
             "primary_live_match": self.engine.live.primary(),
