@@ -1,15 +1,15 @@
 # ⚽ Home Assistant Football Hub
 
 [![License](https://img.shields.io/badge/license-Personal%20Use-red.svg)](LICENSE)
-![Version](https://img.shields.io/badge/version-v0.2.9-green)
+![Version](https://img.shields.io/badge/version-v0.3.7-green)
 ![Home Assistant](https://img.shields.io/badge/Home%20Assistant-2024.1%2B-blue)
 ![HACS](https://img.shields.io/badge/HACS-Custom-orange)
 ![Provider](https://img.shields.io/badge/Data-API--Football-success)
 ![Cloud Polling](https://img.shields.io/badge/IoT-Class-Cloud%20Polling-blue)
 
-A dedicated multi-competition football application for Home Assistant.
+A dedicated multi-competition football application and football portal for Home Assistant.
 
-Track fixtures, live scores, results, league tables, match statistics, line-ups, player data and team information from one football-themed dashboard.
+Track fixtures, live scores, results, league tables, match statistics, line-ups, player data, club information, cup competitions, football news, UK TV listings and transfers from one football-themed dashboard.
 
 Football Hub supports multiple countries and competitions through built-in country and league selectors, with your selected competition, supported team and last-opened page restored automatically.
 
@@ -27,69 +27,119 @@ Current sections include:
 * Results
 * League Table
 * Players
-* Team Centre
+* My Club
+* Cups
+* News
+* TV Guide
+* Transfers
 * Supporters
 * Settings
 
 ---
 
-# 🚀 Latest Release - v0.2.9
+# 🚀 Latest Release - v0.3.7
 
-Football Hub 0.2.9 simplifies the initial setup process and moves competition selection fully into the Football Hub frontend.
+Football Hub 0.3.7 expands the integration from a competition dashboard into a broader football portal inside Home Assistant.
 
-New installations now require only an API-Football key. Football Hub then starts automatically with the Premier League, the current configured football season and the main provider mode enabled.
-
----
-
-## ⚙️ Simplified Initial Setup
-
-New installations now ask only for:
-
-* API-Football API Key
-
-Football Hub automatically applies the following starting configuration:
-
-* Country: England
-* Competition: Premier League
-* Current Configured Football Season
-* Main Provider Mode
-
-This removes duplicate setup questions and allows users to begin using Football Hub more quickly.
+This release introduces dedicated football news, UK television listings and transfer-market pages, while continuing the recent expansion of cup competitions and the My Club experience.
 
 ---
 
-## 🌍 Frontend Competition Selection
+## 📰 Football News
 
-Country and league selection is now handled entirely inside the Football Hub dashboard.
+A new Football News page displays current football stories in a responsive card layout.
 
 Features include:
 
-* Built-In Country Selector
-* Built-In League Selector
-* Competition Switching Without Reinstallation
-* Competition Switching Without Reconfiguration
-* Persistent Competition Selection
-* Automatic Restoration After Home Assistant Restarts
-* Premier League Default For New Installations
-
-Existing Football Hub installations remain compatible and are not changed automatically.
+* Latest Football Headlines
+* Story Images
+* News Sources
+* Publication Times
+* Direct Links To Full Stories
+* Responsive Desktop, Tablet And Mobile Layouts
+* Cached Data To Reduce Unnecessary Requests
 
 ---
 
-## ⚡ Setup & Usability Improvements
+## 📺 UK TV Guide
 
-Version 0.2.9 includes:
+The new TV Guide page brings upcoming televised football listings into Football Hub.
 
-* Fewer Setup Steps
-* API-Key-Only Initial Configuration
-* Automatic Premier League Selection
-* Automatic Season Selection
-* Automatic Main Provider Mode
-* Removal Of Duplicate Country Questions
-* Removal Of Duplicate League Questions
-* Removal Of Duplicate Season Questions
-* Removal Of Duplicate Provider Questions
-* Existing Installation Compatibility
+Features include:
+
+* UK Football Listings
+* Match Kick-Off Times
+* Competition Names
+* Home And Away Teams
+* Available TV Channels
+* Responsive Match Listing
+* Longer Refresh Caching For Efficient Updates
+
+Television information depends on the availability of the underlying football data.
+
+---
+
+## 🔄 Transfer Market
+
+Football Hub now includes a dedicated Transfer Market page.
+
+Users can switch between:
+
+* Latest Transfers
+* Top Transfers
+
+Transfer information can include:
+
+* Player Name
+* Player Image
+* Previous Club
+* New Club
+* Transfer Date
+* Transfer Type
+* Reported Fee
+* Free-Agent Moves
+
+Transfer data is cached separately from live-match updates so it does not increase the one-minute live polling loop.
+
+---
+
+## 🏆 Cups & Expanded Club Data
+
+Recent Football Hub releases also introduced and expanded:
+
+* Dedicated Cups Page
+* Independent Cup Competition Selection
+* Cup Fixtures
+* Cup Results
+* Cup Standings
+* Cup Top Scorers
+* Expanded My Club Page
+* Club Profile Information
+* Squad Details
+* Injuries
+* Transfers
+* Club History
+* Venue Information
+
+Selecting a cup does not replace the domestic league used by the main Football Hub dashboard.
+
+---
+
+## ⚡ Performance & Data Caching
+
+Version 0.3.7 uses separate cache periods for slower-changing football portal data.
+
+This includes:
+
+* Football News Caching
+* TV Guide Caching
+* Transfer Market Caching
+* Competition Catalogue Caching
+* Restart-Safe Stored Data
+* Controlled Background Refresh Budget
+* Live-Match Polling Kept Separate
+
+These changes reduce unnecessary requests while keeping live football updates responsive.
 
 ---
 
@@ -204,7 +254,11 @@ Navigate instantly between:
 * Results
 * League Table
 * Players
-* Team Centre
+* My Club
+* Cups
+* News
+* TV Guide
+* Transfers
 * Supporters
 * Settings
 
@@ -350,19 +404,24 @@ Available player data depends on the selected competition and API coverage.
 
 ---
 
-## 🏟 Team Centre
+## 🏟 My Club
 
-The Team Centre brings club information together in one place.
+The My Club page brings detailed information about your supported club together in one place.
 
 Features can include:
 
-* Team Overview
+* Club Overview
 * Upcoming Fixtures
 * Recent Results
 * League Position
 * Squad Information
-* Team Statistics
-* Card Totals
+* Player Details
+* Club Statistics
+* Yellow And Red Card Totals
+* Injuries
+* Club Transfers
+* Club History
+* Venue Information
 * Supported-Team Information
 
 ---
@@ -375,6 +434,71 @@ Football Hub tracks disciplinary information including:
 * Red Card Totals
 * Team Rankings
 * Competition-Wide Comparisons
+
+---
+
+## 🏆 Cups
+
+Football Hub includes a dedicated Cups page that works independently from the selected domestic league.
+
+Features can include:
+
+* Cup Competition Selection
+* Country And Region Filtering
+* Cup Overview
+* Cup Fixtures
+* Cup Results
+* Cup Standings
+* Cup Top Scorers
+* Persistent Cup Selection
+
+Selecting a cup does not replace the league used by Overview, Fixtures, Results, League Table or Players.
+
+---
+
+## 📰 News
+
+The Football News page provides:
+
+* Latest Football Stories
+* Story Images
+* News Sources
+* Publication Dates And Times
+* Direct Story Links
+* Responsive News Cards
+
+News data is refreshed separately from live-match polling.
+
+---
+
+## 📺 TV Guide
+
+The TV Guide provides upcoming UK football television information, including:
+
+* Kick-Off Date And Time
+* Competition
+* Home Team
+* Away Team
+* Television Channels
+
+TV listings depend on available data and may show channels as awaiting confirmation.
+
+---
+
+## 🔄 Transfers
+
+The Transfer Market includes:
+
+* Latest Transfers
+* Top Transfers
+* Player Details
+* Previous Club
+* New Club
+* Transfer Dates
+* Transfer Types
+* Reported Fees
+
+The selected Latest or Top Transfers view is remembered by the browser.
 
 ---
 
@@ -404,6 +528,11 @@ Football Hub remembers:
 * Selected Country
 * Selected League
 * Supported Team
+* Selected Cup Country
+* Selected Cup Competition
+* Cup Page View
+* Transfer Market View
+* Desktop, Tablet Or Mobile View Mode
 
 Selections remain available after page refreshes and Home Assistant restarts.
 
@@ -434,6 +563,10 @@ Football Hub provides Home Assistant entities covering areas such as:
 * Match Statistics
 * Team Information
 * Competition Information
+* Cup Information
+* Football News
+* UK TV Guide
+* Transfer Market Information
 
 Entity availability depends on the selected competition and available API data.
 
