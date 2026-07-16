@@ -19,6 +19,9 @@ from .api import FootballHubAPI
 _LOGGER = logging.getLogger(__name__)
 
 LIVE_TTL = 60
+LIVE_DISCOVERY_TTL = 60 * 60
+LIVE_PREMATCH_TTL = 5 * 60
+LIVE_PREMATCH_WINDOW = 10 * 60
 FIXTURES_TTL = 6 * 60 * 60
 STANDINGS_TTL = 6 * 60 * 60
 PLAYERS_TTL = 12 * 60 * 60
@@ -90,6 +93,45 @@ class FootballHubCoordinator(DataUpdateCoordinator):
         """Store a refreshed dataset."""
         self._cache[key] = value
         self._updated_at[key] = monotonic()
+
+    def _live_feed_refresh_due(self) -> bool:
+        """Use hourly discovery, five-minute pre-match and one-minute live polling."""
+        if "live_feed" not in self._cache or "live_feed" not in self._updated_at:
+            return True
+        age = monotonic() - self._updated_at["live_feed"]
+        feed = self._cache.get("live_feed", []) or []
+        live_statuses = {"1H", "HT", "2H", "ET", "BT", "P", "SUSP", "INT", "LIVE"}
+        if any(
+            (((item or {}).get("fixture") or {}).get("status") or {}).get("short") in live_statuses
+            for item in feed
+        ):
+            return age >= LIVE_TTL
+
+        # Reconstruct the wall-clock time of the last successful feed request,
+        # then wake exactly ten minutes before the nearest scheduled kickoff.
+        fetched_at = datetime.now(timezone.utc).timestamp() - age
+        seconds_to_window: list[float] = []
+        now = datetime.now(timezone.utc)
+        for item in feed:
+            fixture = (item or {}).get("fixture", {}) or {}
+            status = (fixture.get("status", {}) or {}).get("short")
+            if status not in {"NS", "TBD"}:
+                continue
+            value = fixture.get("date")
+            if not value:
+                continue
+            try:
+                kickoff = datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+            except ValueError:
+                continue
+            seconds = (kickoff - now).total_seconds()
+            if 0 <= seconds <= LIVE_PREMATCH_WINDOW:
+                return age >= LIVE_PREMATCH_TTL
+            if seconds > LIVE_PREMATCH_WINDOW:
+                seconds_to_window.append(kickoff.timestamp() - fetched_at - LIVE_PREMATCH_WINDOW)
+
+        next_due = min([LIVE_DISCOVERY_TTL, *seconds_to_window]) if seconds_to_window else LIVE_DISCOVERY_TTL
+        return age >= max(30, next_due)
 
     def _live_poll_window_active(self) -> bool:
         """Poll live data from five minutes before kickoff through match end."""
@@ -235,8 +277,8 @@ class FootballHubCoordinator(DataUpdateCoordinator):
         league_id = self.competition["league_id"]
         requests: list[tuple[str, Awaitable[Any]]] = []
 
-        if self._is_stale("live", LIVE_TTL) and self._live_poll_window_active():
-            requests.append(("live", self.api.get_live(league_id, self.season)))
+        if self._live_feed_refresh_due():
+            requests.append(("live_feed", self.api.get_live_feed(league_id, self.season)))
         if self._is_stale("fixtures", FIXTURES_TTL):
             requests.append(("fixtures", self.api.get_fixtures(league_id, self.season)))
         if self._is_stale("standings", STANDINGS_TTL):
@@ -336,7 +378,11 @@ class FootballHubCoordinator(DataUpdateCoordinator):
             if failures and "fixtures" not in self._cache:
                 raise UpdateFailed("; ".join(failures))
 
-        raw_live = self._cache.get("live", [])
+        raw_live = [
+            item for item in (self._cache.get("live_feed", []) or [])
+            if (((item or {}).get("fixture") or {}).get("status") or {}).get("short")
+            in {"1H", "HT", "2H", "ET", "BT", "P", "SUSP", "INT", "LIVE"}
+        ]
         if not raw_live:
             raw_live = self._pre_live_matches()
         live_fixture_ids: list[int] = []
