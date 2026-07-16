@@ -1,4 +1,4 @@
-const PANEL_VERSION = "0.9.1-independent-cups";
+const PANEL_VERSION = "0.9.2-cup-overview-layout";
 
 class FootballHubPanel extends HTMLElement {
   constructor() {
@@ -1194,7 +1194,7 @@ class FootballHubPanel extends HTMLElement {
     } else if (activeCup && this._cupView === "table") {
       cupContent = `<section class="page-card cup-table"><h2>${activeCup.has_table ? "Table / phase standings" : "Knockout competition"}</h2>${activeCup.has_table ? this._tableRows(table) : `<div class="empty">This competition uses knockout rounds, so follow it through Fixtures and Results.</div>`}</section>`;
     } else if (activeCup) {
-      cupContent = `<section class="dashboard-grid cup-overview"><article class="stat-card"><div class="card-heading"><span>Competition</span></div><div class="big-stat cup-name">${this._escape(activeCup.name)}</div><div class="stat-label">${this._escape(activeCup.country)}</div></article><article class="stat-card"><div class="card-heading"><span>Matches</span></div><div class="big-stat">${fixtures.length + results.length}</div><div class="stat-label">${fixtures.length} upcoming · ${results.length} completed</div></article><article class="list-card"><div class="card-heading"><span>Next fixtures</span><button class="text-button" data-cup-view="fixtures">View all</button></div><div class="match-list">${fixtures.length ? fixtures.slice(0, 3).map((match) => this._matchCard(match)).join("") : `<div class="empty">No upcoming fixtures.</div>`}</div></article><article class="list-card"><div class="card-heading"><span>Top scorers</span></div>${this._playerRows(scorers, "goals")}</article></section>`;
+      cupContent = `<section class="dashboard-grid cup-overview"><article class="stat-card"><div class="card-heading"><span>Competition</span></div><div class="big-stat cup-name">${this._escape(activeCup.name)}</div><div class="stat-label">${this._escape(activeCup.country)}</div></article><article class="stat-card"><div class="card-heading"><span>Matches</span></div><div class="big-stat">${fixtures.length + results.length}</div><div class="stat-label">${fixtures.length} upcoming · ${results.length} completed</div></article><article class="list-card cup-fixtures-card"><div class="card-heading"><span>Next fixtures</span><button class="text-button" data-cup-view="fixtures">View all</button></div><div class="match-list">${fixtures.length ? fixtures.slice(0, 3).map((match) => this._matchCard(match)).join("") : `<div class="empty">No upcoming fixtures.</div>`}</div></article><article class="list-card cup-scorers-card"><div class="card-heading"><span>Top scorers</span></div>${this._playerRows(scorers, "goals")}</article></section>`;
     }
 
     return `
@@ -1936,6 +1936,11 @@ class FootballHubPanel extends HTMLElement {
       .cup-tabs button { border: 1px solid rgba(255,255,255,.16); border-radius: 12px; padding: 10px 16px; color: rgba(255,255,255,.72); background: rgba(0,0,0,.2); font-weight: 800; cursor: pointer; }
       .cup-tabs button.active { border-color: var(--fh-cyan); color: white; background: rgba(49,233,129,.13); }
       .cup-name { font-size: clamp(1.15rem, 2vw, 1.8rem); line-height: 1.1; }
+      .cup-overview .cup-fixtures-card, .cup-overview .cup-scorers-card { grid-column: span 12; }
+      .cup-overview .cup-fixtures-card .match-list { grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); }
+      .cup-overview .match-card { min-width: 0; }
+      .cup-overview .match-teams { grid-template-columns: minmax(0, 1fr) minmax(72px, auto) minmax(0, 1fr); }
+      .cup-overview .team strong { min-width: 0; overflow-wrap: anywhere; line-height: 1.25; }
 
       .page-card h2 { margin: 0 0 18px; }
 
@@ -2345,6 +2350,7 @@ class FootballHubPanel extends HTMLElement {
       .app-shell.view-mobile .dashboard-grid { display:block; }
       .app-shell.view-mobile .dashboard-grid > *, .app-shell.view-mobile .stat-card, .app-shell.view-mobile .feature-card, .app-shell.view-mobile .list-card { margin-bottom:12px; }
       .app-shell.view-mobile .two-column, .app-shell.view-mobile .three-column, .app-shell.view-mobile .match-list, .app-shell.view-mobile .lineup-grid, .app-shell.view-mobile .supporter-grid, .app-shell.view-mobile .support-summary, .app-shell.view-mobile .support-benefits { grid-template-columns:1fr; }
+      .app-shell.view-mobile .cup-overview .cup-fixtures-card .match-list { grid-template-columns:1fr; }
       .app-shell.view-mobile .page-card { padding:15px; border-radius:16px; }
       .app-shell.view-mobile .page-heading { align-items:flex-start; flex-direction:column; gap:10px; }
       .app-shell.view-mobile .fixture-filter, .app-shell.view-mobile .live-picker-control, .app-shell.view-mobile .premium-info { align-items:stretch; flex-direction:column; }
@@ -2419,6 +2425,7 @@ class FootballHubPanel extends HTMLElement {
         .feature-centre small { display: none; }
 
         .match-list { grid-template-columns: 1fr; }
+        .cup-overview .cup-fixtures-card .match-list { grid-template-columns: 1fr; }
         .two-column { grid-template-columns: 1fr; }
         .support-hero { grid-template-columns: 1fr; }
         .support-thanks { width:150px;min-height:150px;margin:0 auto; }
