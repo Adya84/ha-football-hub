@@ -1,4 +1,4 @@
-const PANEL_VERSION = "0.9.2-cup-overview-layout";
+const PANEL_VERSION = "0.9.3-transfer-fixture-layout";
 
 class FootballHubPanel extends HTMLElement {
   constructor() {
@@ -403,8 +403,8 @@ class FootballHubPanel extends HTMLElement {
   }
 
   _setFixtureTeam(team) {
-    this._selectedFixtureTeam = team;
-    localStorage.setItem("football_hub_fixture_team", team);
+    this._selectedFixtureTeam = String(team || "");
+    localStorage.setItem("football_hub_fixture_team", this._selectedFixtureTeam);
     if (team && team !== "__all__") {
       this._selectedLiveTeam = team;
       localStorage.setItem("football_hub_live_team", team);
@@ -412,6 +412,9 @@ class FootballHubPanel extends HTMLElement {
     }
     this._fixturePage = 0;
     this._render();
+    requestAnimationFrame(() => requestAnimationFrame(() => {
+      this.shadowRoot.querySelector(".fixture-filter")?.scrollIntoView({ behavior: "smooth", block: "start" });
+    }));
   }
 
   _setFixturePage(page) {
@@ -1153,7 +1156,7 @@ class FootballHubPanel extends HTMLElement {
         <section class="section"><div class="section-title-row"><div><span class="eyebrow">FIRST TEAM</span><h3>Current squad</h3></div><span>${squad.length} players</span></div><div class="squad-grid">${squad.length ? squad.map((player) => `<article class="page-card squad-player">${this._logo(player.photo, player.name, "54")}<div><strong>${this._escape(player.name || "Player")}</strong><small>${this._escape([player.number ? `#${player.number}` : "", player.position, player.nationality].filter(Boolean).join(" · "))}</small><small>${this._escape([player.age ? `Age ${player.age}` : "", player.height ? `${player.height} cm` : "", money(player.transfer_value)].filter(Boolean).join(" · "))}</small>${player.injured ? `<em>Injured${player.expected_return ? ` · ${this._escape(player.expected_return)}` : ""}</em>` : ""}</div></article>`).join("") : `<div class="empty">Squad information is not available yet.</div>`}</div></section>
         <section class="two-column">
           <article class="page-card"><span class="eyebrow">AVAILABILITY</span><h2>Injuries & suspensions</h2><div class="player-list">${injuries.length ? injuries.map((item) => `<div class="player-row">${this._logo(item.player?.photo, item.player?.name, "40")}<span class="player-name"><strong>${this._escape(item.player?.name || "Player")}</strong><small>${this._escape(item.reason || item.type || "Unavailable")}</small></span><strong>${this._escape(item.date || item.fixture?.date?.slice?.(0, 10) || "")}</strong></div>`).join("") : `<div class="empty">No current injuries supplied.</div>`}${sidelined.length ? `<p class="notice">${sidelined.length} additional historical sidelined records available.</p>` : ""}</div></article>
-          <article class="page-card"><span class="eyebrow">TRANSFER CENTRE</span><h2>Recent transfers</h2><div class="player-list">${transfers.length ? transfers.slice(0, 10).map((item) => `<div class="transfer-row">${this._logo(item.player?.photo, item.player?.name, "40")}<span class="player-name"><strong>${this._escape(item.player?.name || "Player")}</strong><small>${this._escape(`${item.teams?.out?.name || "Unknown"} → ${item.teams?.in?.name || "Unknown"}`)}</small><em>${this._escape(money(item.fee_value) || item.fee || item.type || "Fee undisclosed")}${item.on_loan ? " · Loan" : ""}</em></span><time>${this._escape(String(item.date || "").slice(0, 10))}</time></div>`).join("") : `<div class="empty">No transfer data available.</div>`}</div></article>
+          <article class="page-card"><span class="eyebrow">TRANSFER CENTRE</span><h2>Recent transfers</h2><div class="player-list">${transfers.length ? transfers.slice(0, 10).map((item) => `<div class="transfer-row">${this._logo(item.player?.photo, item.player?.name, "40")}<span class="player-name"><strong>${this._escape(item.player?.name || "Player")}</strong><small>${this._escape(`${item.teams?.out?.name || "Unknown"} → ${item.teams?.in?.name || "Unknown"}`)}</small><em>${this._escape(item.fee_display || money(item.fee_value) || item.fee || (item.on_loan ? "Loan" : item.type) || "Fee undisclosed")}</em></span><time>${this._escape(String(item.date || "").slice(0, 10))}</time></div>`).join("") : `<div class="empty">No transfer data available.</div>`}</div></article>
         </section>
         <section class="two-column">
           <article class="page-card"><span class="eyebrow">NEXT MATCH</span><h2>Prediction</h2><div class="settings-list"><div><span>Advice</span><strong>${this._escape(prediction.predictions?.advice || "Not available")}</strong></div><div><span>Home chance</span><strong>${this._escape(prediction.predictions?.percent?.home || "—")}</strong></div><div><span>Draw chance</span><strong>${this._escape(prediction.predictions?.percent?.draw || "—")}</strong></div><div><span>Away chance</span><strong>${this._escape(prediction.predictions?.percent?.away || "—")}</strong></div></div></article>
@@ -1935,7 +1938,9 @@ class FootballHubPanel extends HTMLElement {
       .cup-tabs { display: flex; gap: 8px; margin: 18px 0; overflow-x: auto; }
       .cup-tabs button { border: 1px solid rgba(255,255,255,.16); border-radius: 12px; padding: 10px 16px; color: rgba(255,255,255,.72); background: rgba(0,0,0,.2); font-weight: 800; cursor: pointer; }
       .cup-tabs button.active { border-color: var(--fh-cyan); color: white; background: rgba(49,233,129,.13); }
-      .cup-name { font-size: clamp(1.15rem, 2vw, 1.8rem); line-height: 1.1; }
+      .cup-name { font-size: clamp(1.15rem, 2vw, 1.8rem); line-height: 1.32; letter-spacing: .01em; overflow-wrap: anywhere; }
+      .cup-overview > .stat-card { grid-column: span 6; min-height: 190px; }
+      .cup-overview > .stat-card .card-heading { margin-bottom: 26px; letter-spacing: .12em; }
       .cup-overview .cup-fixtures-card, .cup-overview .cup-scorers-card { grid-column: span 12; }
       .cup-overview .cup-fixtures-card .match-list { grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); }
       .cup-overview .match-card { min-width: 0; }
@@ -2348,6 +2353,7 @@ class FootballHubPanel extends HTMLElement {
       .app-shell.view-mobile .tabs button span { display:none; }
       .app-shell.view-mobile main { padding:12px; }
       .app-shell.view-mobile .dashboard-grid { display:block; }
+      .app-shell.view-mobile .cup-overview > .stat-card { grid-column:span 12; }
       .app-shell.view-mobile .dashboard-grid > *, .app-shell.view-mobile .stat-card, .app-shell.view-mobile .feature-card, .app-shell.view-mobile .list-card { margin-bottom:12px; }
       .app-shell.view-mobile .two-column, .app-shell.view-mobile .three-column, .app-shell.view-mobile .match-list, .app-shell.view-mobile .lineup-grid, .app-shell.view-mobile .supporter-grid, .app-shell.view-mobile .support-summary, .app-shell.view-mobile .support-benefits { grid-template-columns:1fr; }
       .app-shell.view-mobile .cup-overview .cup-fixtures-card .match-list { grid-template-columns:1fr; }
@@ -2375,6 +2381,7 @@ class FootballHubPanel extends HTMLElement {
       }
 
       @media (max-width: 980px) {
+        .cup-overview > .stat-card { grid-column: span 12; }
         .feature-card { grid-column: span 12; }
         .stat-card { grid-column: span 6; }
         .list-card { grid-column: span 12; }
