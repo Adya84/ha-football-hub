@@ -1,4 +1,4 @@
-const PANEL_VERSION = "0.10.8-worldwide-live-stable";
+const PANEL_VERSION = "0.10.9-match-detail-mapping";
 
 class FootballHubPanel extends HTMLElement {
   constructor() {
@@ -940,6 +940,10 @@ class FootballHubPanel extends HTMLElement {
         </div>
         <div class="live-details">
           <span><ha-icon icon="mdi:stadium"></ha-icon>${this._escape(live.stadium || "Venue TBC")}</span>
+          ${live.city ? `<span><ha-icon icon="mdi:map-marker-outline"></ha-icon>${this._escape(live.city)}</span>` : ""}
+          ${live.capacity ? `<span><ha-icon icon="mdi:account-group-outline"></ha-icon>${this._escape(Number(live.capacity).toLocaleString())} capacity</span>` : ""}
+          ${live.surface ? `<span><ha-icon icon="mdi:grass"></ha-icon>${this._escape(live.surface)}</span>` : ""}
+          ${live.weather ? `<span><ha-icon icon="mdi:weather-partly-cloudy"></ha-icon>${this._escape(live.weather)}${live.temperature != null ? ` · ${this._escape(live.temperature)}°C` : ""}</span>` : ""}
           <span><ha-icon icon="mdi:account-whistle"></ha-icon>${this._escape(live.referee || "Referee TBC")}</span>
           <span><ha-icon icon="mdi:trophy-outline"></ha-icon>${this._escape(live.round || "")}</span>
         </div>
