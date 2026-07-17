@@ -1,4 +1,4 @@
-const PANEL_VERSION = "0.10.10-live-scroll-to-match";
+const PANEL_VERSION = "0.10.11-selected-match-first";
 
 class FootballHubPanel extends HTMLElement {
   constructor() {
@@ -919,7 +919,6 @@ class FootballHubPanel extends HTMLElement {
         ${teamOptions(this._selectedLiveTeam || live.home_team)}
         <div class="live-control-stats"><div><strong>${liveMatches.length}</strong><span>Live now</span></div><div><strong>${totalLiveGoals}</strong><span>Goals</span></div><div><strong>${events.length}</strong><span>Selected events</span></div></div>
       </section>
-      <section class="section country-live-section"><div class="page-heading"><div><span class="eyebrow">LIVE AROUND THE WORLD</span><h2>All live scores</h2></div><div class="count-badge">${liveMatches.length} live</div></div>${this._liveCompetitionGroups(liveMatches, this._selectedLiveMatch)}</section>
       <section class="live-centre-card" id="selected-live-match">
         <div class="live-banner"><span class="pulse"></span> LIVE · ${this._escape(
           live.elapsed ? `${String(live.elapsed).replace(/'+$/, "")}'` : (live.status_short || "")
@@ -954,6 +953,7 @@ class FootballHubPanel extends HTMLElement {
         <article class="page-card"><h2>Statistics</h2>${this._statRows(stats, live)}</article>
         <article class="page-card lineup-panel"><h2>Starting line-ups</h2>${this._lineupCards(lineups)}</article>
       </section>
+      <section class="section country-live-section"><div class="page-heading"><div><span class="eyebrow">LIVE AROUND THE WORLD</span><h2>All live scores</h2></div><div class="count-badge">${liveMatches.length} live</div></div>${this._liveCompetitionGroups(liveMatches, this._selectedLiveMatch)}</section>
     `;
   }
 
