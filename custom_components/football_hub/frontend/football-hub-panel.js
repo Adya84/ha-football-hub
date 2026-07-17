@@ -1,4 +1,4 @@
-const PANEL_VERSION = "0.10.9-match-detail-mapping";
+const PANEL_VERSION = "0.10.10-live-scroll-to-match";
 
 class FootballHubPanel extends HTMLElement {
   constructor() {
@@ -920,7 +920,7 @@ class FootballHubPanel extends HTMLElement {
         <div class="live-control-stats"><div><strong>${liveMatches.length}</strong><span>Live now</span></div><div><strong>${totalLiveGoals}</strong><span>Goals</span></div><div><strong>${events.length}</strong><span>Selected events</span></div></div>
       </section>
       <section class="section country-live-section"><div class="page-heading"><div><span class="eyebrow">LIVE AROUND THE WORLD</span><h2>All live scores</h2></div><div class="count-badge">${liveMatches.length} live</div></div>${this._liveCompetitionGroups(liveMatches, this._selectedLiveMatch)}</section>
-      <section class="live-centre-card">
+      <section class="live-centre-card" id="selected-live-match">
         <div class="live-banner"><span class="pulse"></span> LIVE · ${this._escape(
           live.elapsed ? `${String(live.elapsed).replace(/'+$/, "")}'` : (live.status_short || "")
         )}</div>
@@ -1486,6 +1486,12 @@ class FootballHubPanel extends HTMLElement {
         this._selectedLiveMatch = button.dataset.liveScore;
         localStorage.setItem("football_hub_live_match", this._selectedLiveMatch);
         this._render();
+        requestAnimationFrame(() => {
+          this.shadowRoot.querySelector("#selected-live-match")?.scrollIntoView({
+            behavior: "smooth",
+            block: "start",
+          });
+        });
         await this._hass?.callService("football_hub", "select_live_match", {
           fixture_id: this._selectedLiveMatch,
         }).catch(() => {});
@@ -2299,7 +2305,7 @@ class FootballHubPanel extends HTMLElement {
         text-align: center;
       }
 
-      .live-centre-card { padding: clamp(22px, 4vw, 42px); }
+      .live-centre-card { padding: clamp(22px, 4vw, 42px); scroll-margin-top: 76px; }
 
       .live-picker { margin-bottom: 18px; }
       .live-picker-control { display: flex; align-items: center; gap: 12px; margin-bottom: 14px; }
