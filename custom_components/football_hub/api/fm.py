@@ -576,10 +576,8 @@ class FMProvider:
         return is_selected_country or is_uefa_club_competition or is_international
 
     async def get_live_feed(self, league_id, season):
-        """Return today's relevant schedule so polling can follow kickoff times."""
-        selected_country = FM_COUNTRY_CODES.get(int(league_id)) if str(league_id).isdigit() else None
-        matches = await self._matches_for_date(datetime.now(timezone.utc))
-        return [item for item in matches if self._live_scope_match(item, selected_country)]
+        """Return today's worldwide schedule so every live match is available."""
+        return await self._matches_for_date(datetime.now(timezone.utc))
 
     async def get_live(self, league_id, season):
         feed = await self.get_live_feed(league_id, season)
