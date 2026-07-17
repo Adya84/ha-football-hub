@@ -46,6 +46,27 @@ class FootballHubPanel extends HTMLElement {
     this._supporters = [];
     this._supportersLoading = false;
     this._supportersLoaded = false;
+    this._lastRenderSig = null;
+  }
+
+  // Cheap fingerprint of everything a hass update can change on screen.
+  // Uses each football_hub entity's last_updated (bumped by HA on any state
+  // OR attribute change) plus the selection state that set hass() can mutate.
+  // Lets set hass() skip the full innerHTML rebuild when nothing we render
+  // has actually changed.
+  _footballStateSignature() {
+    const states = this._allStates();
+    const parts = [];
+    for (const entityId of Object.keys(states)) {
+      if (!entityId.includes("football_hub")) continue;
+      const s = states[entityId];
+      parts.push(`${entityId}@${s?.last_updated ?? s?.last_changed ?? ""}`);
+    }
+    parts.sort();
+    parts.push(`prefix=${this._selectedPrefix || ""}`);
+    parts.push(`pc=${this._pendingCompetition || ""}`);
+    parts.push(`pcup=${this._pendingCup || ""}`);
+    return parts.join("|");
   }
 
   set hass(hass) {
@@ -61,6 +82,13 @@ class FootballHubPanel extends HTMLElement {
       this._pendingHassRender = true;
       return;
     }
+    // Home Assistant assigns hass on EVERY state change in the whole instance
+    // (many times per second). Only rebuild the DOM when data we actually
+    // display has changed, otherwise every <img> is recreated and reloads,
+    // making the panel visibly flash/refresh every few seconds.
+    const renderSig = this._footballStateSignature();
+    if (renderSig === this._lastRenderSig) return;
+    this._lastRenderSig = renderSig;
     this._render();
   }
 
