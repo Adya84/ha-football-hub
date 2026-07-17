@@ -31,7 +31,13 @@ FM_LEAGUES = {
     42: 109,   # League Two
     43: 117,   # National League
     179: 64,   # Scottish Premiership
-    110: 9080, # Cymru Premier
+    110: 116,  # Cymru Premier
+    3010: 130,   # MLS
+    3011: 8972,  # USL Championship
+    3012: 9296,  # USL League One
+    3013: 10282, # MLS Next Pro
+    3014: 10084, # NISA
+    3015: 9134,  # NWSL
     408: 9084, # Northern Ireland Premiership
     357: 126,  # Republic of Ireland Premier Division
     140: 87,   # LaLiga
@@ -50,7 +56,10 @@ FM_LEAGUES = {
     1103: 247,   # Community Shield
     1201: 65,    # Scottish Cup
     1202: 66,    # Scottish League Cup
-    1301: 118,   # Welsh Cup
+    1301: 9166,  # Welsh Cup
+    3101: 9441,  # US Open Cup
+    3102: 10654, # USL Cup
+    3103: 10167, # NWSL Challenge Cup
     1401: 113,   # Irish Cup
     1501: 128,   # FAI Cup
     1601: 138,   # Copa del Rey
@@ -75,6 +84,8 @@ FM_LEAGUES = {
 FM_COUNTRY_CODES = {
     39: "ENG", 40: "ENG", 41: "ENG", 42: "ENG", 43: "ENG",
     179: "SCO", 110: "WAL", 408: "NIR", 357: "IRL",
+    3010: "USA", 3011: "USA", 3012: "USA", 3013: "USA",
+    3014: "USA", 3015: "USA",
     140: "ESP", 78: "GER", 135: "ITA", 61: "FRA", 88: "NED",
     94: "POR", 144: "BEL", 203: "TUR",
 }
