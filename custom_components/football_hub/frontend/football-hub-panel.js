@@ -1,4 +1,4 @@
-const PANEL_VERSION = "0.10.2-back-navigation";
+const PANEL_VERSION = "0.10.5-live-click-fix";
 
 class FootballHubPanel extends HTMLElement {
   constructor() {
@@ -46,27 +46,6 @@ class FootballHubPanel extends HTMLElement {
     this._supporters = [];
     this._supportersLoading = false;
     this._supportersLoaded = false;
-    this._lastRenderSig = null;
-  }
-
-  // Cheap fingerprint of everything a hass update can change on screen.
-  // Uses each football_hub entity's last_updated (bumped by HA on any state
-  // OR attribute change) plus the selection state that set hass() can mutate.
-  // Lets set hass() skip the full innerHTML rebuild when nothing we render
-  // has actually changed.
-  _footballStateSignature() {
-    const states = this._allStates();
-    const parts = [];
-    for (const entityId of Object.keys(states)) {
-      if (!entityId.includes("football_hub")) continue;
-      const s = states[entityId];
-      parts.push(`${entityId}@${s?.last_updated ?? s?.last_changed ?? ""}`);
-    }
-    parts.sort();
-    parts.push(`prefix=${this._selectedPrefix || ""}`);
-    parts.push(`pc=${this._pendingCompetition || ""}`);
-    parts.push(`pcup=${this._pendingCup || ""}`);
-    return parts.join("|");
   }
 
   set hass(hass) {
@@ -82,13 +61,6 @@ class FootballHubPanel extends HTMLElement {
       this._pendingHassRender = true;
       return;
     }
-    // Home Assistant assigns hass on EVERY state change in the whole instance
-    // (many times per second). Only rebuild the DOM when data we actually
-    // display has changed, otherwise every <img> is recreated and reloads,
-    // making the panel visibly flash/refresh every few seconds.
-    const renderSig = this._footballStateSignature();
-    if (renderSig === this._lastRenderSig) return;
-    this._lastRenderSig = renderSig;
     this._render();
   }
 
@@ -787,7 +759,7 @@ class FootballHubPanel extends HTMLElement {
       return `<div class="event-row">
         <span class="event-minute">${this._escape(elapsed)}${this._escape(extra)}'</span>
         <span class="event-icon">${icon}</span>
-        <span class="event-copy"><strong>${this._escape(event.player?.name || event.player || event.player_name || detail || type)}</strong><small>${this._escape(event.team?.name || event.team || event.team_name || type)}</small></span>
+        <span class="event-copy"><strong>${this._escape(event.player?.name || event.player || event.player_name || detail || type)}</strong><small>${this._escape(event.team?.name || event.team || event.team_name || type)}${event.assist?.name ? ` · Assist: ${this._escape(event.assist.name)}` : ""}</small></span>
       </div>`;
     }).join("")}</div>`;
   }
@@ -840,7 +812,8 @@ class FootballHubPanel extends HTMLElement {
         <header><ha-icon icon="mdi:trophy-outline"></ha-icon><strong>${this._escape(competition)}</strong><span>${games.length} live</span></header>
         <div>${games.map((match, index) => {
           const id = matchId(match, index);
-          const minute = match.elapsed ? `${match.elapsed}'` : (match.status_short || "LIVE");
+          const minuteValue = String(match.elapsed ?? "").replace(/'+$/, "");
+          const minute = minuteValue ? `${minuteValue}'` : (match.status_short || "LIVE");
           return `<button class="country-live-row ${id === selectedId ? "active" : ""}" data-live-score="${this._escape(id)}">
             <span class="country-live-minute">${this._escape(minute)}</span>
             <span class="country-live-team home">${this._escape(match.home_team)}${this._logo(match.home_logo, match.home_team, "24")}</span>
@@ -870,11 +843,8 @@ class FootballHubPanel extends HTMLElement {
       return `
         <section class="page-card live-control-empty">
           <div><span class="live-kicker">⚽ MATCHDAY CONTROL ROOM</span><h2>Live Centre</h2><p>The feed updates automatically when a match begins.</p></div>
-          <div class="live-count"><strong>0</strong><span>Live now</span></div>
-        </section>
-        <section class="live-picker page-card">
           ${teamOptions()}
-          <p class="supported-team-note">${this._selectedLiveTeam ? `${this._escape(this._selectedLiveTeam)} will open here automatically when they play live.` : "Choose your team now and their match will open automatically when it goes live."}</p>
+          <div class="live-count"><strong>0</strong><span>Live now</span></div>
         </section>
         <section class="section">
           <h2>Current live feed</h2>
@@ -889,8 +859,11 @@ class FootballHubPanel extends HTMLElement {
     const selectedTeamMatchIndex = liveMatches.findIndex((match) =>
       match.home_team === this._selectedLiveTeam || match.away_team === this._selectedLiveTeam
     );
-    if (selectedTeamMatchIndex >= 0) this._selectedLiveMatch = availableIds[selectedTeamMatchIndex];
-    if (!availableIds.includes(this._selectedLiveMatch)) this._selectedLiveMatch = availableIds[0] || "";
+    if (!availableIds.includes(this._selectedLiveMatch)) {
+      this._selectedLiveMatch = selectedTeamMatchIndex >= 0
+        ? availableIds[selectedTeamMatchIndex]
+        : (availableIds[0] || "");
+    }
     const selectedIndex = Math.max(0, availableIds.indexOf(this._selectedLiveMatch));
     const selectedBasic = liveMatches[selectedIndex] || primary;
     const primaryId = matchId(primary);
@@ -900,19 +873,22 @@ class FootballHubPanel extends HTMLElement {
     const events = selectedIsPrimary ? (primary.events || []) : (selectedBasic.events || []);
     const stats = selectedIsPrimary ? (primary.statistics || []) : (selectedBasic.statistics || []);
     const lineups = selectedIsPrimary ? (primary.lineups || []) : (selectedBasic.lineups || []);
+    const totalLiveGoals = liveMatches.reduce((total, match) => {
+      const home = Number(match.home_goals);
+      const away = Number(match.away_goals);
+      return total + (Number.isFinite(home) ? home : 0) + (Number.isFinite(away) ? away : 0);
+    }, 0);
 
     return `
       <section class="page-card live-control-hero">
         <div><span class="live-kicker">⚽ MATCHDAY CONTROL ROOM</span><h2>Live Centre <b>LIVE</b></h2><p>Scores, incidents, statistics and team sheets update automatically.</p></div>
-        <div class="live-control-stats"><div><strong>${matches.length || 1}</strong><span>Live now</span></div><div><strong>${events.filter((event) => String(event.type || "").toLowerCase().includes("goal")).length}</strong><span>Goals</span></div><div><strong>${events.length}</strong><span>Events</span></div></div>
-      </section>
-      <section class="live-picker page-card">
         ${teamOptions(this._selectedLiveTeam || live.home_team)}
+        <div class="live-control-stats"><div><strong>${liveMatches.length}</strong><span>Live now</span></div><div><strong>${totalLiveGoals}</strong><span>Goals</span></div><div><strong>${events.length}</strong><span>Selected events</span></div></div>
       </section>
       <section class="section country-live-section"><div class="page-heading"><div><span class="eyebrow">LIVE ACROSS YOUR COUNTRY</span><h2>All live scores</h2></div><div class="count-badge">${liveMatches.length} live</div></div>${this._liveCompetitionGroups(liveMatches, this._selectedLiveMatch)}</section>
       <section class="live-centre-card">
         <div class="live-banner"><span class="pulse"></span> LIVE · ${this._escape(
-          this._entity("live_match")?.state || live.status_short || ""
+          live.elapsed ? `${String(live.elapsed).replace(/'+$/, "")}'` : (live.status_short || "")
         )}</div>
         <div class="live-matchup">
           <div class="live-team">
@@ -1468,10 +1444,13 @@ class FootballHubPanel extends HTMLElement {
     });
 
     this.shadowRoot.querySelectorAll("[data-live-score]").forEach((button) => {
-      button.addEventListener("click", () => {
+      button.addEventListener("click", async () => {
         this._selectedLiveMatch = button.dataset.liveScore;
         localStorage.setItem("football_hub_live_match", this._selectedLiveMatch);
         this._render();
+        await this._hass?.callService("football_hub", "select_live_match", {
+          fixture_id: this._selectedLiveMatch,
+        }).catch(() => {});
       });
     });
 
@@ -2327,6 +2306,15 @@ class FootballHubPanel extends HTMLElement {
 
       .live-control-hero h2, .live-control-empty h2 { margin: 5px 0; }
       .live-control-hero p, .live-control-empty p { margin: 5px 0 0; color: var(--secondary-text-color); }
+      .live-control-hero > .live-picker-control, .live-control-empty > .live-picker-control {
+        flex: 1 1 360px;
+        max-width: 520px;
+        margin: 0;
+      }
+      .live-control-hero > .live-picker-control select, .live-control-empty > .live-picker-control select {
+        width: 100%;
+        min-width: 0;
+      }
 
       .live-kicker {
         color: #86efac;
@@ -2566,6 +2554,7 @@ class FootballHubPanel extends HTMLElement {
       .app-shell.view-mobile .page-card { padding:15px; border-radius:16px; }
       .app-shell.view-mobile .page-heading { align-items:flex-start; flex-direction:column; gap:10px; }
       .app-shell.view-mobile .fixture-filter, .app-shell.view-mobile .live-picker-control, .app-shell.view-mobile .premium-info { align-items:stretch; flex-direction:column; }
+      .app-shell.view-mobile .live-control-hero > .live-picker-control, .app-shell.view-mobile .live-control-empty > .live-picker-control { flex:none; width:100%; max-width:none; }
       .app-shell.view-mobile .fixture-filter select, .app-shell.view-mobile .live-picker-control select { width:100%; min-width:0; min-height:48px; }
       .app-shell.view-mobile .feature-match, .app-shell.view-mobile .live-matchup { grid-template-columns:1fr 76px 1fr; gap:6px; }
       .app-shell.view-mobile .score-board strong { font-size:2.25rem; }
@@ -2668,6 +2657,7 @@ class FootballHubPanel extends HTMLElement {
         .score-board strong { font-size: 2.65rem; }
 
         .live-control-hero, .live-control-empty { align-items: stretch; flex-direction: column; }
+        .live-control-hero > .live-picker-control, .live-control-empty > .live-picker-control { flex:none; width:100%; max-width:none; }
         .live-control-stats { width: 100%; }
         .lineup-grid { grid-template-columns: 1fr; }
         .live-picker-control { align-items: stretch; flex-direction: column; }
