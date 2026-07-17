@@ -912,12 +912,24 @@ class FMProvider:
     async def get_fixture_events(self, fixture_id):
         data = await self._match_details(fixture_id)
         output = []
-        for event in (data.get("header") or {}).get("events") or []:
+        content = data.get("content") or {}
+        match_facts = content.get("matchFacts") or {}
+        facts_events = match_facts.get("events") or {}
+        events = facts_events.get("events") if isinstance(facts_events, dict) else facts_events
+        if not isinstance(events, list):
+            events = []
+        general = data.get("general") or {}
+        home_team = general.get("homeTeam") or {}
+        away_team = general.get("awayTeam") or {}
+        for event in events:
             player = event.get("player") or {}
             assist = event.get("assist") or event.get("assistedBy") or {}
             if isinstance(assist, str):
                 assist = {"name": assist}
-            team = event.get("team") or {}
+            team = event.get("team") or (
+                home_team if event.get("isHome") is True else
+                away_team if event.get("isHome") is False else {}
+            )
             output.append({
                 "time": {
                     "elapsed": event.get("time") or event.get("timeStr"),
@@ -936,7 +948,7 @@ class FMProvider:
                     "name": assist.get("name") or event.get("assistStr"),
                 },
                 "type": event.get("type") or "Event",
-                "detail": event.get("eventType") or event.get("description"),
+                "detail": event.get("eventType") or event.get("description") or event.get("halfStrShort"),
             })
         return output
 
@@ -947,8 +959,10 @@ class FMProvider:
         general = data.get("general") or {}
         status = header.get("status") or {}
         facts = ((data.get("content") or {}).get("matchFacts") or {})
-        referee = general.get("referee") or facts.get("referee") or {}
-        venue = general.get("matchVenue") or general.get("venue") or facts.get("venue") or {}
+        info_box = facts.get("infoBox") or {}
+        referee = general.get("referee") or facts.get("referee") or info_box.get("Referee") or {}
+        venue = general.get("matchVenue") or general.get("venue") or facts.get("venue") or info_box.get("Stadium") or {}
+        weather = ((data.get("content") or {}).get("weather") or {})
         if isinstance(referee, str):
             referee = {"name": referee}
         if isinstance(venue, str):
@@ -964,6 +978,12 @@ class FMProvider:
             "referee": referee.get("name") or referee.get("text") or "Referee TBC",
             "stadium": venue.get("name") or venue.get("stadium") or "Venue TBC",
             "city": venue.get("city") or venue.get("location") or "",
+            "capacity": venue.get("capacity"),
+            "surface": venue.get("surface"),
+            "weather": weather.get("description") or weather.get("defaultTitle"),
+            "temperature": weather.get("temperature"),
+            "humidity": weather.get("relativeHumidity"),
+            "wind_speed": weather.get("windSpeed"),
         }
 
     async def get_fixture_statistics(self, fixture_id):
@@ -1001,10 +1021,22 @@ class FMProvider:
         data = await self._match_details(fixture_id)
         lineup = ((data.get("content") or {}).get("lineup") or {})
         output = []
-        for raw in lineup.get("lineups") or []:
-            team_id = raw.get("teamId")
+        raw_lineups = lineup.get("lineups") or []
+        if not raw_lineups:
+            raw_lineups = [
+                team for team in (lineup.get("homeTeam"), lineup.get("awayTeam"))
+                if isinstance(team, dict)
+            ]
+        for raw in raw_lineups:
+            team_id = raw.get("teamId") or raw.get("id")
             starters, subs = [], []
-            for item in raw.get("players") or []:
+            raw_players = raw.get("players") or []
+            if not raw_players:
+                raw_players = [
+                    *[dict(item, isSubstitute=False) for item in (raw.get("starters") or [])],
+                    *[dict(item, isSubstitute=True) for item in (raw.get("substitutes") or [])],
+                ]
+            for item in raw_players:
                 player = item.get("player") if isinstance(item.get("player"), dict) else item
                 player_id = player.get("id") or item.get("playerId")
                 position = item.get("position") or player.get("position")
@@ -1027,7 +1059,7 @@ class FMProvider:
             output.append({
                 "team": {
                     "id": team_id,
-                    "name": raw.get("teamName"),
+                    "name": raw.get("teamName") or raw.get("name"),
                     "logo": self._logo(team_id),
                 },
                 "formation": raw.get("formation"),
