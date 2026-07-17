@@ -14,7 +14,7 @@ from .const import DOMAIN
 PLATFORMS = ["sensor"]
 PANEL_URL = "football-hub"
 PANEL_NAME = "football-hub-panel"
-PANEL_VERSION = "0.3.7-back-navigation"
+PANEL_VERSION = "0.3.8-live-click-fix"
 PANEL_STATIC_URL = "/football_hub/football-hub-panel.js"
 PANEL_MODULE_URL = f"{PANEL_STATIC_URL}?v={PANEL_VERSION}"
 PANEL_SCRIPT_PATH = Path(__file__).parent / "frontend" / "football-hub-panel.js"
@@ -62,6 +62,11 @@ async def async_setup(hass: HomeAssistant, config: dict) -> bool:
         async for coordinator in _coordinators(call):
             await coordinator.async_set_supported_team(team)
 
+    async def async_select_live_match(call: ServiceCall) -> None:
+        fixture_id = str(call.data.get("fixture_id") or "").strip()
+        async for coordinator in _coordinators(call):
+            await coordinator.async_set_selected_live_match(fixture_id)
+
     async def async_select_competition(call: ServiceCall) -> None:
         competition = str(call.data.get("competition") or "").strip()
         async for coordinator in _coordinators(call):
@@ -79,6 +84,7 @@ async def async_setup(hass: HomeAssistant, config: dict) -> bool:
 
     services = {
         "select_live_team": async_select_live_team,
+        "select_live_match": async_select_live_match,
         "select_competition": async_select_competition,
         "select_cup": async_select_cup,
         "select_my_club": async_select_my_club,
