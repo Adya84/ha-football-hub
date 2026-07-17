@@ -1,4 +1,4 @@
-const PANEL_VERSION = "0.10.5-live-click-fix";
+const PANEL_VERSION = "0.10.8-worldwide-live-stable";
 
 class FootballHubPanel extends HTMLElement {
   constructor() {
@@ -46,6 +46,22 @@ class FootballHubPanel extends HTMLElement {
     this._supporters = [];
     this._supportersLoading = false;
     this._supportersLoaded = false;
+    this._lastRenderSig = null;
+  }
+
+  _footballStateSignature() {
+    const states = this._allStates();
+    const parts = [];
+    for (const entityId of Object.keys(states)) {
+      if (!entityId.includes("football_hub")) continue;
+      const state = states[entityId];
+      parts.push(`${entityId}@${state?.last_updated ?? state?.last_changed ?? ""}`);
+    }
+    parts.sort();
+    parts.push(`prefix=${this._selectedPrefix || ""}`);
+    parts.push(`pc=${this._pendingCompetition || ""}`);
+    parts.push(`pcup=${this._pendingCup || ""}`);
+    return parts.join("|");
   }
 
   set hass(hass) {
@@ -61,6 +77,9 @@ class FootballHubPanel extends HTMLElement {
       this._pendingHassRender = true;
       return;
     }
+    const renderSig = this._footballStateSignature();
+    if (renderSig === this._lastRenderSig) return;
+    this._lastRenderSig = renderSig;
     this._render();
   }
 
@@ -115,7 +134,14 @@ class FootballHubPanel extends HTMLElement {
         const raw = (await response.text()).trim();
         if (!raw) return [];
 
-        const payload = JSON.parse(raw);
+        let payload;
+        try {
+          payload = JSON.parse(raw);
+        } catch (_jsonError) {
+          // Keep the community list working if a comma is accidentally
+          // omitted between two supporter objects on GitHub.
+          payload = JSON.parse(raw.replace(/}\s*{/g, "},{"));
+        }
 
         if (Array.isArray(payload)) return payload;
 
@@ -147,8 +173,12 @@ class FootballHubPanel extends HTMLElement {
       ),
     ]);
 
-    this._supporters = sortByDate(supporters);
-    this._premiumSupporters = sortByDate(premiumSupporters);
+    const cachedSupporters = JSON.parse(localStorage.getItem("football_hub_supporters_cache") || "[]");
+    const cachedPremium = JSON.parse(localStorage.getItem("football_hub_premium_supporters_cache") || "[]");
+    this._supporters = sortByDate(supporters.length ? supporters : cachedSupporters);
+    this._premiumSupporters = sortByDate(premiumSupporters.length ? premiumSupporters : cachedPremium);
+    if (supporters.length) localStorage.setItem("football_hub_supporters_cache", JSON.stringify(supporters));
+    if (premiumSupporters.length) localStorage.setItem("football_hub_premium_supporters_cache", JSON.stringify(premiumSupporters));
     this._supportersLoading = false;
     this._supportersLoaded = true;
     this._render();
@@ -302,6 +332,10 @@ class FootballHubPanel extends HTMLElement {
     this._activeTab = tab;
     localStorage.setItem("football_hub_active_page", tab);
     this._render();
+    if (tab === "supporters") {
+      this._supportersLoaded = false;
+      this._loadSupporters();
+    }
   }
 
   _goBack() {
@@ -885,7 +919,7 @@ class FootballHubPanel extends HTMLElement {
         ${teamOptions(this._selectedLiveTeam || live.home_team)}
         <div class="live-control-stats"><div><strong>${liveMatches.length}</strong><span>Live now</span></div><div><strong>${totalLiveGoals}</strong><span>Goals</span></div><div><strong>${events.length}</strong><span>Selected events</span></div></div>
       </section>
-      <section class="section country-live-section"><div class="page-heading"><div><span class="eyebrow">LIVE ACROSS YOUR COUNTRY</span><h2>All live scores</h2></div><div class="count-badge">${liveMatches.length} live</div></div>${this._liveCompetitionGroups(liveMatches, this._selectedLiveMatch)}</section>
+      <section class="section country-live-section"><div class="page-heading"><div><span class="eyebrow">LIVE AROUND THE WORLD</span><h2>All live scores</h2></div><div class="count-badge">${liveMatches.length} live</div></div>${this._liveCompetitionGroups(liveMatches, this._selectedLiveMatch)}</section>
       <section class="live-centre-card">
         <div class="live-banner"><span class="pulse"></span> LIVE · ${this._escape(
           live.elapsed ? `${String(live.elapsed).replace(/'+$/, "")}'` : (live.status_short || "")
