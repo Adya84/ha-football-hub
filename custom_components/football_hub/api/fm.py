@@ -916,6 +916,9 @@ class FMProvider:
         output = []
         for event in (data.get("header") or {}).get("events") or []:
             player = event.get("player") or {}
+            assist = event.get("assist") or event.get("assistedBy") or {}
+            if isinstance(assist, str):
+                assist = {"name": assist}
             team = event.get("team") or {}
             output.append({
                 "time": {
@@ -930,10 +933,40 @@ class FMProvider:
                     "id": player.get("id"),
                     "name": player.get("name"),
                 },
+                "assist": {
+                    "id": assist.get("id"),
+                    "name": assist.get("name") or event.get("assistStr"),
+                },
                 "type": event.get("type") or "Event",
                 "detail": event.get("eventType") or event.get("description"),
             })
         return output
+
+    async def get_fixture_details(self, fixture_id):
+        """Return venue, referee and live-clock data for a selected match."""
+        data = await self._match_details(fixture_id)
+        header = data.get("header") or {}
+        general = data.get("general") or {}
+        status = header.get("status") or {}
+        facts = ((data.get("content") or {}).get("matchFacts") or {})
+        referee = general.get("referee") or facts.get("referee") or {}
+        venue = general.get("matchVenue") or general.get("venue") or facts.get("venue") or {}
+        if isinstance(referee, str):
+            referee = {"name": referee}
+        if isinstance(venue, str):
+            venue = {"name": venue}
+        live_time = status.get("liveTime") or {}
+        elapsed = live_time.get("short") if isinstance(live_time, dict) else live_time
+        if elapsed in (None, ""):
+            elapsed = status.get("elapsed") or status.get("minutes")
+        return {
+            "elapsed": elapsed,
+            "status_short": status.get("short") or status.get("status") or "LIVE",
+            "status": status.get("reason") or status.get("scoreStr") or "Live",
+            "referee": referee.get("name") or referee.get("text") or "Referee TBC",
+            "stadium": venue.get("name") or venue.get("stadium") or "Venue TBC",
+            "city": venue.get("city") or venue.get("location") or "",
+        }
 
     async def get_fixture_statistics(self, fixture_id):
         data = await self._match_details(fixture_id)
