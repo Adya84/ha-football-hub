@@ -241,7 +241,9 @@ class FootballHubLiveSensor(FootballHubBaseSensor):
     @property
     def extra_state_attributes(self):
         matches = self.engine.live.matches()
-        raw_matches = (self.coordinator.data or {}).get("live", []) or []
+        coordinator_data = self.coordinator.data or {}
+        raw_matches = coordinator_data.get("live", []) or []
+        live_details = coordinator_data.get("live_details", {}) or {}
         raw_by_id = {
             str(((item or {}).get("fixture") or {}).get("id")): item
             for item in raw_matches
@@ -249,7 +251,10 @@ class FootballHubLiveSensor(FootballHubBaseSensor):
         }
         enriched_matches = []
         for match in matches:
-            details = self.engine.live.details(match.get("fixture_id"))
+            fixture_id = str(match.get("fixture_id"))
+            details = live_details.get(fixture_id) or self.engine.live.details(
+                match.get("fixture_id")
+            )
             raw = raw_by_id.get(str(match.get("fixture_id")), {})
             league = (raw.get("league") or {}) if isinstance(raw, dict) else {}
             enriched_matches.append({
