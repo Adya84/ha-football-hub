@@ -1087,13 +1087,25 @@ class FMProvider:
 
     async def _league_players(self, league_id, wanted: str):
         data = await self._league_data(league_id)
+        return self._league_players_from_data(data, wanted)
+
+    def _league_players_from_data(self, data: dict, wanted: str):
+        """Extract one leaderboard from an already cached league response."""
         output = []
         seen = set()
+        title_aliases = {
+            "yellow": ("yellow",),
+            "red": ("red",),
+            "rating": ("rating",),
+            "appearances": ("appearance", "matches played", "games played"),
+            "minutes": ("minutes",),
+        }
         for node in self._walk(data):
             if not isinstance(node, dict):
                 continue
             title = self._norm(node.get("title") or node.get("name") or "")
-            if wanted not in title:
+            aliases = title_aliases.get(wanted, (wanted,))
+            if not any(alias in title for alias in aliases):
                 continue
             players = node.get("players") or node.get("items") or []
             if not isinstance(players, list):
@@ -1102,10 +1114,17 @@ class FMProvider:
                 player = row.get("player") if isinstance(row.get("player"), dict) else row
                 player_id = player.get("id") or row.get("playerId")
                 name = player.get("name") or row.get("name")
-                if not name or str(player_id) in seen:
+                player_key = str(player_id or name).casefold()
+                if not name or player_key in seen:
                     continue
-                seen.add(str(player_id))
-                value = row.get("value") or row.get("statValue") or row.get(wanted) or 0
+                seen.add(player_key)
+                value = (
+                    row.get("value")
+                    if row.get("value") is not None
+                    else row.get("statValue")
+                    if row.get("statValue") is not None
+                    else row.get(wanted, 0)
+                )
                 team = row.get("team") or {}
                 output.append({
                     "player": {
@@ -1123,9 +1142,31 @@ class FMProvider:
                             "total": value if wanted == "goals" else 0,
                             "assists": value if wanted == "assists" else 0,
                         },
+                        "cards": {
+                            "yellow": value if wanted == "yellow" else 0,
+                            "red": value if wanted == "red" else 0,
+                        },
+                        "games": {
+                            "appearences": value if wanted == "appearances" else 0,
+                        },
+                        "minutes": value if wanted == "minutes" else 0,
+                        "rating": value if wanted == "rating" else 0,
                     }],
                 })
         return output[:25]
+
+    async def get_player_leaderboards(self, league_id, season):
+        """Return every supported leaderboard from one league-data request."""
+        data = await self._league_data(league_id)
+        return {
+            "top_scorers": self._league_players_from_data(data, "goals"),
+            "top_assists": self._league_players_from_data(data, "assists"),
+            "top_yellow_cards": self._league_players_from_data(data, "yellow"),
+            "top_red_cards": self._league_players_from_data(data, "red"),
+            "top_ratings": self._league_players_from_data(data, "rating"),
+            "top_appearances": self._league_players_from_data(data, "appearances"),
+            "top_minutes": self._league_players_from_data(data, "minutes"),
+        }
 
     async def get_team_statistics(self, team_id, league_id, season):
         fixtures = await self.get_fixtures(league_id, season)
@@ -1561,6 +1602,15 @@ class FMProvider:
 
     async def get_top_red_cards(self, league_id, season):
         return await self._league_players(league_id, "red")
+
+    async def get_top_ratings(self, league_id, season):
+        return await self._league_players(league_id, "rating")
+
+    async def get_top_appearances(self, league_id, season):
+        return await self._league_players(league_id, "appearances")
+
+    async def get_top_minutes(self, league_id, season):
+        return await self._league_players(league_id, "minutes")
 
     async def get_head_to_head(self, team_id, opponent_id):
         matches = []
