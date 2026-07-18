@@ -16,7 +16,7 @@ Football Hub supports multiple countries and competitions through built-in count
 
 # 🚀 Latest Release - v0.3.13
 
-Football Hub 0.3.7 expands the integration from a competition dashboard into a broader football portal inside Home Assistant.
+Football Hub 0.3.13 expands the integration from a competition dashboard into a broader football portal inside Home Assistant.
 
 This release introduces dedicated football news, UK television listings and transfer-market pages, while continuing the recent expansion of cup competitions and the My Club experience.
 
