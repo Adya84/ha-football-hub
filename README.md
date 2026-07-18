@@ -207,17 +207,6 @@ These selections are restored automatically after Home Assistant restarts.
 
 ---
 
-## 🔑 API Key
-
-Football Hub uses live football data from:
-
-https://www.api-football.com/
-
-A valid API-Football API key is required.
-
-Competition availability, live information, fixtures, results, statistics, line-ups and player data depend on the coverage and limits included with your API plan.
-
----
 
 # 🌟 Features
 
