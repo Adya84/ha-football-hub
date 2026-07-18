@@ -14,28 +14,6 @@ Football Hub supports multiple countries and competitions through built-in count
 
 ---
 
-## 📸 Screenshots
-
-Screenshots will be added as the Football Hub application continues to evolve.
-
-Current sections include:
-
-* Overview
-* Live Centre
-* Fixtures
-* Results
-* League Table
-* Players
-* My Club
-* Cups
-* News
-* TV Guide
-* Transfers
-* Supporters
-* Settings
-
----
-
 # 🚀 Latest Release - v0.3.7
 
 Football Hub 0.3.7 expands the integration from a competition dashboard into a broader football portal inside Home Assistant.
