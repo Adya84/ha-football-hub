@@ -1,7 +1,7 @@
 # ⚽ Home Assistant Football Hub
 
 [![License](https://img.shields.io/badge/license-Personal%20Use-red.svg)](LICENSE)
-![Version](https://img.shields.io/badge/version-v0.3.7-green)
+![Version](https://img.shields.io/badge/version-v0.3.13-green)
 ![Home Assistant](https://img.shields.io/badge/Home%20Assistant-2024.1%2B-blue)
 ![HACS](https://img.shields.io/badge/HACS-Custom-orange)
 ![Cloud Polling](https://img.shields.io/badge/IoT--Class-Cloud%20Polling-blue)
@@ -14,7 +14,7 @@ Football Hub supports multiple countries and competitions through built-in count
 
 ---
 
-# 🚀 Latest Release - v0.3.7
+# 🚀 Latest Release - v0.3.13
 
 Football Hub 0.3.7 expands the integration from a competition dashboard into a broader football portal inside Home Assistant.
 
