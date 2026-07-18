@@ -1,4 +1,4 @@
-const PANEL_VERSION = "0.11.4-official-logo";
+const PANEL_VERSION = "0.12.1-match-statistics";
 
 class FootballHubPanel extends HTMLElement {
   constructor() {
@@ -652,10 +652,12 @@ class FootballHubPanel extends HTMLElement {
   }
 
   _nav() {
+    const liveMatches = this._attrs("live_matches").matches || [];
+    const hasLiveMatches = liveMatches.length > 0 || Boolean(this._attrs("live_match").is_live);
     const tabs = [
       ["overview", "mdi:view-dashboard-outline", this._t("overview")],
-      ["my-club", "mdi:shield-star-outline", this._t("myClub")],
       ["live", "mdi:access-point", this._t("live")],
+      ["my-club", "mdi:shield-star-outline", this._t("myClub")],
       ["fixtures", "mdi:calendar-month-outline", this._t("fixtures")],
       ["results", "mdi:check-decagram-outline", this._t("results")],
       ["table", "mdi:table-large", this._t("table")],
@@ -676,6 +678,7 @@ class FootballHubPanel extends HTMLElement {
               <button data-tab="${id}" class="${this._activeTab === id ? "active" : ""}">
                 <ha-icon icon="${icon}"></ha-icon>
                 <span>${label}</span>
+                ${id === "live" ? `<i class="nav-live-dot ${hasLiveMatches ? "has-live" : ""}" title="${hasLiveMatches ? "Live matches available" : "No live matches"}"></i>` : ""}
               </button>`
           )
           .join("")}
@@ -784,7 +787,7 @@ class FootballHubPanel extends HTMLElement {
 
         <article class="list-card mock-fixtures">
           <div class="card-heading"><span><ha-icon icon="mdi:calendar-month-outline"></ha-icon> Next 3 fixtures</span><button class="text-button" data-tab="fixtures">View full fixtures</button></div>
-          <div class="compact-fixtures">${orderedFixtures.slice(0, 3).map((match) => `<div class="${isClubFixture(match) ? "priority-club-fixture" : ""}"><span class="compact-fixture-teams">${this._logo(match.home_logo, match.home_team, "26")}<b>${this._escape(match.home_team)}</b><em>vs</em>${this._logo(match.away_logo, match.away_team, "26")}<b>${this._escape(match.away_team)}</b></span><time>${this._formatDate(match.kickoff)}</time></div>`).join("") || `<div class="empty">No fixtures available.</div>`}</div>
+          <div class="compact-fixtures">${orderedFixtures.slice(0, 3).map((match) => `<div class="${isClubFixture(match) ? "priority-club-fixture" : ""}"><span class="compact-fixture-side home">${this._logo(match.home_logo, match.home_team, "26")}<b>${this._escape(match.home_team)}</b></span><em class="compact-versus">vs</em><span class="compact-fixture-side away">${this._logo(match.away_logo, match.away_team, "26")}<b>${this._escape(match.away_team)}</b></span><time>${this._formatDate(match.kickoff)}</time></div>`).join("") || `<div class="empty">No fixtures available.</div>`}</div>
         </article>
 
         <article class="list-card mock-news">
@@ -845,6 +848,17 @@ class FootballHubPanel extends HTMLElement {
 
   _statRows(statistics, live) {
     if (!statistics.length) return `<div class="empty">Statistics not available yet.</div>`;
+    const displayValue = (value) => {
+      if (value == null || value === "") return "–";
+      if (typeof value === "string" || typeof value === "number") return String(value);
+      if (Array.isArray(value)) return value.map(displayValue).filter((item) => item !== "–").join(" / ") || "–";
+      if (typeof value === "object") {
+        for (const key of ["value", "displayValue", "text", "label", "statValue", "formatted"]) {
+          if (value[key] != null) return displayValue(value[key]);
+        }
+      }
+      return "–";
+    };
     const teamName = (item) => item.team?.name || item.team || "";
     const home = statistics.find((item) => teamName(item) === live.home_team) || statistics[0] || {};
     const away = statistics.find((item) => teamName(item) === live.away_team) || statistics[1] || {};
@@ -856,7 +870,7 @@ class FootballHubPanel extends HTMLElement {
       <div class="stats-team-head"><strong>${this._escape(live.home_team)}</strong><span>Match statistics</span><strong>${this._escape(live.away_team)}</strong></div>
       ${homeStats.map((stat, index) => {
         const awayStat = awayStats.find((item) => item.type === stat.type) || awayStats[index] || {};
-        return `<div class="stat-comparison"><strong>${this._escape(stat.value ?? "–")}</strong><span>${this._escape(stat.type || "Statistic")}</span><strong>${this._escape(awayStat.value ?? "–")}</strong></div>`;
+        return `<div class="stat-comparison"><strong>${this._escape(displayValue(stat.value))}</strong><span>${this._escape(stat.type || "Statistic")}</span><strong>${this._escape(displayValue(awayStat.value))}</strong></div>`;
       }).join("")}
     </div>`;
   }
@@ -2814,13 +2828,40 @@ class FootballHubPanel extends HTMLElement {
         min-height:100vh;
         background:
           radial-gradient(circle at 70% 0%, rgba(0,132,255,.16), transparent 32%),
+          repeating-linear-gradient(135deg,transparent 0 72px,rgba(0,183,255,.025) 73px 74px,transparent 75px 144px),
           linear-gradient(180deg, rgba(0,8,20,.82), rgba(0,5,14,.94)),
           url("/football_hub/football-hub-background.png?v=0.2.3") center / cover fixed no-repeat,
           #010815;
       }
+      .app-shell::before {
+        content:"";
+        position:fixed;
+        z-index:0;
+        right:3.5%;
+        bottom:4%;
+        width:min(520px,42vw);
+        aspect-ratio:1.65;
+        pointer-events:none;
+        opacity:.19;
+        border:2px solid #00b7ff;
+        border-radius:8px;
+        background:
+          linear-gradient(90deg,transparent calc(50% - 1px),#00b7ff 50%,transparent calc(50% + 1px)),
+          radial-gradient(circle at center,transparent 0 57px,#00b7ff 58px 59px,transparent 60px),
+          linear-gradient(90deg,#00b7ff,#00b7ff) left center/17% 48% no-repeat,
+          linear-gradient(90deg,#00b7ff,#00b7ff) right center/17% 48% no-repeat,
+          radial-gradient(circle at center,rgba(0,183,255,.11),transparent 68%);
+        box-shadow:0 0 70px rgba(0,183,255,.16),inset 0 0 45px rgba(0,183,255,.09);
+        transform:perspective(700px) rotateX(57deg) rotateZ(-7deg);
+        transform-origin:center bottom;
+      }
+      .app-shell > .hero,
+      .app-shell > .tabs,
+      .app-shell > main,
+      .app-shell > footer { position:relative; z-index:1; }
       .app-shell.view-desktop .hero {
         grid-column:1 / -1;
-        min-height:108px;
+        min-height:142px;
         padding:16px 26px;
         align-items:center;
         border-bottom:1px solid rgba(0,183,255,.32);
@@ -2832,7 +2873,7 @@ class FootballHubPanel extends HTMLElement {
       .app-shell.view-desktop .hero p { margin-top:5px; font-size:.78rem; }
       .hero-brand { display:flex; align-items:center; gap:14px; }
       .app-shell.view-desktop .hero-brand { margin-left:clamp(60px,7vw,130px); }
-      .brand-ball { display:grid; width:62px; height:62px; flex:0 0 auto; place-items:center; border:2px solid #00b7ff; border-radius:50%; background:radial-gradient(circle,#122b45,#020914 68%); box-shadow:0 0 18px rgba(0,183,255,.42),inset 0 0 12px rgba(0,183,255,.24); }
+      .brand-ball { display:grid; width:128px; height:128px; flex:0 0 auto; place-items:center; border:2px solid #00b7ff; border-radius:50%; background:radial-gradient(circle,#122b45,#020914 68%); box-shadow:0 0 28px rgba(0,183,255,.5),inset 0 0 18px rgba(0,183,255,.28); }
       .brand-ball img { width:100%; height:100%; display:block; object-fit:cover; border-radius:50%; }
       .app-shell.view-desktop .panel-back-button { min-width:auto; margin:0 12px 0 0; padding:8px; }
       .app-shell.view-desktop .panel-back-button span { display:none; }
@@ -2849,7 +2890,8 @@ class FootballHubPanel extends HTMLElement {
         overflow:visible;
         border-right:1px solid rgba(0,183,255,.28);
         border-bottom:0;
-        background:linear-gradient(180deg,rgba(1,16,34,.98),rgba(0,8,20,.96));
+        background:linear-gradient(180deg,rgba(1,16,34,.78),rgba(0,8,20,.72));
+        backdrop-filter:blur(14px);
       }
       .app-shell.view-desktop .tabs button {
         width:100%;
@@ -2863,8 +2905,26 @@ class FootballHubPanel extends HTMLElement {
       .app-shell.view-desktop .tabs button.active {
         border-color:#00aef3;
         color:#fff;
-        background:linear-gradient(90deg,rgba(0,94,190,.92),rgba(0,183,255,.32));
+        background:linear-gradient(90deg,rgba(0,94,190,.76),rgba(0,183,255,.24));
         box-shadow:inset 0 0 18px rgba(0,183,255,.28),0 0 12px rgba(0,128,255,.24);
+      }
+      .nav-live-dot {
+        width:8px;
+        height:8px;
+        flex:0 0 auto;
+        margin-left:auto;
+        border-radius:50%;
+        background:#ff344b;
+        box-shadow:0 0 8px rgba(255,52,75,.62);
+      }
+      .nav-live-dot.has-live {
+        background:#20ee78;
+        box-shadow:0 0 5px #20ee78,0 0 13px rgba(32,238,120,.95);
+        animation:live-nav-pulse 1.5s ease-in-out infinite;
+      }
+      @keyframes live-nav-pulse {
+        0%,100% { transform:scale(.9); opacity:.8; }
+        50% { transform:scale(1.2); opacity:1; }
       }
       .app-shell.view-desktop main {
         grid-column:2;
@@ -2881,7 +2941,8 @@ class FootballHubPanel extends HTMLElement {
       .app-shell.view-desktop .live-centre-card {
         border-color:rgba(0,126,224,.46);
         border-radius:7px;
-        background:linear-gradient(145deg,rgba(2,25,52,.86),rgba(0,9,23,.9)) !important;
+        background:linear-gradient(145deg,rgba(2,25,52,.72),rgba(0,9,23,.78)) !important;
+        backdrop-filter:blur(7px);
         box-shadow:inset 0 1px rgba(255,255,255,.035),0 10px 28px rgba(0,0,0,.24);
       }
       .app-shell.view-desktop .mock-dashboard { gap:12px; }
@@ -2909,12 +2970,14 @@ class FootballHubPanel extends HTMLElement {
       .top-scorer-compact > span { display:flex; flex-direction:column; gap:3px; }
       .top-scorer-compact b { color:var(--fh-cyan); font-size:1.15rem; }
       .compact-fixtures, .compact-news { display:grid; gap:0; }
-      .compact-fixtures > div { display:flex; justify-content:space-between; gap:14px; padding:10px 4px; border-bottom:1px solid rgba(0,126,224,.2); }
+      .compact-fixtures > div { position:relative; display:grid; grid-template-columns:minmax(0,1fr) 42px minmax(0,1fr); align-items:center; gap:8px; min-height:38px; padding:8px 142px 8px 4px; border-bottom:1px solid rgba(0,126,224,.2); }
       .compact-fixtures > .priority-club-fixture { margin-inline:-6px; padding-inline:10px; border-left:3px solid var(--fh-cyan); background:rgba(0,183,255,.08); }
-      .compact-fixture-teams { display:grid; grid-template-columns:26px minmax(70px,1fr) auto 26px minmax(70px,1fr); align-items:center; gap:7px; min-width:0; }
-      .compact-fixture-teams b { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-      .compact-fixture-teams em { color:var(--fh-cyan); font-style:normal; font-size:.7rem; font-weight:900; text-transform:uppercase; }
-      .compact-fixtures time { color:var(--secondary-text-color); font-size:.76rem; text-align:right; }
+      .compact-fixture-side { display:flex; align-items:center; gap:8px; min-width:0; }
+      .compact-fixture-side.home { justify-content:flex-start; }
+      .compact-fixture-side.away { justify-content:flex-start; }
+      .compact-fixture-side b { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+      .compact-versus { color:var(--fh-cyan); font-style:normal; font-size:.7rem; font-weight:900; text-align:center; text-transform:uppercase; }
+      .compact-fixtures time { position:absolute; right:4px; width:132px; color:var(--secondary-text-color); font-size:.76rem; text-align:right; white-space:nowrap; }
       .compact-news a { display:flex; gap:10px; padding:8px 2px; color:inherit; text-decoration:none; border-bottom:1px solid rgba(0,126,224,.2); }
       .compact-news img { width:88px; height:48px; object-fit:cover; border-radius:4px; }
       .compact-news a span { display:flex; min-width:0; flex-direction:column; gap:4px; }
@@ -2924,10 +2987,15 @@ class FootballHubPanel extends HTMLElement {
         .app-shell.view-desktop { display:block; }
         .app-shell.view-desktop .hero { min-height:auto; }
         .app-shell.view-desktop .hero-brand { margin-left:0; }
+        .brand-ball { width:74px; height:74px; }
         .app-shell.view-desktop .panel-back-button { position:static; }
         .app-shell.view-desktop .tabs { position:sticky; top:0; flex-direction:row; overflow-x:auto; border-right:0; border-bottom:1px solid rgba(0,183,255,.28); }
         .app-shell.view-desktop .tabs button { width:auto; min-width:max-content; }
         .app-shell.view-desktop .mock-dashboard > * { grid-column:span 12 !important; }
+        .app-shell::before { width:76vw; right:-18vw; bottom:7%; opacity:.075; }
+        .compact-fixtures > div { grid-template-columns:minmax(0,1fr) 34px minmax(0,1fr); padding-right:4px; padding-bottom:30px; }
+        .compact-fixtures time { right:auto; bottom:6px; left:4px; width:auto; text-align:left; }
+        .nav-live-dot { margin-left:2px; }
       }
     `;
   }
