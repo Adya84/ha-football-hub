@@ -1,4 +1,4 @@
-const PANEL_VERSION = "0.12.1-match-statistics";
+const PANEL_VERSION = "0.12.2-visual-match-statistics";
 
 class FootballHubPanel extends HTMLElement {
   constructor() {
@@ -866,12 +866,40 @@ class FootballHubPanel extends HTMLElement {
     const homeStats = toRows(home.statistics || home.stats);
     const awayStats = toRows(away.statistics || away.stats);
     if (!homeStats.length) return `<div class="empty">Statistics not available yet.</div>`;
+    const numberValue = (value) => {
+      const match = displayValue(value).replaceAll(",", "").match(/-?\d+(?:\.\d+)?/);
+      return match ? Number(match[0]) : null;
+    };
+    const statRow = (stat, index) => {
+      const awayStat = awayStats.find(
+        (item) => item.type === stat.type && (item.group || "All stats") === (stat.group || "All stats")
+      ) || awayStats[index] || {};
+      const homeDisplay = displayValue(stat.value);
+      const awayDisplay = displayValue(awayStat.value);
+      const homeNumber = numberValue(stat.value);
+      const awayNumber = numberValue(awayStat.value);
+      const total = Math.max(0, homeNumber || 0) + Math.max(0, awayNumber || 0);
+      const homeWidth = total ? Math.max(4, ((homeNumber || 0) / total) * 100) : 50;
+      const awayWidth = total ? Math.max(4, ((awayNumber || 0) / total) * 100) : 50;
+      const possession = String(stat.type || "").toLowerCase().includes("possession");
+      return `<div class="stat-comparison ${possession ? "possession-comparison" : ""}">
+        <div class="stat-values"><strong>${this._escape(homeDisplay)}</strong><span>${this._escape(stat.type || "Statistic")}</span><strong>${this._escape(awayDisplay)}</strong></div>
+        ${homeNumber != null && awayNumber != null ? `<div class="stat-bars"><i class="home-bar" style="width:${homeWidth}%"></i><i class="away-bar" style="width:${awayWidth}%"></i></div>` : ""}
+      </div>`;
+    };
+    const groups = [];
+    for (const stat of homeStats) {
+      const name = stat.group || "All stats";
+      let group = groups.find((item) => item.name === name);
+      if (!group) {
+        group = { name, stats: [] };
+        groups.push(group);
+      }
+      group.stats.push(stat);
+    }
     return `<div class="live-stats">
       <div class="stats-team-head"><strong>${this._escape(live.home_team)}</strong><span>Match statistics</span><strong>${this._escape(live.away_team)}</strong></div>
-      ${homeStats.map((stat, index) => {
-        const awayStat = awayStats.find((item) => item.type === stat.type) || awayStats[index] || {};
-        return `<div class="stat-comparison"><strong>${this._escape(displayValue(stat.value))}</strong><span>${this._escape(stat.type || "Statistic")}</span><strong>${this._escape(displayValue(awayStat.value))}</strong></div>`;
-      }).join("")}
+      ${groups.map((group) => `<section class="stat-group"><h3>${this._escape(group.name)}</h3>${group.stats.map((stat) => statRow(stat, homeStats.indexOf(stat))).join("")}</section>`).join("")}
     </div>`;
   }
 
@@ -2507,12 +2535,20 @@ class FootballHubPanel extends HTMLElement {
       .event-copy { display: flex; flex-direction: column; }
       .event-copy small { color: var(--secondary-text-color); }
 
-      .stats-team-head, .stat-comparison { display: grid; grid-template-columns: 1fr 1.3fr 1fr; align-items: center; gap: 10px; text-align: center; }
+      .stats-team-head, .stat-values { display: grid; grid-template-columns: 1fr 1.3fr 1fr; align-items: center; gap: 10px; text-align: center; }
       .stats-team-head { padding-bottom: 12px; color: var(--secondary-text-color); }
-      .stat-comparison { min-height: 46px; border-top: 1px solid var(--fh-border); }
-      .stat-comparison strong:first-child { text-align: left; }
-      .stat-comparison strong:last-child { text-align: right; }
-      .stat-comparison span { color: var(--secondary-text-color); font-size: .78rem; }
+      .stat-group { margin-top:14px; padding-top:2px; border-top:1px solid rgba(0,183,255,.3); }
+      .stat-group h3 { margin:12px 0 8px; color:#fff; font-size:.85rem; text-align:center; text-transform:uppercase; letter-spacing:.08em; }
+      .stat-comparison { min-height:48px; padding:9px 0; border-top:1px solid var(--fh-border); }
+      .stat-values strong:first-child { text-align:left; }
+      .stat-values strong:last-child { text-align:right; }
+      .stat-values span { color:var(--secondary-text-color); font-size:.78rem; }
+      .stat-bars { display:flex; height:5px; margin-top:7px; overflow:hidden; border-radius:999px; background:rgba(255,255,255,.08); }
+      .stat-bars i { display:block; min-width:0; transition:width .25s ease; }
+      .stat-bars .home-bar { background:linear-gradient(90deg,#0077d9,#00b7ff); }
+      .stat-bars .away-bar { background:linear-gradient(90deg,#806bea,#b79cff); }
+      .possession-comparison { padding:14px 0; }
+      .possession-comparison .stat-bars { height:12px; border-radius:999px; }
 
       .lineup-grid { display: grid; grid-template-columns: repeat(2, minmax(0,1fr)); gap: 16px; }
       .team-sheet { border: 1px solid var(--fh-border); border-radius: 16px; padding: 15px; background: rgba(255,255,255,.045); }
