@@ -190,11 +190,10 @@ See the LICENSE file for full licence details.
 1. Go to **Settings → Devices & Services**.
 2. Click **Add Integration**.
 3. Search for **Football Hub**.
-4. Enter your API-Football API key.
-5. Complete setup.
-6. Open Football Hub from the Home Assistant sidebar.
-7. Select your preferred country and league from the frontend dropdowns.
-8. Choose the team you support.
+4. Complete setup.
+5. Open Football Hub from the Home Assistant sidebar.
+6. Select your preferred country and league from the frontend dropdowns.
+7. Choose the team you support.
 
 Football Hub remembers your:
 
