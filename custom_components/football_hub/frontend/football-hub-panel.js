@@ -1,4 +1,4 @@
-const PANEL_VERSION = "0.10.13-player-leaderboards";
+const PANEL_VERSION = "0.11.1-blue-dashboard-fixes";
 
 class FootballHubPanel extends HTMLElement {
   constructor() {
@@ -608,11 +608,13 @@ class FootballHubPanel extends HTMLElement {
           <button class="panel-back-button" id="panel-back-button" type="button" aria-label="Back" title="Back">
             <ha-icon icon="mdi:arrow-left"></ha-icon><span>Back</span>
           </button>
-          <div class="eyebrow">YOUR MATCHDAY STARTS HERE</div>
-          <h1><span>Football</span> Hub</h1>
+          <div class="hero-brand">
+            <span class="brand-ball"><ha-icon icon="mdi:soccer"></ha-icon></span>
+            <div><div class="eyebrow">YOUR MATCHDAY STARTS HERE</div>
+          <h1>Football <span>Hub</span></h1>
           <p>${this._escape(activeCompetition.name || "Choose a competition")} · ${this._escape(
       status.season || ""
-    )}</p>
+    )}</p></div></div>
         </div>
         <div class="hero-actions">
           <label class="view-mode-picker language-picker"><span>${this._t("language")}</span><select id="language-select" aria-label="Language">
@@ -652,12 +654,12 @@ class FootballHubPanel extends HTMLElement {
   _nav() {
     const tabs = [
       ["overview", "mdi:view-dashboard-outline", this._t("overview")],
+      ["my-club", "mdi:shield-star-outline", this._t("myClub")],
       ["live", "mdi:access-point", this._t("live")],
       ["fixtures", "mdi:calendar-month-outline", this._t("fixtures")],
       ["results", "mdi:check-decagram-outline", this._t("results")],
       ["table", "mdi:table-large", this._t("table")],
       ["players", "mdi:account-star-outline", this._t("players")],
-      ["my-club", "mdi:shield-star-outline", this._t("myClub")],
       ["cups", "mdi:trophy-variant-outline", "Cups"],
       ["news", "mdi:newspaper-variant-outline", "News"],
       ["tv-guide", "mdi:television-guide", "TV Guide"],
@@ -683,15 +685,25 @@ class FootballHubPanel extends HTMLElement {
 
   _overview() {
     const next = this._attrs("next_fixture");
-    const live = this._attrs("live_match");
     const last = this._attrs("last_result");
-    const status = this._statusInfo();
     const table = this._attrs("standings").table || [];
     const scorers = this._attrs("top_scorers").top_scorers || [];
-    const today = this._entity("matches_today")?.state || "0";
+    const fixtures = this._attrs("fixtures").fixtures || [];
+    const results = this._attrs("results").latest_5 || [];
+    const news = this._attrs("news").items || [];
+    const topScorer = scorers[0] || {};
+    const topScorerStats = topScorer.statistics?.[0] || {};
+    const form = results.slice(0, 5).map((match) => {
+      const club = this._selectedClub;
+      if (!club) return "D";
+      const home = match.home_team === club;
+      const gf = Number(home ? match.home_goals : match.away_goals);
+      const ga = Number(home ? match.away_goals : match.home_goals);
+      return gf > ga ? "W" : gf < ga ? "L" : "D";
+    });
 
     return `
-      <section class="dashboard-grid">
+      <section class="dashboard-grid mock-dashboard">
         <article class="feature-card next-card">
           <div class="card-heading">
             <span><ha-icon icon="mdi:calendar-clock"></ha-icon> Next fixture</span>
@@ -719,30 +731,15 @@ class FootballHubPanel extends HTMLElement {
           }
         </article>
 
-        <article class="stat-card live-summary ${live.is_live ? "is-live" : ""}">
+        <article class="list-card table-preview mock-table">
           <div class="card-heading">
-            <span><ha-icon icon="mdi:access-point"></ha-icon> Live centre</span>
-            <span class="pill ${live.is_live ? "live-pill" : ""}">${live.is_live ? "LIVE" : "OFF AIR"}</span>
+            <span><ha-icon icon="mdi:table-large"></ha-icon> League table (top 4)</span>
+            <button class="text-button" data-tab="table">View full table</button>
           </div>
-          ${
-            live.is_live
-              ? `<div class="live-score">${this._escape(live.scoreline || "")}</div>
-                 <div class="live-minute">${this._escape(this._entity("live_match")?.state || "")}</div>`
-              : `<div class="empty">No live matches right now.</div>`
-          }
+          ${this._tableRows(table.slice(0, 4))}
         </article>
 
-        <article class="stat-card">
-          <div class="card-heading"><span><ha-icon icon="mdi:counter"></ha-icon> Season</span></div>
-          <div class="big-stat">${this._escape(status.fixtures_count ?? "0")}</div>
-          <div class="stat-label">Total fixtures</div>
-          <div class="mini-stats">
-            <span><b>${this._escape(status.results_count ?? "0")}</b> results</span>
-            <span><b>${this._escape(today)}</b> today</span>
-          </div>
-        </article>
-
-        <article class="stat-card">
+        <article class="stat-card mock-result">
           <div class="card-heading"><span><ha-icon icon="mdi:trophy-outline"></ha-icon> Latest result</span></div>
           ${
             last.home_team
@@ -756,20 +753,26 @@ class FootballHubPanel extends HTMLElement {
           }
         </article>
 
-        <article class="list-card table-preview">
-          <div class="card-heading">
-            <span><ha-icon icon="mdi:table-large"></ha-icon> League table</span>
-            <button class="text-button" data-tab="table">View table</button>
-          </div>
-          ${this._tableRows(table.slice(0, 5))}
+        <article class="stat-card mock-form">
+          <div class="card-heading"><span><ha-icon icon="mdi:chart-timeline-variant"></ha-icon> Recent form</span></div>
+          <div class="form-dots">${form.length ? form.map((value) => `<span class="form-${value.toLowerCase()}">${value}</span>`).join("") : `<small>No recent form</small>`}</div>
+          <button class="text-button" data-tab="results">View all results</button>
         </article>
 
-        <article class="list-card">
-          <div class="card-heading">
-            <span><ha-icon icon="mdi:soccer"></ha-icon> Top scorers</span>
-            <button class="text-button" data-tab="players">View players</button>
-          </div>
-          ${this._playerRows(scorers, "goals")}
+        <article class="stat-card mock-scorer">
+          <div class="card-heading"><span><ha-icon icon="mdi:soccer"></ha-icon> Top scorer</span></div>
+          <div class="top-scorer-compact">${this._logo(topScorer.player?.photo, topScorer.player?.name, "64")}<span><strong>${this._escape(topScorer.player?.name || "Not available")}</strong><small>${this._escape(topScorerStats.team?.name || "")}</small><b>${this._escape(topScorerStats.goals?.total ?? 0)} goals</b></span></div>
+          <button class="text-button" data-tab="players">View all players</button>
+        </article>
+
+        <article class="list-card mock-fixtures">
+          <div class="card-heading"><span><ha-icon icon="mdi:calendar-month-outline"></ha-icon> Next 3 fixtures</span><button class="text-button" data-tab="fixtures">View full fixtures</button></div>
+          <div class="compact-fixtures">${fixtures.slice(0, 3).map((match) => `<div><span class="compact-fixture-teams">${this._logo(match.home_logo, match.home_team, "26")}<b>${this._escape(match.home_team)}</b><em>vs</em>${this._logo(match.away_logo, match.away_team, "26")}<b>${this._escape(match.away_team)}</b></span><time>${this._formatDate(match.kickoff)}</time></div>`).join("") || `<div class="empty">No fixtures available.</div>`}</div>
+        </article>
+
+        <article class="list-card mock-news">
+          <div class="card-heading"><span><ha-icon icon="mdi:newspaper-variant-outline"></ha-icon> Latest news</span><button class="text-button" data-tab="news">View all news</button></div>
+          <div class="compact-news">${news.slice(0, 2).map((item) => `<a href="${this._escape(item.url || "#")}" target="_blank" rel="noopener noreferrer">${item.image ? `<img src="${this._escape(item.image)}" alt="">` : ""}<span><strong>${this._escape(item.title)}</strong><small>${this._formatDate(item.published)}</small></span></a>`).join("") || `<div class="empty">News is loading.</div>`}</div>
         </article>
       </section>
       <section class="overview-beer page-card">
@@ -1419,7 +1422,9 @@ class FootballHubPanel extends HTMLElement {
   _settingsPage() {
     const status = this._statusInfo();
     const prefixes = this._competitionPrefixes();
-    const providerMode = String(status.provider_mode || "Unknown").replace(/fotmob/gi, "FM");
+    const providerMode = String(status.provider_mode || "Unknown")
+      .replace(/fotmob/gi, "FM")
+      .replace(/espn/gi, "FM");
 
     return `
       <section class="page-heading">
@@ -1602,13 +1607,13 @@ class FootballHubPanel extends HTMLElement {
         overflow-y: auto;
         overflow-x: hidden;
         scrollbar-width: thin;
-        scrollbar-color: #31e981 rgba(2, 12, 23, .82);
+        scrollbar-color: #00b7ff rgba(2, 12, 23, .82);
         color: #ffffff;
         --primary-text-color: #ffffff;
         --secondary-text-color: rgba(226, 240, 255, .78);
-        --fh-purple: #071a14;
-        --fh-purple-2: #0b4d36;
-        --fh-cyan: #31e981;
+        --fh-purple: #031225;
+        --fh-purple-2: #063d66;
+        --fh-cyan: #00b7ff;
         --fh-pink: #ff4d4d;
         --fh-surface: rgba(255,255,255,0.08);
         --fh-surface-strong: rgba(255,255,255,0.10);
@@ -1844,8 +1849,8 @@ class FootballHubPanel extends HTMLElement {
       }
 
       select option:checked {
-        color: #04130c;
-        background: #31e981;
+        color: #ffffff;
+        background: #007bc7;
         font-weight: 900;
       }
 
@@ -2782,6 +2787,127 @@ class FootballHubPanel extends HTMLElement {
         .squad-grid { grid-template-columns:1fr; }
         .transfer-row { grid-template-columns:42px minmax(0,1fr); }
         .transfer-meta { grid-column:2; align-items:flex-start; }
+      }
+
+      /* Football Hub blue dashboard shell */
+      .app-shell.view-desktop {
+        display:grid;
+        grid-template-columns:174px minmax(0,1fr);
+        grid-template-rows:auto 1fr auto;
+        min-height:100vh;
+        background:
+          radial-gradient(circle at 70% 0%, rgba(0,132,255,.16), transparent 32%),
+          linear-gradient(180deg, rgba(0,8,20,.82), rgba(0,5,14,.94)),
+          url("/football_hub/football-hub-background.png?v=0.2.3") center / cover fixed no-repeat,
+          #010815;
+      }
+      .app-shell.view-desktop .hero {
+        grid-column:1 / -1;
+        min-height:108px;
+        padding:16px 26px;
+        align-items:center;
+        border-bottom:1px solid rgba(0,183,255,.32);
+        background:linear-gradient(90deg,rgba(0,8,20,.98),rgba(0,30,63,.72),rgba(0,8,20,.98));
+      }
+      .app-shell.view-desktop .hero::after { width:230px; height:230px; top:-76px; opacity:.45; }
+      .app-shell.view-desktop .hero .eyebrow { display:none; }
+      .app-shell.view-desktop .hero h1 { font-size:2.25rem; letter-spacing:-.04em; }
+      .app-shell.view-desktop .hero p { margin-top:5px; font-size:.78rem; }
+      .hero-brand { display:flex; align-items:center; gap:14px; }
+      .brand-ball { display:grid; width:62px; height:62px; flex:0 0 auto; place-items:center; border:2px solid #00b7ff; border-radius:50%; background:radial-gradient(circle,#122b45,#020914 68%); box-shadow:0 0 18px rgba(0,183,255,.42),inset 0 0 12px rgba(0,183,255,.24); }
+      .brand-ball ha-icon { --mdc-icon-size:45px; color:#f5f8fb; }
+      .app-shell.view-desktop .panel-back-button { min-width:auto; margin:0 12px 0 0; padding:8px; }
+      .app-shell.view-desktop .panel-back-button span { display:none; }
+      .app-shell.view-desktop .tabs {
+        grid-column:1;
+        grid-row:2;
+        position:relative;
+        top:auto;
+        z-index:5;
+        display:flex;
+        flex-direction:column;
+        gap:4px;
+        padding:16px 10px;
+        overflow:visible;
+        border-right:1px solid rgba(0,183,255,.28);
+        border-bottom:0;
+        background:linear-gradient(180deg,rgba(1,16,34,.98),rgba(0,8,20,.96));
+      }
+      .app-shell.view-desktop .tabs button {
+        width:100%;
+        min-height:42px;
+        padding:9px 12px;
+        border:1px solid transparent;
+        border-radius:7px;
+        justify-content:flex-start;
+        color:rgba(231,244,255,.84);
+      }
+      .app-shell.view-desktop .tabs button.active {
+        border-color:#00aef3;
+        color:#fff;
+        background:linear-gradient(90deg,rgba(0,94,190,.92),rgba(0,183,255,.32));
+        box-shadow:inset 0 0 18px rgba(0,183,255,.28),0 0 12px rgba(0,128,255,.24);
+      }
+      .app-shell.view-desktop main {
+        grid-column:2;
+        grid-row:2;
+        width:100%;
+        max-width:none;
+        padding:14px 16px 20px;
+      }
+      .app-shell.view-desktop footer { grid-column:2; grid-row:3; }
+      .app-shell.view-desktop .feature-card,
+      .app-shell.view-desktop .stat-card,
+      .app-shell.view-desktop .list-card,
+      .app-shell.view-desktop .page-card,
+      .app-shell.view-desktop .live-centre-card {
+        border-color:rgba(0,126,224,.46);
+        border-radius:7px;
+        background:linear-gradient(145deg,rgba(2,25,52,.86),rgba(0,9,23,.9)) !important;
+        box-shadow:inset 0 1px rgba(255,255,255,.035),0 10px 28px rgba(0,0,0,.24);
+      }
+      .app-shell.view-desktop .mock-dashboard { gap:12px; }
+      .app-shell.view-desktop .mock-dashboard .feature-card { grid-column:span 7; }
+      .app-shell.view-desktop .mock-table { grid-column:span 5; }
+      .app-shell.view-desktop .mock-result,
+      .app-shell.view-desktop .mock-form,
+      .app-shell.view-desktop .mock-scorer { grid-column:span 4; min-height:155px; }
+      .app-shell.view-desktop .mock-fixtures { grid-column:span 7; }
+      .app-shell.view-desktop .mock-news { grid-column:span 5; }
+      .app-shell.view-desktop .card-heading {
+        margin:-22px -22px 14px;
+        padding:10px 13px;
+        border-bottom:1px solid rgba(0,126,224,.28);
+        background:rgba(0,44,88,.28);
+        text-transform:uppercase;
+        font-size:.72rem;
+      }
+      .form-dots { display:flex; justify-content:center; gap:12px; margin:22px 0; }
+      .form-dots span { display:grid; width:34px; height:34px; place-items:center; border-radius:50%; font-weight:900; }
+      .form-w { color:#9effbe; border:1px solid #00a84f; background:#064522; }
+      .form-d { color:#e3edff; border:1px solid #68798f; background:#344154; }
+      .form-l { color:#ffb5bc; border:1px solid #a81f31; background:#50131d; }
+      .top-scorer-compact { display:flex; align-items:center; justify-content:center; gap:14px; margin:8px 0 14px; }
+      .top-scorer-compact > span { display:flex; flex-direction:column; gap:3px; }
+      .top-scorer-compact b { color:var(--fh-cyan); font-size:1.15rem; }
+      .compact-fixtures, .compact-news { display:grid; gap:0; }
+      .compact-fixtures > div { display:flex; justify-content:space-between; gap:14px; padding:10px 4px; border-bottom:1px solid rgba(0,126,224,.2); }
+      .compact-fixture-teams { display:grid; grid-template-columns:26px minmax(70px,1fr) auto 26px minmax(70px,1fr); align-items:center; gap:7px; min-width:0; }
+      .compact-fixture-teams b { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+      .compact-fixture-teams em { color:var(--fh-cyan); font-style:normal; font-size:.7rem; font-weight:900; text-transform:uppercase; }
+      .compact-fixtures time { color:var(--secondary-text-color); font-size:.76rem; text-align:right; }
+      .compact-news a { display:flex; gap:10px; padding:8px 2px; color:inherit; text-decoration:none; border-bottom:1px solid rgba(0,126,224,.2); }
+      .compact-news img { width:88px; height:48px; object-fit:cover; border-radius:4px; }
+      .compact-news a span { display:flex; min-width:0; flex-direction:column; gap:4px; }
+      .compact-news small { color:var(--secondary-text-color); }
+
+      @media (max-width:900px) {
+        .app-shell.view-desktop { display:block; }
+        .app-shell.view-desktop .hero { min-height:auto; }
+        .app-shell.view-desktop .panel-back-button { position:static; }
+        .app-shell.view-desktop .tabs { position:sticky; top:0; flex-direction:row; overflow-x:auto; border-right:0; border-bottom:1px solid rgba(0,183,255,.28); }
+        .app-shell.view-desktop .tabs button { width:auto; min-width:max-content; }
+        .app-shell.view-desktop .mock-dashboard > * { grid-column:span 12 !important; }
       }
     `;
   }
