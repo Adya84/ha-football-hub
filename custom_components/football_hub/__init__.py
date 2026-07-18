@@ -14,12 +14,14 @@ from .const import DOMAIN
 PLATFORMS = ["sensor"]
 PANEL_URL = "football-hub"
 PANEL_NAME = "football-hub-panel"
-PANEL_VERSION = "0.3.8-blue-dashboard-fixes"
+PANEL_VERSION = "0.4.0-official-logo"
 PANEL_STATIC_URL = "/football_hub/football-hub-panel.js"
 PANEL_MODULE_URL = f"{PANEL_STATIC_URL}?v={PANEL_VERSION}"
 PANEL_SCRIPT_PATH = Path(__file__).parent / "frontend" / "football-hub-panel.js"
 PANEL_BACKGROUND_URL = "/football_hub/football-hub-background.png"
 PANEL_BACKGROUND_PATH = Path(__file__).parent / "frontend" / "football-hub-background.png"
+PANEL_LOGO_URL = "/football_hub/football-hub-logo.png"
+PANEL_LOGO_PATH = Path(__file__).parent / "frontend" / "football-hub-logo.png"
 
 
 async def async_migrate_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
@@ -37,6 +39,7 @@ async def async_setup(hass: HomeAssistant, config: dict) -> bool:
     await hass.http.async_register_static_paths([
         StaticPathConfig(PANEL_STATIC_URL, str(PANEL_SCRIPT_PATH), False),
         StaticPathConfig(PANEL_BACKGROUND_URL, str(PANEL_BACKGROUND_PATH), False),
+        StaticPathConfig(PANEL_LOGO_URL, str(PANEL_LOGO_PATH), False),
     ])
     async_register_built_in_panel(
         hass,
