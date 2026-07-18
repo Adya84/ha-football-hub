@@ -1,4 +1,4 @@
-const PANEL_VERSION = "0.11.1-blue-dashboard-fixes";
+const PANEL_VERSION = "0.11.4-official-logo";
 
 class FootballHubPanel extends HTMLElement {
   constructor() {
@@ -609,7 +609,7 @@ class FootballHubPanel extends HTMLElement {
             <ha-icon icon="mdi:arrow-left"></ha-icon><span>Back</span>
           </button>
           <div class="hero-brand">
-            <span class="brand-ball"><ha-icon icon="mdi:soccer"></ha-icon></span>
+            <span class="brand-ball"><img src="/football_hub/football-hub-logo.png?v=0.4.0" alt="Football Hub logo"></span>
             <div><div class="eyebrow">YOUR MATCHDAY STARTS HERE</div>
           <h1>Football <span>Hub</span></h1>
           <p>${this._escape(activeCompetition.name || "Choose a competition")} · ${this._escape(
@@ -684,11 +684,28 @@ class FootballHubPanel extends HTMLElement {
   }
 
   _overview() {
-    const next = this._attrs("next_fixture");
+    const defaultNext = this._attrs("next_fixture");
     const last = this._attrs("last_result");
     const table = this._attrs("standings").table || [];
     const scorers = this._attrs("top_scorers").top_scorers || [];
     const fixtures = this._attrs("fixtures").fixtures || [];
+    const selectedClub = this._selectedClub;
+    const isClubFixture = (match) => Boolean(
+      selectedClub && (match.home_team === selectedClub || match.away_team === selectedClub)
+    );
+    const kickoffTime = (match) => {
+      const time = new Date(match?.kickoff || 0).getTime();
+      return Number.isFinite(time) ? time : Number.MAX_SAFE_INTEGER;
+    };
+    const orderedFixtures = [...fixtures].sort((left, right) => {
+      const timeDifference = kickoffTime(left) - kickoffTime(right);
+      if (timeDifference) return timeDifference;
+      return Number(isClubFixture(right)) - Number(isClubFixture(left));
+    });
+    const sameKickoffClubFixture = orderedFixtures.find(
+      (match) => isClubFixture(match) && kickoffTime(match) === kickoffTime(defaultNext)
+    );
+    const next = sameKickoffClubFixture || defaultNext;
     const results = this._attrs("results").latest_5 || [];
     const news = this._attrs("news").items || [];
     const topScorer = scorers[0] || {};
@@ -767,7 +784,7 @@ class FootballHubPanel extends HTMLElement {
 
         <article class="list-card mock-fixtures">
           <div class="card-heading"><span><ha-icon icon="mdi:calendar-month-outline"></ha-icon> Next 3 fixtures</span><button class="text-button" data-tab="fixtures">View full fixtures</button></div>
-          <div class="compact-fixtures">${fixtures.slice(0, 3).map((match) => `<div><span class="compact-fixture-teams">${this._logo(match.home_logo, match.home_team, "26")}<b>${this._escape(match.home_team)}</b><em>vs</em>${this._logo(match.away_logo, match.away_team, "26")}<b>${this._escape(match.away_team)}</b></span><time>${this._formatDate(match.kickoff)}</time></div>`).join("") || `<div class="empty">No fixtures available.</div>`}</div>
+          <div class="compact-fixtures">${orderedFixtures.slice(0, 3).map((match) => `<div class="${isClubFixture(match) ? "priority-club-fixture" : ""}"><span class="compact-fixture-teams">${this._logo(match.home_logo, match.home_team, "26")}<b>${this._escape(match.home_team)}</b><em>vs</em>${this._logo(match.away_logo, match.away_team, "26")}<b>${this._escape(match.away_team)}</b></span><time>${this._formatDate(match.kickoff)}</time></div>`).join("") || `<div class="empty">No fixtures available.</div>`}</div>
         </article>
 
         <article class="list-card mock-news">
@@ -2814,8 +2831,9 @@ class FootballHubPanel extends HTMLElement {
       .app-shell.view-desktop .hero h1 { font-size:2.25rem; letter-spacing:-.04em; }
       .app-shell.view-desktop .hero p { margin-top:5px; font-size:.78rem; }
       .hero-brand { display:flex; align-items:center; gap:14px; }
+      .app-shell.view-desktop .hero-brand { margin-left:clamp(60px,7vw,130px); }
       .brand-ball { display:grid; width:62px; height:62px; flex:0 0 auto; place-items:center; border:2px solid #00b7ff; border-radius:50%; background:radial-gradient(circle,#122b45,#020914 68%); box-shadow:0 0 18px rgba(0,183,255,.42),inset 0 0 12px rgba(0,183,255,.24); }
-      .brand-ball ha-icon { --mdc-icon-size:45px; color:#f5f8fb; }
+      .brand-ball img { width:100%; height:100%; display:block; object-fit:cover; border-radius:50%; }
       .app-shell.view-desktop .panel-back-button { min-width:auto; margin:0 12px 0 0; padding:8px; }
       .app-shell.view-desktop .panel-back-button span { display:none; }
       .app-shell.view-desktop .tabs {
@@ -2892,6 +2910,7 @@ class FootballHubPanel extends HTMLElement {
       .top-scorer-compact b { color:var(--fh-cyan); font-size:1.15rem; }
       .compact-fixtures, .compact-news { display:grid; gap:0; }
       .compact-fixtures > div { display:flex; justify-content:space-between; gap:14px; padding:10px 4px; border-bottom:1px solid rgba(0,126,224,.2); }
+      .compact-fixtures > .priority-club-fixture { margin-inline:-6px; padding-inline:10px; border-left:3px solid var(--fh-cyan); background:rgba(0,183,255,.08); }
       .compact-fixture-teams { display:grid; grid-template-columns:26px minmax(70px,1fr) auto 26px minmax(70px,1fr); align-items:center; gap:7px; min-width:0; }
       .compact-fixture-teams b { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
       .compact-fixture-teams em { color:var(--fh-cyan); font-style:normal; font-size:.7rem; font-weight:900; text-transform:uppercase; }
@@ -2904,6 +2923,7 @@ class FootballHubPanel extends HTMLElement {
       @media (max-width:900px) {
         .app-shell.view-desktop { display:block; }
         .app-shell.view-desktop .hero { min-height:auto; }
+        .app-shell.view-desktop .hero-brand { margin-left:0; }
         .app-shell.view-desktop .panel-back-button { position:static; }
         .app-shell.view-desktop .tabs { position:sticky; top:0; flex-direction:row; overflow-x:auto; border-right:0; border-bottom:1px solid rgba(0,183,255,.28); }
         .app-shell.view-desktop .tabs button { width:auto; min-width:max-content; }
