@@ -1009,13 +1009,42 @@ class FMProvider:
         rows = all_period.get("stats") or []
 
         home_stats, away_stats = [], []
+
+        def stat_value(value):
+            """Extract the visible value from FM's nested statistic objects."""
+            if not isinstance(value, dict):
+                return value
+            for key in ("value", "displayValue", "text", "label", "statValue", "formatted"):
+                if value.get(key) is not None:
+                    return stat_value(value[key])
+            return None
+
+        def add_stat(title, values):
+            if not title or not isinstance(values, list) or len(values) < 2:
+                return
+            home_value = stat_value(values[0])
+            away_value = stat_value(values[1])
+            if home_value is None and away_value is None:
+                return
+            home_stats.append({"type": title, "value": home_value})
+            away_stats.append({"type": title, "value": away_value})
+
         for row in rows:
             title = row.get("title") or row.get("name")
             values = row.get("stats") or row.get("values") or []
-            if not title or not isinstance(values, list) or len(values) < 2:
-                continue
-            home_stats.append({"type": title, "value": values[0]})
-            away_stats.append({"type": title, "value": values[1]})
+            nested_rows = [
+                item for item in values
+                if isinstance(item, dict)
+                and isinstance(item.get("stats") or item.get("values"), list)
+            ] if isinstance(values, list) else []
+            if nested_rows:
+                for item in nested_rows:
+                    add_stat(
+                        item.get("title") or item.get("name") or title,
+                        item.get("stats") or item.get("values") or [],
+                    )
+            else:
+                add_stat(title, values)
 
         return [
             {
