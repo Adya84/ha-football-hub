@@ -1,4 +1,4 @@
-const PANEL_VERSION = "0.10.12-timeline-labels";
+const PANEL_VERSION = "0.10.13-player-leaderboards";
 
 class FootballHubPanel extends HTMLElement {
   constructor() {
@@ -1117,7 +1117,16 @@ class FootballHubPanel extends HTMLElement {
             const player = item.player || {};
             const stats = item.statistics?.[0] || {};
             const goals = stats.goals || {};
-            const value = statKey === "assists" ? goals.assists : goals.total;
+            const values = {
+              goals: goals.total,
+              assists: goals.assists,
+              yellow: stats.cards?.yellow,
+              red: stats.cards?.red,
+              rating: stats.rating,
+              appearances: stats.games?.appearences ?? stats.games?.appearances,
+              minutes: stats.minutes,
+            };
+            const value = values[statKey];
             return `
               <div class="player-row">
                 <span class="rank">${index + 1}</span>
@@ -1136,6 +1145,15 @@ class FootballHubPanel extends HTMLElement {
   _playersPage() {
     const scorers = this._attrs("top_scorers").top_scorers || [];
     const assists = this._attrs("top_assists").top_assists || [];
+    const leaderboard = (key) => {
+      const attrs = this._attrs(key);
+      return attrs[key] || attrs.players || [];
+    };
+    const yellow = leaderboard("top_yellow_cards");
+    const red = leaderboard("top_red_cards");
+    const ratings = leaderboard("top_ratings");
+    const appearances = leaderboard("top_appearances");
+    const minutes = leaderboard("top_minutes");
 
     return `
       <section class="page-heading">
@@ -1144,6 +1162,11 @@ class FootballHubPanel extends HTMLElement {
       <section class="two-column">
         <article class="page-card"><h2>Top scorers</h2>${this._playerRows(scorers, "goals")}</article>
         <article class="page-card"><h2>Top assists</h2>${this._playerRows(assists, "assists")}</article>
+        <article class="page-card"><h2>Top yellow cards</h2>${this._playerRows(yellow, "yellow")}</article>
+        <article class="page-card"><h2>Top red cards</h2>${this._playerRows(red, "red")}</article>
+        <article class="page-card"><h2>Top ratings</h2>${this._playerRows(ratings, "rating")}</article>
+        <article class="page-card"><h2>Most appearances</h2>${this._playerRows(appearances, "appearances")}</article>
+        <article class="page-card"><h2>Most minutes played</h2>${this._playerRows(minutes, "minutes")}</article>
       </section>
     `;
   }
@@ -1262,7 +1285,7 @@ class FootballHubPanel extends HTMLElement {
         <section class="section"><div class="section-title-row"><div><span class="eyebrow">FIRST TEAM</span><h3>Current squad</h3></div><span>${squad.length} players</span></div><div class="squad-grid">${squad.length ? squad.map((player) => `<article class="page-card squad-player">${this._logo(player.photo, player.name, "54")}<div><strong>${this._escape(player.name || "Player")}</strong><small>${this._escape([player.number ? `#${player.number}` : "", player.position, player.nationality].filter(Boolean).join(" · "))}</small><small>${this._escape([player.age ? `Age ${player.age}` : "", player.height ? `${player.height} cm` : "", money(player.transfer_value)].filter(Boolean).join(" · "))}</small>${player.injured ? `<em>Injured${player.expected_return ? ` · ${this._escape(player.expected_return)}` : ""}</em>` : ""}</div></article>`).join("") : `<div class="empty">Squad information is not available yet.</div>`}</div></section>
         <section class="two-column">
           <article class="page-card"><span class="eyebrow">AVAILABILITY</span><h2>Injuries & suspensions</h2><div class="player-list">${injuries.length ? injuries.map((item) => `<div class="player-row">${this._logo(item.player?.photo, item.player?.name, "40")}<span class="player-name"><strong>${this._escape(item.player?.name || "Player")}</strong><small>${this._escape(item.reason || item.type || "Unavailable")}</small></span><strong>${this._escape(item.date || item.fixture?.date?.slice?.(0, 10) || "")}</strong></div>`).join("") : `<div class="empty">No current injuries supplied.</div>`}${sidelined.length ? `<p class="notice">${sidelined.length} additional historical sidelined records available.</p>` : ""}</div></article>
-          <article class="page-card"><span class="eyebrow">TRANSFER CENTRE</span><h2>Recent transfers</h2><div class="player-list">${transfers.length ? transfers.slice(0, 10).map((item) => `<div class="transfer-row">${this._logo(item.player?.photo, item.player?.name, "40")}<span class="player-name"><strong>${this._escape(item.player?.name || "Player")}</strong><small>${this._escape(`${item.teams?.out?.name || "Unknown"} → ${item.teams?.in?.name || "Unknown"}`)}</small><em>${this._escape(item.fee_display || money(item.fee_value) || item.fee || (item.on_loan ? "Loan" : item.type) || "Fee undisclosed")}</em></span><time>${this._escape(String(item.date || "").slice(0, 10))}</time></div>`).join("") : `<div class="empty">No transfer data available.</div>`}</div></article>
+          <article class="page-card"><span class="eyebrow">TRANSFER CENTRE</span><h2>Recent transfers</h2><div class="player-list">${transfers.length ? transfers.slice(0, 10).map((item) => { const fee = item.fee_display || money(item.fee_value) || item.fee || (item.on_loan ? "On loan" : item.type) || "Fee undisclosed"; return `<div class="transfer-row">${this._logo(item.player?.photo, item.player?.name, "40")}<span class="player-name"><strong>${this._escape(item.player?.name || "Player")}</strong><small>${this._escape(`${item.teams?.out?.name || "Unknown"} → ${item.teams?.in?.name || "Unknown"}`)}</small></span><span class="transfer-meta"><strong class="transfer-fee">${this._escape(fee)}</strong><time>${this._escape(String(item.date || "").slice(0, 10))}</time></span></div>`; }).join("") : `<div class="empty">No transfer data available.</div>`}</div></article>
         </section>
         <section class="two-column">
           <article class="page-card"><span class="eyebrow">NEXT MATCH</span><h2>Prediction</h2><div class="settings-list"><div><span>Advice</span><strong>${this._escape(prediction.predictions?.advice || "Not available")}</strong></div><div><span>Home chance</span><strong>${this._escape(prediction.predictions?.percent?.home || "—")}</strong></div><div><span>Draw chance</span><strong>${this._escape(prediction.predictions?.percent?.draw || "—")}</strong></div><div><span>Away chance</span><strong>${this._escape(prediction.predictions?.percent?.away || "—")}</strong></div></div></article>
@@ -1633,6 +1656,8 @@ class FootballHubPanel extends HTMLElement {
       .transfer-row .player-name strong, .transfer-row .player-name small { overflow-wrap:anywhere; }
       .transfer-row .player-name small { color:var(--muted); }
       .transfer-row .player-name em { color:var(--accent); font-size:12px; font-style:normal; font-weight:800; }
+      .transfer-meta { display:flex; flex-direction:column; align-items:flex-end; gap:5px; }
+      .transfer-fee { color:var(--fh-cyan); font-size:13px; white-space:nowrap; }
       .transfer-row time { white-space:nowrap; font-weight:800; color:var(--text); }
       .table-row.selected-club { border:2px solid var(--accent); border-radius:12px; background:rgba(42, 245, 152, .12); box-shadow:0 0 0 1px rgba(42, 245, 152, .18), 0 0 20px rgba(42, 245, 152, .10); }
 
@@ -2632,7 +2657,7 @@ class FootballHubPanel extends HTMLElement {
       .app-shell.view-mobile .squad-grid { grid-template-columns:1fr; }
       .app-shell.view-mobile .club-profile-head { align-items:flex-start; }
       .app-shell.view-mobile .transfer-row { grid-template-columns:42px minmax(0,1fr); }
-      .app-shell.view-mobile .transfer-row time { grid-column:2; }
+      .app-shell.view-mobile .transfer-meta { grid-column:2; align-items:flex-start; }
       .app-shell.view-mobile .fixture-pagination { flex-wrap:wrap; }
 
       @media (min-width:701px) and (max-width:1100px) {
@@ -2756,7 +2781,7 @@ class FootballHubPanel extends HTMLElement {
         .tabs button { min-width:56px; min-height:58px; flex:0 0 auto; }
         .squad-grid { grid-template-columns:1fr; }
         .transfer-row { grid-template-columns:42px minmax(0,1fr); }
-        .transfer-row time { grid-column:2; }
+        .transfer-meta { grid-column:2; align-items:flex-start; }
       }
     `;
   }
