@@ -1019,15 +1019,15 @@ class FMProvider:
                     return stat_value(value[key])
             return None
 
-        def add_stat(title, values):
+        def add_stat(title, values, group=None):
             if not title or not isinstance(values, list) or len(values) < 2:
                 return
             home_value = stat_value(values[0])
             away_value = stat_value(values[1])
             if home_value is None and away_value is None:
                 return
-            home_stats.append({"type": title, "value": home_value})
-            away_stats.append({"type": title, "value": away_value})
+            home_stats.append({"type": title, "value": home_value, "group": group})
+            away_stats.append({"type": title, "value": away_value, "group": group})
 
         for row in rows:
             title = row.get("title") or row.get("name")
@@ -1042,6 +1042,7 @@ class FMProvider:
                     add_stat(
                         item.get("title") or item.get("name") or title,
                         item.get("stats") or item.get("values") or [],
+                        title,
                     )
             else:
                 add_stat(title, values)
