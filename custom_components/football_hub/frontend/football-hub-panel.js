@@ -1,4 +1,4 @@
-const PANEL_VERSION = "0.10.11-selected-match-first";
+const PANEL_VERSION = "0.10.12-timeline-labels";
 
 class FootballHubPanel extends HTMLElement {
   constructor() {
@@ -782,18 +782,43 @@ class FootballHubPanel extends HTMLElement {
 
   _eventRows(events) {
     if (!events.length) return `<div class="empty">No match events yet.</div>`;
-    return `<div class="event-timeline">${events.map((event) => {
+    const eventText = (value) => {
+      if (value == null) return "";
+      if (typeof value === "string" || typeof value === "number") return String(value);
+      if (typeof value !== "object") return "";
+      for (const key of ["name", "text", "label", "title", "description", "eventType", "type", "shortName"]) {
+        const text = eventText(value[key]);
+        if (text) return text;
+      }
+      return "";
+    };
+    const orderedEvents = [...events].sort((left, right) => {
+      const minute = (event) => {
+        const value = event.time?.elapsed ?? event.elapsed ?? event.time ?? 0;
+        const match = String(value).match(/\d+/);
+        return match ? Number(match[0]) : 0;
+      };
+      return minute(left) - minute(right);
+    });
+    return `<div class="event-timeline">${orderedEvents.map((event) => {
       const elapsed = event.time?.elapsed ?? event.elapsed ?? "";
       const extra = event.time?.extra ? `+${event.time.extra}` : "";
-      const type = String(event.type || event.detail || "Event");
-      const detail = String(event.detail || "");
+      const type = eventText(event.type) || eventText(event.detail) || "Event";
+      const detail = eventText(event.detail);
+      const player = eventText(event.player) || eventText(event.player_name);
+      const team = eventText(event.team) || eventText(event.team_name);
+      const minute = Number.parseInt(elapsed, 10);
+      const periodLabel = !player && minute === 45 ? "Half-time" :
+        !player && minute === 90 ? "Full-time" : "";
+      const title = player || periodLabel || detail || type;
+      const subtitle = team || (periodLabel ? "" : type);
       const icon = type.toLowerCase().includes("goal") ? "⚽" :
         type.toLowerCase().includes("card") ? (detail.toLowerCase().includes("red") ? "🟥" : "🟨") :
         type.toLowerCase().includes("subst") ? "🔄" : "●";
       return `<div class="event-row">
         <span class="event-minute">${this._escape(elapsed)}${this._escape(extra)}'</span>
         <span class="event-icon">${icon}</span>
-        <span class="event-copy"><strong>${this._escape(event.player?.name || event.player || event.player_name || detail || type)}</strong><small>${this._escape(event.team?.name || event.team || event.team_name || type)}${event.assist?.name ? ` · Assist: ${this._escape(event.assist.name)}` : ""}</small></span>
+        <span class="event-copy"><strong>${this._escape(title)}</strong><small>${this._escape(subtitle)}${eventText(event.assist) ? ` · Assist: ${this._escape(eventText(event.assist))}` : ""}</small></span>
       </div>`;
     }).join("")}</div>`;
   }
