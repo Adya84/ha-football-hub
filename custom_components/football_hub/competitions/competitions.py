@@ -32,6 +32,8 @@ COMPETITIONS = {
     "scottish_league_two": _league("Scottish League Two", "Scotland", 182),
     "scottish_highland_lowland": _league("Highland / Lowland Leagues", "Scotland", 183),
     "cymru_premier": _league("Cymru Premier", "Wales", 110),
+    "cymru_north": _league("Cymru North", "Wales", 111),
+    "cymru_south": _league("Cymru South", "Wales", 112),
     "mls": _league("MLS", "United States", 3010),
     "usl_championship": _league("USL Championship", "United States", 3011),
     "usl_league_one": _league("USL League One", "United States", 3012),
