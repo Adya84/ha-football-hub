@@ -24,7 +24,14 @@ def get(path: str) -> dict:
             response = requests.get(
                 f"{base}/{path}",
                 impersonate="chrome",
-                headers={"Accept": "application/json", "Referer": "https://www.sofascore.com/"},
+                headers={
+                    "Accept": "application/json, text/plain, */*",
+                    "Accept-Language": "en-GB,en;q=0.9",
+                    "Origin": "https://www.sofascore.com",
+                    "Referer": "https://www.sofascore.com/",
+                    # SofaScore's CDN challenges API requests without this.
+                    "X-Requested-With": "XMLHttpRequest",
+                },
                 timeout=30,
             )
             response.raise_for_status()
