@@ -71,22 +71,41 @@ class SofaScoreFallback:
             self._cache[path] = (monotonic(), data if isinstance(data, dict) else {})
             return self._cache[path][1]
 
-    async def _season(self, league_id: Any, requested: Any) -> tuple[int, int]:
-        tournament = SOFASCORE_TOURNAMENTS[int(league_id)]
-        data = await self._get(f"unique-tournament/{tournament}/seasons", 24 * 60 * 60)
-        seasons = data.get("seasons") or []
-        requested_text = str(requested or "")
-        requested_year = requested_text[:4]
-        chosen = next(
-            (item for item in seasons if requested_text and requested_text in str(item.get("name") or "")),
-            None,
-        ) or next(
-            (item for item in seasons if requested_year and requested_year in str(item.get("name") or "")),
-            None,
-        ) or (seasons[0] if seasons else None)
-        if not chosen or not chosen.get("id"):
-            raise ValueError(f"No SofaScore season found for tournament {tournament}")
-        return tournament, int(chosen["id"])
+    @staticmethod
+    def _event_context(value: Any) -> tuple[int | None, int | None]:
+        """Find season and season-specific tournament ids in an event feed."""
+        if isinstance(value, dict):
+            season = value.get("season") or {}
+            tournament = value.get("tournament") or {}
+            if isinstance(season, dict) and season.get("id") and isinstance(tournament, dict):
+                return int(season["id"]), int(tournament["id"]) if tournament.get("id") else None
+            for child in value.values():
+                found = SofaScoreFallback._event_context(child)
+                if found[0]:
+                    return found
+        elif isinstance(value, list):
+            for child in value:
+                found = SofaScoreFallback._event_context(child)
+                if found[0]:
+                    return found
+        return None, None
+
+    async def _season(self, league_id: Any, requested: Any) -> tuple[int, int, int | None]:
+        unique_tournament = SOFASCORE_TOURNAMENTS[int(league_id)]
+
+        # The seasons endpoint is forbidden for these Welsh competitions.
+        # Featured events contain both the active season id and the separate
+        # tournament id required by the standings endpoint.
+        featured = await self._get(
+            f"unique-tournament/{unique_tournament}/featured-events",
+            60 * 60,
+        )
+        season_id, season_tournament = self._event_context(featured)
+        if not season_id:
+            raise ValueError(
+                f"No active Welsh season found for tournament {unique_tournament}"
+            )
+        return unique_tournament, season_id, season_tournament
 
     @staticmethod
     def _team(team: dict) -> dict:
@@ -133,7 +152,7 @@ class SofaScoreFallback:
         }
 
     async def get_fixtures(self, league_id: Any, season: Any) -> list[dict]:
-        tournament, season_id = await self._season(league_id, season)
+        tournament, season_id, _ = await self._season(league_id, season)
         events: dict[str, dict] = {}
         for direction in ("last", "next"):
             for page in range(8):
@@ -152,15 +171,18 @@ class SofaScoreFallback:
         )
 
     async def get_standings(self, league_id: Any, season: Any) -> list[dict]:
-        tournament, season_id = await self._season(league_id, season)
+        tournament, season_id, season_tournament = await self._season(league_id, season)
         data = await self._get(
-            f"unique-tournament/{tournament}/season/{season_id}/standings/total"
+            (
+                f"tournament/{season_tournament}/season/{season_id}/standings/total"
+                if season_tournament
+                else f"unique-tournament/{tournament}/season/{season_id}/standings/total"
+            )
         )
         # Lower Welsh leagues use a season-specific tournament id for their
         # table endpoint. Discover it from a current event when the permanent
         # unique-tournament route does not return a table.
         if not (data.get("standings") or []):
-            season_tournament = None
             for direction in ("next", "last"):
                 events_data = await self._get(
                     f"unique-tournament/{tournament}/season/{season_id}/events/{direction}/0"
