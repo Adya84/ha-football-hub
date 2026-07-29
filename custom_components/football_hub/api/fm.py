@@ -17,6 +17,8 @@ import aiohttp
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.helpers.storage import Store
 
+from .all_wales_sport import ALL_WALES_COMPETITIONS, fetch_competition
+
 _LOGGER = logging.getLogger(__name__)
 
 FM_BASE = "https://www.fotmob.com"
@@ -611,6 +613,23 @@ class FMProvider:
         await self._persistent_put("league_data", str(fm_id), data)
         return self._cache_put(key, data)
 
+    async def _all_wales_data(self, league_id: Any) -> dict:
+        """Return cached Cymru North/South data from All Wales Sport."""
+        competition_id = int(league_id)
+        if competition_id not in ALL_WALES_COMPETITIONS:
+            raise FMProviderError(f"All Wales Sport mapping is unavailable for {league_id}")
+        key = f"all-wales:{competition_id}"
+        cached = self._cache_get(key, LEAGUE_TTL)
+        if cached is not None:
+            return cached
+        persistent_key = f"all-wales:{competition_id}"
+        persisted = await self._persistent_get("league_data", persistent_key, LEAGUE_TTL)
+        if isinstance(persisted, dict):
+            return self._cache_put(key, persisted)
+        data = await fetch_competition(self.session, competition_id)
+        await self._persistent_put("league_data", persistent_key, data)
+        return self._cache_put(key, data)
+
     async def _matches_for_date(self, date: datetime) -> list[dict]:
         day = date.strftime("%Y%m%d")
         key = f"matches:{day}"
@@ -677,6 +696,8 @@ class FMProvider:
         ]
 
     async def get_fixtures(self, league_id, season):
+        if int(league_id) in ALL_WALES_COMPETITIONS:
+            return (await self._all_wales_data(league_id)).get("fixtures", [])
         fm_id = self._league_id(league_id)
         data = await self._league_data(league_id)
         output: dict[str, dict] = {}
@@ -710,6 +731,8 @@ class FMProvider:
 
     async def get_standings(self, league_id, season):
         """Return the current FM league table."""
+        if int(league_id) in ALL_WALES_COMPETITIONS:
+            return (await self._all_wales_data(league_id)).get("standings", [])
         fm_id = self._league_id(league_id)
         data = await self._league_data(league_id)
         rows = []
@@ -843,6 +866,13 @@ class FMProvider:
 
     async def get_teams(self, league_id, season):
         """Return teams for the selected league and populate dropdowns."""
+        if int(league_id) in ALL_WALES_COMPETITIONS:
+            teams = (await self._all_wales_data(league_id)).get("teams", [])
+            for item in teams:
+                team = item.get("team") or {}
+                if team.get("id") is not None and team.get("name"):
+                    self._team_names[str(team["id"])] = team["name"]
+            return teams
         data = await self._league_data(league_id)
         found: dict[str, dict] = {}
 
@@ -1201,6 +1231,8 @@ class FMProvider:
         return await self._league_players(league_id, "assists")
 
     async def _league_players(self, league_id, wanted: str):
+        if int(league_id) in ALL_WALES_COMPETITIONS:
+            return []
         data = await self._league_data(league_id)
         return self._league_players_from_data(data, wanted)
 
@@ -1272,6 +1304,16 @@ class FMProvider:
 
     async def get_player_leaderboards(self, league_id, season):
         """Return every supported leaderboard from one league-data request."""
+        if int(league_id) in ALL_WALES_COMPETITIONS:
+            return {
+                "top_scorers": [],
+                "top_assists": [],
+                "top_yellow_cards": [],
+                "top_red_cards": [],
+                "top_ratings": [],
+                "top_appearances": [],
+                "top_minutes": [],
+            }
         data = await self._league_data(league_id)
         return {
             "top_scorers": self._league_players_from_data(data, "goals"),
