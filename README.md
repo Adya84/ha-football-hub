@@ -1,225 +1,52 @@
 # ⚽ Home Assistant Football Hub
 
 [![License](https://img.shields.io/badge/license-Personal%20Use-red.svg)](LICENSE)
-![Version](https://img.shields.io/badge/version-v0.3.13-green)
+![Version](https://img.shields.io/badge/version-v0.4.12-green)
 ![Home Assistant](https://img.shields.io/badge/Home%20Assistant-2024.1%2B-blue)
 ![HACS](https://img.shields.io/badge/HACS-Custom-orange)
 ![Cloud Polling](https://img.shields.io/badge/IoT--Class-Cloud%20Polling-blue)
 
-A dedicated multi-competition football application and football portal for Home Assistant.
+A dedicated multi-country football application and live match portal for Home Assistant.
 
-Track fixtures, live scores, results, league tables, match statistics, line-ups, player data, club information, cup competitions, football news, UK TV listings and transfers from one football-themed dashboard.
+Follow fixtures, live scores, results, league tables, match events, statistics, line-ups, players, clubs, cups, football news, regional TV listings and transfers from one responsive football-themed dashboard.
 
-Football Hub supports multiple countries and competitions through built-in country and league selectors, with your selected competition, supported team and last-opened page restored automatically.
-
----
-
-# 🚀 Latest Release - v0.3.13
-
-Football Hub 0.3.13 expands the integration from a competition dashboard into a broader football portal inside Home Assistant.
-
-This release introduces dedicated football news, UK television listings and transfer-market pages, while continuing the recent expansion of cup competitions and the My Club experience.
+Football Hub remembers the country, competition, favourite clubs and last-opened page you select.
 
 ---
 
-## 📰 Football News
+# 🚀 Latest Release — v0.4.12
 
-A new Football News page displays current football stories in a responsive card layout.
+Football Hub 0.4.12 expands Welsh football coverage and improves how club friendlies are retained.
 
-Features include:
+### New and improved
 
-* Latest Football Headlines
-* Story Images
-* News Sources
-* Publication Times
-* Direct Links To Full Stories
-* Responsive Desktop, Tablet And Mobile Layouts
-* Cached Data To Reduce Unnecessary Requests
+* Added Cymru North and Cymru South.
+* Added complete club lists for both Welsh divisions.
+* Added Welsh fixtures, results and league-table support where supplied by the permitted source.
+* Added safe fallback tables so Welsh club selectors do not become empty during a temporary source failure.
+* Completed club friendlies are now stored and retained on the relevant teams' Results pages.
+* Friendly results remain labelled by their friendly competition.
+* Multiple favourite clubs can be followed across different leagues at the same time.
+* Restart-safe caching reduces unnecessary data requests.
+* Live-match polling remains separate from slower-changing football data.
 
----
-
-## 📺 UK TV Guide
-
-The new TV Guide page brings upcoming televised football listings into Football Hub.
-
-Features include:
-
-* UK Football Listings
-* Match Kick-Off Times
-* Competition Names
-* Home And Away Teams
-* Available TV Channels
-* Responsive Match Listing
-* Longer Refresh Caching For Efficient Updates
-
-Television information depends on the availability of the underlying football data.
+Live detail availability—including timers, events, line-ups, venue information and statistics—depends on coverage for the individual match.
 
 ---
-
-## 🔄 Transfer Market
-
-Football Hub now includes a dedicated Transfer Market page.
-
-Users can switch between:
-
-* Latest Transfers
-* Top Transfers
-
-Transfer information can include:
-
-* Player Name
-* Player Image
-* Previous Club
-* New Club
-* Transfer Date
-* Transfer Type
-* Reported Fee
-* Free-Agent Moves
-
-Transfer data is cached separately from live-match updates so it does not increase the one-minute live polling loop.
-
----
-
-## 🏆 Cups & Expanded Club Data
-
-Recent Football Hub releases also introduced and expanded:
-
-* Dedicated Cups Page
-* Independent Cup Competition Selection
-* Cup Fixtures
-* Cup Results
-* Cup Standings
-* Cup Top Scorers
-* Expanded My Club Page
-* Club Profile Information
-* Squad Details
-* Injuries
-* Transfers
-* Club History
-* Venue Information
-
-Selecting a cup does not replace the domestic league used by the main Football Hub dashboard.
-
----
-
-## ⚡ Performance & Data Caching
-
-Version 0.3.7 uses separate cache periods for slower-changing football portal data.
-
-This includes:
-
-* Football News Caching
-* TV Guide Caching
-* Transfer Market Caching
-* Competition Catalogue Caching
-* Restart-Safe Stored Data
-* Controlled Background Refresh Budget
-* Live-Match Polling Kept Separate
-
-These changes reduce unnecessary requests while keeping live football updates responsive.
-
----
-
-## 🔒 Licensing
-
-Copyright (C) 2026 Adrian Apel
-
-This software is provided for personal, private and non-commercial use only.
-
-You may:
-
-* Download and use the software for personal use.
-* Install and run the software within your own Home Assistant environment.
-* Fork the repository for personal testing, learning or development.
-* Share links to the official GitHub repository.
-* Submit bug reports, suggestions and pull requests.
-
-You may not:
-
-* Sell the software.
-* Charge money for access to the software.
-* Redistribute modified or unmodified copies.
-* Publish modified versions.
-* Rebrand, rename or claim ownership of the software.
-* Include the software in a paid product, service, bundle or package.
-* Use the software or its source code commercially.
-* Remove copyright notices, author credits or attribution.
-* Upload copies to other repositories or distribution platforms.
-* Provide paid installation, hosting, support or managed services without permission.
-
-All rights are reserved by Adrian Apel.
-
-See the LICENSE file for full licence details.
-
----
-
-## 📦 Installation
-
-### Option 1: Install via HACS
-
-1. Open Home Assistant.
-2. Go to **HACS**.
-3. Open the menu in the top-right corner and select **Custom repositories**.
-4. Add this repository URL:
-
-   `https://github.com/Adya84/ha-football-hub`
-
-5. Select **Integration** as the category.
-6. Click **Add**.
-7. Search for **Football Hub** in HACS.
-8. Download and install the integration.
-9. Restart Home Assistant.
-
-### Option 2: Manual Installation
-
-1. Download or clone this repository.
-2. Copy:
-
-   `custom_components/football_hub`
-
-   into:
-
-   `config/custom_components/football_hub`
-
-3. Restart Home Assistant.
-
----
-
-## ⚙️ Configuration
-
-1. Go to **Settings → Devices & Services**.
-2. Click **Add Integration**.
-3. Search for **Football Hub**.
-4. Complete setup.
-5. Open Football Hub from the Home Assistant sidebar.
-6. Select your preferred country and league from the frontend dropdowns.
-7. Choose the team you support.
-
-Football Hub remembers your:
-
-* Selected Country
-* Selected Competition
-* Supported Team
-* Last-Opened Page
-
-These selections are restored automatically after Home Assistant restarts.
-
----
-
 
 # 🌟 Features
 
-## 🧭 Dedicated Football Hub Application
+## 🧭 Dedicated Football Hub application
 
-Navigate instantly between:
+Navigate between:
 
 * Overview
 * Live Centre
+* My Club
 * Fixtures
 * Results
 * League Table
 * Players
-* My Club
 * Cups
 * News
 * TV Guide
@@ -227,395 +54,189 @@ Navigate instantly between:
 * Supporters
 * Settings
 
-Designed for desktop, tablet and mobile devices.
-
----
-
-## 🌍 Country & Competition Selector
-
-Football Hub supports multiple countries and football competitions from one shared integration.
-
-Features include:
-
-* Country Selection
-* League Selection
-* Frontend Competition Switching
-* No Reinstallation Required
-* No Integration Reconfiguration Required
-* Persistent Competition Selection
-* Automatic Competition Restoration
-* Current Season Selection
-
----
-
-## 🏴 English Football Pyramid
-
-English competitions currently include:
-
-* Premier League
-* Championship
-* League One
-* League Two
-* National League
-
-Top-flight competitions from additional countries are available through the country and league selectors.
-
-Competition availability depends on API-Football coverage and your API plan.
+The interface supports desktop, tablet, mobile, touchscreens and wall-mounted Home Assistant dashboards.
 
 ---
 
 ## 🔴 Live Match Centre
 
-Track live football with:
+Available live information can include:
 
-* Live Scores
-* Match Status
-* Match Timer
-* Goal Events
-* Yellow Cards
-* Red Cards
+* Scores and match timers
+* Goals and assists
+* Yellow and red cards
 * Substitutions
-* Match Statistics
-* Team Line-Ups
-* Multiple Live Matches
-* Supported-Team Priority
-* Live League Position Information
+* Match timeline
+* Team statistics
+* Starting line-ups
+* Venue, referee and weather details
+* Multiple simultaneous matches
+* Favourite-club priority
+* UEFA, international and supported domestic matches
 
-Choose the team you support and Football Hub will prioritise that team's fixture in the Live Centre while keeping other live matches visible.
-
-Polling adjusts automatically around match times to provide faster live updates while reducing unnecessary API requests when no match is being played.
-
----
-
-## 📅 Fixtures & Results
-
-Features include:
-
-* Upcoming Fixtures
-* Completed Results
-* Team Fixture Filtering
-* Competition Fixture Lists
-* Match Dates
-* Kick-Off Times
-* Home & Away Teams
-* Match Status
-* Final Scores
-* Match Detail Access
+Live matches refresh more frequently while slower data uses longer, staggered cache periods.
 
 ---
 
-## 📊 League Tables
+## 📅 Fixtures, friendlies and results
 
-Track competition standings with:
-
-* League Position
-* Matches Played
-* Wins
-* Draws
-* Losses
-* Goals For
-* Goals Against
-* Goal Difference
-* Points
-* Live Table Updates
+* Full competition fixture lists
+* Team filtering
+* Upcoming fixtures and completed results
+* Kick-off dates and times
+* Home and away club badges
+* Match status and final scores
+* Club friendlies included for supported teams
+* Completed friendlies retained in restart-safe storage
+* Persistent fixture filter selection
 
 ---
 
-## 📈 Match Statistics & Events
+## 📊 Tables and player data
 
-Available match information can include:
+League tables can include position, played, wins, draws, losses, goals, goal difference, points, yellow cards and red cards.
 
-* Possession
-* Shots
-* Shots On Target
-* Corners
-* Fouls
-* Offsides
-* Goals
-* Cards
-* Substitutions
-* Match Events
-* Line-Ups
-
-Data availability depends on the selected competition and API-Football coverage.
+Player pages can include top scorers, assists, appearances, minutes, ratings, yellow cards and red cards when that information is available.
 
 ---
 
-## 👥 Team Line-Ups
+## 🏟️ My Club and multiple favourites
 
-Supported fixtures can include:
+Follow up to five permanent favourite clubs across different countries and leagues without replacing the previous selection.
 
-* Starting Line-Ups
-* Substitutes
-* Formations
-* Player Positions
-* Managers
-* Match Squads
+Club information can include:
 
----
-
-## 🎯 Player Statistics
-
-Track player information including:
-
-* Top Scorers
-* Goals
-* Assists
-* Appearances
-* Player Rankings
-* Competition Statistics
-
-Available player data depends on the selected competition and API coverage.
+* Club profile and badge
+* League position
+* Next fixture and recent results
+* Current squad and player photos
+* Manager and venue details
+* Injuries and suspensions
+* Recent transfers and reported fees
+* Club records and trophies
+* Live-match priority and table highlighting
 
 ---
 
-## 🏟 My Club
+## 🌍 Supported leagues
 
-The My Club page brings detailed information about your supported club together in one place.
+### England
 
-Features can include:
+Premier League, Championship, League One, League Two and National League.
 
-* Club Overview
-* Upcoming Fixtures
-* Recent Results
-* League Position
-* Squad Information
-* Player Details
-* Club Statistics
-* Yellow And Red Card Totals
-* Injuries
-* Club Transfers
-* Club History
-* Venue Information
-* Supported-Team Information
+### Scotland
 
----
+Scottish Premiership, Championship, League One, League Two and Highland/Lowland coverage.
 
-## 🟨 Team Card Totals
+### Wales
 
-Football Hub tracks disciplinary information including:
+Cymru Premier, Cymru North and Cymru South.
 
-* Yellow Card Totals
-* Red Card Totals
-* Team Rankings
-* Competition-Wide Comparisons
+### Ireland
+
+Northern Ireland Premiership and League of Ireland Premier Division.
+
+### Europe
+
+La Liga, Bundesliga, Serie A, Ligue 1, Eredivisie, Primeira Liga, Jupiler Pro League and Süper Lig.
+
+### United States
+
+MLS, USL Championship, USL League One, MLS Next Pro, NISA and NWSL.
+
+Coverage varies by competition and by the information made available for each match.
 
 ---
 
 ## 🏆 Cups
 
-Football Hub includes a dedicated Cups page that works independently from the selected domestic league.
+The independent Cups area includes domestic cups and super cups for supported countries, plus:
 
-Features can include:
+* UEFA Champions League
+* UEFA Europa League
+* UEFA Conference League
+* FA Cup and EFL Cup
+* Scottish Cup and League Cup
+* Welsh Cup
+* US Open Cup and supported US cups
 
-* Cup Competition Selection
-* Country And Region Filtering
-* Cup Overview
-* Cup Fixtures
-* Cup Results
-* Cup Standings
-* Cup Top Scorers
-* Persistent Cup Selection
-
-Selecting a cup does not replace the league used by Overview, Fixtures, Results, League Table or Players.
+Cup fixtures, results, tables and player information remain separate from the selected domestic league.
 
 ---
 
-## 📰 News
+## 📰 Football portal
 
-The Football News page provides:
-
-* Latest Football Stories
-* Story Images
-* News Sources
-* Publication Dates And Times
-* Direct Story Links
-* Responsive News Cards
-
-News data is refreshed separately from live-match polling.
+* Current football news with images and source links
+* Country-aware television listings
+* Latest and top transfer-market views
+* Transfer fees, dates and movement details where available
+* Community Supporters page with countries, flags and messages
+* Language and desktop/tablet/mobile view selectors
 
 ---
 
-## 📺 TV Guide
-
-The TV Guide provides upcoming UK football television information, including:
-
-* Kick-Off Date And Time
-* Competition
-* Home Team
-* Away Team
-* Television Channels
-
-TV listings depend on available data and may show channels as awaiting confirmation.
-
----
-
-## 🔄 Transfers
-
-The Transfer Market includes:
-
-* Latest Transfers
-* Top Transfers
-* Player Details
-* Previous Club
-* New Club
-* Transfer Dates
-* Transfer Types
-* Reported Fees
-
-The selected Latest or Top Transfers view is remembered by the browser.
-
----
-
-## ❤️ Supporters
-
-Football Hub includes a dedicated Community Supporters page.
-
-Features include:
-
-* Latest Supporters
-* All Supporters
-* Supporter Names
-* Supporter Countries
-* National Flags
-* Optional Messages
-* Support Dates
-* Supporters Around The World
-* Premium Supporter Recognition
-
----
-
-## 💾 Persistent Selections
+## 💾 Persistent selections and efficient polling
 
 Football Hub remembers:
 
-* Last-Opened Page
-* Selected Country
-* Selected League
-* Supported Team
-* Selected Cup Country
-* Selected Cup Competition
-* Cup Page View
-* Transfer Market View
-* Desktop, Tablet Or Mobile View Mode
+* Last-opened page
+* Selected language and view mode
+* Country and league
+* Favourite clubs
+* Fixture team filter
+* Selected live match
+* Cup competition and cup view
+* Transfer-market view
 
-Selections remain available after page refreshes and Home Assistant restarts.
-
----
-
-## 📱 Responsive Interface
-
-Football Hub is designed for:
-
-* Desktop
-* Tablet
-* Mobile
-* Touchscreen Dashboards
-* Wall-Mounted Home Assistant Displays
+Long-lived club, league and portal data is cached across restarts. Live scores use a short refresh cycle only when needed.
 
 ---
 
-## 📦 Included Entities
+# 📦 Installation
 
-Football Hub provides Home Assistant entities covering areas such as:
+## Option 1: HACS
 
-* Integration Status
-* Live Matches
-* Fixtures
-* Results
-* League Standings
-* Players
-* Match Statistics
-* Team Information
-* Competition Information
-* Cup Information
-* Football News
-* UK TV Guide
-* Transfer Market Information
+1. Open **HACS** in Home Assistant.
+2. Add `https://github.com/Adya84/ha-football-hub` as a custom **Integration** repository.
+3. Search for **Football Hub** and install it.
+4. Restart Home Assistant.
+5. Go to **Settings → Devices & Services → Add Integration**.
+6. Search for **Football Hub** and complete setup.
 
-Entity availability depends on the selected competition and available API data.
+## Option 2: Manual installation
 
----
+1. Download this repository.
+2. Copy `custom_components/football_hub` into `config/custom_components/football_hub`.
+3. Restart Home Assistant.
+4. Add Football Hub from **Settings → Devices & Services**.
 
-# 🙏 Credits
-
-Football data is provided through:
-
-https://www.api-football.com/
-
-Football Hub is an independent Home Assistant integration and is not affiliated with, endorsed by or sponsored by API-Football, Home Assistant, HACS or any football organisation.
+The country, league and club selections are made inside the Football Hub frontend.
 
 ---
 
-# 👨‍💻 Author
-
-Created and maintained by Adrian Apel.
-
-GitHub:
-
-https://github.com/Adya84/ha-football-hub
-
----
-
-# 📜 Licence
+# 🔒 Licensing
 
 Copyright (C) 2026 Adrian Apel
 
-Football Hub is licensed under the Football Hub Home Assistant Integration Licence.
+This software is provided for personal, private and non-commercial use only. Redistribution, resale, rebranding, commercial use and publication of modified versions are prohibited without prior written permission.
 
-This software is provided for personal, private and non-commercial use only.
-
-Redistribution, resale, rebranding, commercial use and publication of modified versions are prohibited without prior written permission from Adrian Apel.
-
-All rights reserved.
-
-See the LICENSE file for full licence details.
+See the [LICENSE](LICENSE) file for the full licence terms.
 
 ---
 
-# 🤝 Support & Feedback
+# 👨‍💻 Author and support
 
-Bug reports, feature requests and suggestions are welcome.
+Created and maintained by Adrian Apel.
 
-GitHub Repository:
-
-https://github.com/Adya84/ha-football-hub
-
-Issue Tracker:
-
-https://github.com/Adya84/ha-football-hub/issues
-
-Please open an issue if you discover a bug or would like to suggest a new feature.
+* [Official repository](https://github.com/Adya84/ha-football-hub)
+* [Issue tracker](https://github.com/Adya84/ha-football-hub/issues)
+* [Ko-fi](https://ko-fi.com/ady1984)
+* [Buy me a beer](https://paypal.me/graffidoodle)
 
 ---
 
-# ❤️ Support Development
+# ⚠️ Disclaimer
 
-## 🍺 Buy Me a Beer
+Football Hub is an independent Home Assistant integration. It is not affiliated with, endorsed by, sponsored by or officially connected to Home Assistant, HACS, FIFA, UEFA, any data provider, football association, competition organiser, club, venue or broadcaster.
 
-PayPal:
-
-https://paypal.me/graffidoodle
-
-Every contribution helps support:
-
-* Football Data Costs
-* New Competitions
-* New Features
-* Dashboard Improvements
-* Live Match Development
-* Testing
-* Bug Fixes
-* Ongoing Maintenance
-
-Supporters can be recognised inside the Football Hub Supporters page with their name, country, national flag and an optional message.
-
----
-
-## ⚠️ Disclaimer
-
-Football Hub is an independent Home Assistant integration.
-
-It is not affiliated with, endorsed by, sponsored by or officially connected to Home Assistant, HACS, API-Football, football-data.org, FIFA, UEFA, The Premier League, The English Football League, The Scottish Professional Football League, LaLiga, Bundesliga, Serie A, Ligue 1, Major League Soccer, or any football governing body, competition organiser, club, venue or broadcaster.
-
-All trademarks, club names, competition names, team names and logos remain the property of their respective owners.
+All trademarks, competition names, club names, team names and logos remain the property of their respective owners.
