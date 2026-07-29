@@ -1,0 +1,29 @@
+name: Update Welsh football data
+
+on:
+  workflow_dispatch:
+  schedule:
+    # GitHub's shortest scheduled interval is five minutes. The script exits
+    # without an upstream request when no Welsh match is near kick-off.
+    - cron: "*/5 * * * *"
+
+permissions:
+  contents: write
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install curl_cffi
+      - run: python scripts/update_welsh_football_data.py
+      - name: Commit refreshed cache
+        run: |
+          git config user.name "football-hub-data-bot"
+          git config user.email "actions@users.noreply.github.com"
+          git add welsh_data/*.json
+          git diff --cached --quiet || git commit -m "Update Welsh football data"
+          git push
