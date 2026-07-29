@@ -118,6 +118,11 @@ LEAGUE_TTL = 6 * 60 * 60
 TODAY_TTL = 60
 MATCH_TTL_LIVE = 60
 MATCH_TTL_FINISHED = 24 * 60 * 60
+
+# Only competitions exposed by Football Hub's dropdown catalogue enter the
+# domestic live feed. Friendlies and international football are allowed by
+# name because FM gives those shared regional competition IDs.
+LIVE_COMPETITION_IDS = {str(value) for value in FM_LEAGUES.values()}
 TEAM_PROFILE_TTL = 30 * 24 * 60 * 60
 TEAM_SQUAD_TTL = 7 * 24 * 60 * 60
 TEAM_TRANSFERS_TTL = 24 * 60 * 60
@@ -645,8 +650,24 @@ class FMProvider:
         return is_selected_country or is_uefa_club_competition or is_international
 
     async def get_live_feed(self, league_id, season):
-        """Return today's worldwide schedule so every live match is available."""
-        return await self._matches_for_date(datetime.now(timezone.utc))
+        """Return today's configured competitions and supported friendlies."""
+        matches = await self._matches_for_date(datetime.now(timezone.utc))
+        output = []
+        for item in matches:
+            league = item.get("league") or {}
+            competition_id = str(league.get("id") or "")
+            name = str(league.get("name") or "").casefold()
+            is_uefa_or_international = any(
+                label in name
+                for label in (
+                    "champions league", "europa league", "conference league",
+                    "nations league", "european championship", "euro qualification",
+                    "world cup", "international friendly", "friendlies",
+                )
+            )
+            if competition_id in LIVE_COMPETITION_IDS or is_uefa_or_international:
+                output.append(item)
+        return output
 
     async def get_live(self, league_id, season):
         feed = await self.get_live_feed(league_id, season)
