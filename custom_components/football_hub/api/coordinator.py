@@ -486,9 +486,15 @@ class FootballHubCoordinator(DataUpdateCoordinator):
                 else:
                     self._store(key, result)
 
-            # The integration cannot work without fixture data on the first load.
+            # A lower-league provider can temporarily return no dataset. Keep
+            # the coordinator online so the status entity retains the complete
+            # country/competition catalogue and users can still change league.
             if failures and "fixtures" not in self._cache:
-                raise UpdateFailed("; ".join(failures))
+                self._store("fixtures", [])
+            if failures and "standings" not in self._cache:
+                self._store("standings", [])
+            if failures and "player_leaderboards" not in self._cache:
+                self._store("player_leaderboards", {})
 
         raw_live = [
             item for item in (self._cache.get("live_feed", []) or [])
