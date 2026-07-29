@@ -11,8 +11,28 @@ import aiohttp
 
 
 ALL_WALES_COMPETITIONS = {
-    111: {"cid": 20145, "name": "Cymru North"},
-    112: {"cid": 20146, "name": "Cymru South"},
+    111: {
+        "cid": 20145,
+        "name": "Cymru North",
+        "teams": (
+            "Airbus UK Broughton", "Brickfield Rangers", "Buckley Town",
+            "Caersws", "Denbigh Town", "Flint Mountain", "Gresford Athletic",
+            "Guilsfield", "Holyhead Hotspur", "Holywell Town", "Llandudno",
+            "Mold Alexandra", "Newtown", "Penrhyncoch", "Rhyl 1879",
+            "Ruthin Town",
+        ),
+    },
+    112: {
+        "cid": 20146,
+        "name": "Cymru South",
+        "teams": (
+            "Afan Lido", "Aberystwyth Town", "Baglan Dragons", "Caerau Ely",
+            "Caerphilly Athletic", "Cardiff Draconians", "Carmarthen Town",
+            "Llanelli Town", "Llantwit Major", "Newport City",
+            "Pontardawe Town", "Pontypridd United", "Pure Swansea",
+            "Treowen Stars", "Trethomas Bluebirds", "Ynyshir Albions",
+        ),
+    },
 }
 
 
@@ -123,7 +143,9 @@ def parse_competition(html: str, competition_id: int) -> dict[str, Any]:
     parser = _CompetitionParser()
     parser.feed(html)
     fixtures: dict[int, dict[str, Any]] = {}
-    names: set[str] = set()
+    # Keep a complete fallback list. The source occasionally serves an empty
+    # ASP.NET shell to automated clients; that must not empty HA dropdowns.
+    names: set[str] = set(details["teams"])
 
     for panel, finished in ((1, False), (2, True)):
         match_date: datetime | None = None
@@ -173,6 +195,24 @@ def parse_competition(html: str, competition_id: int) -> dict[str, Any]:
             },
         })
 
+    # A zeroed table still gives the frontend a complete, useful club list
+    # before the source publishes (or while it temporarily withholds) a table.
+    if not standings:
+        standings = [{
+            "rank": position,
+            "team": {
+                "id": _team_id(competition_id, name),
+                "name": name,
+                "logo": None,
+            },
+            "points": 0,
+            "goalsDiff": 0,
+            "all": {
+                "played": 0, "win": 0, "draw": 0, "lose": 0,
+                "goals": {"for": 0, "against": 0},
+            },
+        } for position, name in enumerate(sorted(names, key=str.casefold), 1)]
+
     teams = [{
         "team": {
             "id": _team_id(competition_id, name),
@@ -189,7 +229,7 @@ def parse_competition(html: str, competition_id: int) -> dict[str, Any]:
         "fixtures": sorted(
             fixtures.values(), key=lambda item: item["fixture"]["timestamp"]
         ),
-        "standings": ([{"league": {"standings": [standings]}}] if standings else []),
+        "standings": [{"league": {"standings": [standings]}}],
         "teams": teams,
     }
 
@@ -201,11 +241,17 @@ async def fetch_competition(
     cid = ALL_WALES_COMPETITIONS[competition_id]["cid"]
     url = f"https://www.allwalessport.co.uk/football.aspx?cid={cid}"
     headers = {
-        "Accept": "text/html,application/xhtml+xml",
-        "User-Agent": "Football-Hub-Home-Assistant/1.0",
+        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+        "Accept-Language": "en-GB,en;q=0.9",
+        "Referer": "https://www.allwalessport.co.uk/",
+        "User-Agent": (
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+            "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0 Safari/537.36"
+        ),
     }
     async with session.get(
         url, headers=headers, timeout=aiohttp.ClientTimeout(total=30)
     ) as response:
         response.raise_for_status()
-        return parse_competition(await response.text(), competition_id)
+        html = await response.text()
+        return parse_competition(html, competition_id)
