@@ -17,8 +17,6 @@ import aiohttp
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.helpers.storage import Store
 
-from .sofascore import SofaScoreFallback
-
 _LOGGER = logging.getLogger(__name__)
 
 FM_BASE = "https://www.fotmob.com"
@@ -155,7 +153,6 @@ class FMProvider:
         self._match_locks: dict[str, asyncio.Lock] = {}
         self._team_names: dict[str, str] = {}
         self._fixture_context: dict[str, dict] = {}
-        self._sofascore = SofaScoreFallback(hass)
 
     async def _ensure_loaded(self) -> None:
         if self._loaded:
@@ -463,11 +460,37 @@ class FMProvider:
     @staticmethod
     def _status(match: dict) -> dict:
         status = match.get("status") or {}
+        status_text = " ".join(
+            str(value or "").casefold()
+            for value in (
+                status.get("reason"), status.get("status"),
+                status.get("state"), status.get("liveTime"),
+            )
+        )
+        explicitly_live = bool(
+            status.get("started") or status.get("ongoing") or status.get("live")
+            or any(label in status_text for label in ("live", "first half", "second half", "half time"))
+        )
+
+        # Some club friendlies are present in FM's daily feed but their
+        # `started` flag arrives late. During the normal three-hour match
+        # window, treat a past kickoff as live unless it is finished/cancelled.
+        inferred_live = False
+        kickoff = status.get("utcTime") or match.get("utcTime") or match.get("date")
+        try:
+            kickoff_dt = datetime.fromisoformat(str(kickoff).replace("Z", "+00:00"))
+            if kickoff_dt.tzinfo is None:
+                kickoff_dt = kickoff_dt.replace(tzinfo=timezone.utc)
+            age = datetime.now(timezone.utc) - kickoff_dt.astimezone(timezone.utc)
+            inferred_live = timedelta(0) <= age <= timedelta(hours=3)
+        except (TypeError, ValueError):
+            pass
+
         if status.get("cancelled"):
             short = "CANC"
         elif status.get("finished"):
             short = "FT"
-        elif status.get("started"):
+        elif explicitly_live or inferred_live:
             short = "LIVE"
         else:
             short = "NS"
@@ -623,13 +646,6 @@ class FMProvider:
 
     async def get_live_feed(self, league_id, season):
         """Return today's worldwide schedule so every live match is available."""
-        if self._sofascore.supports(league_id):
-            fixtures = await self._sofascore.get_fixtures(league_id, season)
-            return [
-                item for item in fixtures
-                if ((((item or {}).get("fixture") or {}).get("status") or {}).get("short"))
-                in {"1H", "HT", "2H", "ET", "BT", "P", "SUSP", "INT", "LIVE"}
-            ]
         return await self._matches_for_date(datetime.now(timezone.utc))
 
     async def get_live(self, league_id, season):
@@ -640,8 +656,6 @@ class FMProvider:
         ]
 
     async def get_fixtures(self, league_id, season):
-        if self._sofascore.supports(league_id):
-            return await self._sofascore.get_fixtures(league_id, season)
         fm_id = self._league_id(league_id)
         data = await self._league_data(league_id)
         output: dict[str, dict] = {}
@@ -675,8 +689,6 @@ class FMProvider:
 
     async def get_standings(self, league_id, season):
         """Return the current FM league table."""
-        if self._sofascore.supports(league_id):
-            return await self._sofascore.get_standings(league_id, season)
         fm_id = self._league_id(league_id)
         data = await self._league_data(league_id)
         rows = []
@@ -810,19 +822,6 @@ class FMProvider:
 
     async def get_teams(self, league_id, season):
         """Return teams for the selected league and populate dropdowns."""
-        if self._sofascore.supports(league_id):
-            standings = await self.get_standings(league_id, season)
-            rows = (
-                (((standings[0] or {}).get("league") or {})
-                 .get("standings") or [[]])[0]
-                if standings
-                else []
-            )
-            return [
-                {"team": row.get("team") or {}, "venue": {}}
-                for row in rows
-                if (row.get("team") or {}).get("id")
-            ]
         data = await self._league_data(league_id)
         found: dict[str, dict] = {}
 
@@ -1252,15 +1251,6 @@ class FMProvider:
 
     async def get_player_leaderboards(self, league_id, season):
         """Return every supported leaderboard from one league-data request."""
-        if self._sofascore.supports(league_id):
-            # The Welsh fallback currently guarantees fixtures and standings.
-            # Keep optional leaderboards empty rather than accidentally sending
-            # SofaScore team IDs to FM endpoints.
-            return {
-                "top_scorers": [], "top_assists": [],
-                "top_yellow_cards": [], "top_red_cards": [],
-                "top_ratings": [], "top_appearances": [], "top_minutes": [],
-            }
         data = await self._league_data(league_id)
         return {
             "top_scorers": self._league_players_from_data(data, "goals"),
