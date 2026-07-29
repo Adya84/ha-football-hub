@@ -132,6 +132,7 @@ NEWS_TTL = 60 * 60
 TV_GUIDE_TTL = 6 * 60 * 60
 TRANSFER_MARKET_TTL = 60 * 60
 COMPETITION_CATALOGUE_TTL = 7 * 24 * 60 * 60
+FRIENDLY_RESULTS_TTL = 370 * 24 * 60 * 60
 
 
 class FMProviderError(Exception):
@@ -650,6 +651,86 @@ class FMProvider:
         return self._cache_put(key, output)
 
     @staticmethod
+    def _is_friendly(item: dict) -> bool:
+        """Return whether a fixture belongs to a friendly competition."""
+        name = str(((item or {}).get("league") or {}).get("name") or "").casefold()
+        return "friendly" in name or "friendlies" in name
+
+    async def _remember_finished_friendlies(self, matches: list[dict]) -> None:
+        """Persist completed friendlies so they remain on club result pages."""
+        finished = {}
+        for item in matches or []:
+            status = ((((item or {}).get("fixture") or {}).get("status") or {}).get("short"))
+            fixture_id = ((item or {}).get("fixture") or {}).get("id")
+            if fixture_id not in (None, "") and status in {"FT", "AET", "PEN"} and self._is_friendly(item):
+                finished[str(fixture_id)] = item
+        if not finished:
+            return
+
+        await self._ensure_loaded()
+        existing = await self._persistent_get(
+            "global_data", "friendly-results-v1", FRIENDLY_RESULTS_TTL
+        )
+        merged = dict(existing) if isinstance(existing, dict) else {}
+        changed = any(merged.get(key) != value for key, value in finished.items())
+        if not changed:
+            return
+        merged.update(finished)
+        # Keep the store bounded while retaining roughly a full season.
+        ordered = sorted(
+            merged.items(),
+            key=lambda pair: (((pair[1] or {}).get("fixture") or {}).get("timestamp") or 0),
+        )[-500:]
+        await self._persistent_put("global_data", "friendly-results-v1", dict(ordered))
+
+    async def _stored_friendly_results(self) -> list[dict]:
+        stored = await self._persistent_get(
+            "global_data", "friendly-results-v1", FRIENDLY_RESULTS_TTL
+        )
+        return list(stored.values()) if isinstance(stored, dict) else []
+
+    async def _merge_friendly_results(
+        self, fixtures: list[dict], teams: list[dict] | None = None
+    ) -> list[dict]:
+        """Add stored friendlies involving clubs from this league."""
+        output = {
+            str(((item or {}).get("fixture") or {}).get("id")): item
+            for item in fixtures or []
+            if ((item or {}).get("fixture") or {}).get("id") not in (None, "")
+        }
+        club_ids: set[str] = set()
+        club_names: set[str] = set()
+        for item in fixtures or []:
+            for team in (((item or {}).get("teams") or {}).get("home") or {},
+                         ((item or {}).get("teams") or {}).get("away") or {}):
+                if team.get("id") not in (None, ""):
+                    club_ids.add(str(team["id"]))
+                if team.get("name"):
+                    club_names.add(self._norm(team["name"]))
+        for wrapper in teams or []:
+            team = (wrapper or {}).get("team") or wrapper or {}
+            if team.get("id") not in (None, ""):
+                club_ids.add(str(team["id"]))
+            if team.get("name"):
+                club_names.add(self._norm(team["name"]))
+
+        for item in await self._stored_friendly_results():
+            sides = (item or {}).get("teams") or {}
+            participants = [sides.get("home") or {}, sides.get("away") or {}]
+            belongs = any(
+                (team.get("id") not in (None, "") and str(team["id"]) in club_ids)
+                or (team.get("name") and self._norm(team["name"]) in club_names)
+                for team in participants
+            )
+            fixture_id = ((item or {}).get("fixture") or {}).get("id")
+            if belongs and fixture_id not in (None, ""):
+                output[str(fixture_id)] = item
+        return sorted(
+            output.values(),
+            key=lambda item: ((item.get("fixture") or {}).get("timestamp") or 0),
+        )
+
+    @staticmethod
     def _live_scope_match(item: dict, selected_country: str | None) -> bool:
         league = item.get("league") or {}
         competition_key = str(league.get("name") or "").casefold()
@@ -672,6 +753,7 @@ class FMProvider:
     async def get_live_feed(self, league_id, season):
         """Return today's configured competitions and supported friendlies."""
         matches = await self._matches_for_date(datetime.now(timezone.utc))
+        await self._remember_finished_friendlies(matches)
         output = []
         for item in matches:
             league = item.get("league") or {}
@@ -698,7 +780,10 @@ class FMProvider:
 
     async def get_fixtures(self, league_id, season):
         if int(league_id) in ALL_WALES_COMPETITIONS:
-            return (await self._all_wales_data(league_id)).get("fixtures", [])
+            data = await self._all_wales_data(league_id)
+            return await self._merge_friendly_results(
+                data.get("fixtures", []), data.get("teams", [])
+            )
         fm_id = self._league_id(league_id)
         data = await self._league_data(league_id)
         output: dict[str, dict] = {}
@@ -725,10 +810,7 @@ class FMProvider:
             if (item.get("league") or {}).get("id") in (fm_id, str(fm_id), None):
                 output[str((item.get("fixture") or {}).get("id"))] = item
 
-        return sorted(
-            output.values(),
-            key=lambda item: (item.get("fixture") or {}).get("timestamp") or 0,
-        )
+        return await self._merge_friendly_results(list(output.values()))
 
     async def get_standings(self, league_id, season):
         """Return the current FM league table."""
