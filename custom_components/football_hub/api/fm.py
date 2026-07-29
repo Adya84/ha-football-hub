@@ -623,6 +623,13 @@ class FMProvider:
 
     async def get_live_feed(self, league_id, season):
         """Return today's worldwide schedule so every live match is available."""
+        if self._sofascore.supports(league_id):
+            fixtures = await self._sofascore.get_fixtures(league_id, season)
+            return [
+                item for item in fixtures
+                if ((((item or {}).get("fixture") or {}).get("status") or {}).get("short"))
+                in {"1H", "HT", "2H", "ET", "BT", "P", "SUSP", "INT", "LIVE"}
+            ]
         return await self._matches_for_date(datetime.now(timezone.utc))
 
     async def get_live(self, league_id, season):
@@ -670,6 +677,7 @@ class FMProvider:
         """Return the current FM league table."""
         if self._sofascore.supports(league_id):
             return await self._sofascore.get_standings(league_id, season)
+        fm_id = self._league_id(league_id)
         data = await self._league_data(league_id)
         rows = []
 
@@ -802,6 +810,19 @@ class FMProvider:
 
     async def get_teams(self, league_id, season):
         """Return teams for the selected league and populate dropdowns."""
+        if self._sofascore.supports(league_id):
+            standings = await self.get_standings(league_id, season)
+            rows = (
+                (((standings[0] or {}).get("league") or {})
+                 .get("standings") or [[]])[0]
+                if standings
+                else []
+            )
+            return [
+                {"team": row.get("team") or {}, "venue": {}}
+                for row in rows
+                if (row.get("team") or {}).get("id")
+            ]
         data = await self._league_data(league_id)
         found: dict[str, dict] = {}
 
