@@ -618,11 +618,12 @@ class FMProvider:
         competition_id = int(league_id)
         if competition_id not in ALL_WALES_COMPETITIONS:
             raise FMProviderError(f"All Wales Sport mapping is unavailable for {league_id}")
-        key = f"all-wales:{competition_id}"
+        # v2 bypasses any previously persisted empty website response.
+        key = f"all-wales-v2:{competition_id}"
         cached = self._cache_get(key, LEAGUE_TTL)
         if cached is not None:
             return cached
-        persistent_key = f"all-wales:{competition_id}"
+        persistent_key = f"all-wales-v2:{competition_id}"
         persisted = await self._persistent_get("league_data", persistent_key, LEAGUE_TTL)
         if isinstance(persisted, dict):
             return self._cache_put(key, persisted)
