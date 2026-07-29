@@ -13,7 +13,10 @@ from typing import Any
 
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 
-SOFASCORE_BASE = "https://www.sofascore.com/api/v1"
+SOFASCORE_BASES = (
+    "https://api.sofascore.com/api/v1",
+    "https://www.sofascore.com/api/v1",
+)
 SOFASCORE_TOURNAMENTS = {
     111: 13820,  # Cymru North
     112: 13821,  # Cymru South
@@ -45,13 +48,26 @@ class SofaScoreFallback:
             cached = self._cache.get(path)
             if cached and monotonic() - cached[0] < ttl:
                 return cached[1]
-            async with self.session.get(
-                f"{SOFASCORE_BASE}/{path}",
-                headers={"Accept": "application/json", "User-Agent": "Football-Hub/0.4"},
-                timeout=30,
-            ) as response:
-                response.raise_for_status()
-                data = await response.json(content_type=None)
+            last_error = None
+            data = None
+            for base in SOFASCORE_BASES:
+                try:
+                    async with self.session.get(
+                        f"{base}/{path}",
+                        headers={
+                            "Accept": "application/json",
+                            "Accept-Language": "en-GB,en;q=0.9",
+                            "User-Agent": "Mozilla/5.0 Football-Hub/0.4",
+                        },
+                        timeout=30,
+                    ) as response:
+                        response.raise_for_status()
+                        data = await response.json(content_type=None)
+                    break
+                except Exception as err:  # try the alternate public host
+                    last_error = err
+            if data is None:
+                raise last_error or RuntimeError("Welsh league data is unavailable")
             self._cache[path] = (monotonic(), data if isinstance(data, dict) else {})
             return self._cache[path][1]
 
@@ -140,6 +156,25 @@ class SofaScoreFallback:
         data = await self._get(
             f"unique-tournament/{tournament}/season/{season_id}/standings/total"
         )
+        # Lower Welsh leagues use a season-specific tournament id for their
+        # table endpoint. Discover it from a current event when the permanent
+        # unique-tournament route does not return a table.
+        if not (data.get("standings") or []):
+            season_tournament = None
+            for direction in ("next", "last"):
+                events_data = await self._get(
+                    f"unique-tournament/{tournament}/season/{season_id}/events/{direction}/0"
+                )
+                events = events_data.get("events") or []
+                if events:
+                    event_tournament = (events[0] or {}).get("tournament") or {}
+                    season_tournament = event_tournament.get("id")
+                    if season_tournament:
+                        break
+            if season_tournament:
+                data = await self._get(
+                    f"tournament/{season_tournament}/season/{season_id}/standings/total"
+                )
         groups = data.get("standings") or []
         rows = []
         for group in groups:
