@@ -17,6 +17,8 @@ import aiohttp
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.helpers.storage import Store
 
+from .sofascore import SofaScoreFallback
+
 _LOGGER = logging.getLogger(__name__)
 
 FM_BASE = "https://www.fotmob.com"
@@ -31,6 +33,10 @@ FM_LEAGUES = {
     42: 109,   # League Two
     43: 117,   # National League
     179: 64,   # Scottish Premiership
+    180: 123,  # Scottish Championship
+    181: 124,  # Scottish League One
+    182: 125,  # Scottish League Two
+    183: 9545, # Scottish Highland / Lowland leagues
     110: 116,  # Cymru Premier
     3010: 130,   # MLS
     3011: 8972,  # USL Championship
@@ -83,7 +89,8 @@ FM_LEAGUES = {
 
 FM_COUNTRY_CODES = {
     39: "ENG", 40: "ENG", 41: "ENG", 42: "ENG", 43: "ENG",
-    179: "SCO", 110: "WAL", 408: "NIR", 357: "IRL",
+    179: "SCO", 180: "SCO", 181: "SCO", 182: "SCO", 183: "SCO",
+    110: "WAL", 408: "NIR", 357: "IRL",
     3010: "USA", 3011: "USA", 3012: "USA", 3013: "USA",
     3014: "USA", 3015: "USA",
     140: "ESP", 78: "GER", 135: "ITA", 61: "FRA", 88: "NED",
@@ -148,6 +155,7 @@ class FMProvider:
         self._match_locks: dict[str, asyncio.Lock] = {}
         self._team_names: dict[str, str] = {}
         self._fixture_context: dict[str, dict] = {}
+        self._sofascore = SofaScoreFallback(hass)
 
     async def _ensure_loaded(self) -> None:
         if self._loaded:
@@ -625,6 +633,8 @@ class FMProvider:
         ]
 
     async def get_fixtures(self, league_id, season):
+        if self._sofascore.supports(league_id):
+            return await self._sofascore.get_fixtures(league_id, season)
         fm_id = self._league_id(league_id)
         data = await self._league_data(league_id)
         output: dict[str, dict] = {}
@@ -658,6 +668,8 @@ class FMProvider:
 
     async def get_standings(self, league_id, season):
         """Return the current FM league table."""
+        if self._sofascore.supports(league_id):
+            return await self._sofascore.get_standings(league_id, season)
         data = await self._league_data(league_id)
         rows = []
 
@@ -671,8 +683,13 @@ class FMProvider:
                 section_data = section.get("data") if isinstance(section, dict) else None
                 section_table = section_data.get("table") if isinstance(section_data, dict) else None
                 if isinstance(section_table, dict) and isinstance(section_table.get("all"), list):
-                    table_rows = section_table["all"]
-                    break
+                    if fm_id == 9545:
+                        # FM exposes Highland and Lowland as two tables under
+                        # one competition. Include both divisions.
+                        table_rows.extend(section_table["all"])
+                    else:
+                        table_rows = section_table["all"]
+                        break
             if not table_rows and table and all(
                 isinstance(item, dict) and (item.get("teamId") or item.get("id"))
                 for item in table
@@ -1214,6 +1231,15 @@ class FMProvider:
 
     async def get_player_leaderboards(self, league_id, season):
         """Return every supported leaderboard from one league-data request."""
+        if self._sofascore.supports(league_id):
+            # The Welsh fallback currently guarantees fixtures and standings.
+            # Keep optional leaderboards empty rather than accidentally sending
+            # SofaScore team IDs to FM endpoints.
+            return {
+                "top_scorers": [], "top_assists": [],
+                "top_yellow_cards": [], "top_red_cards": [],
+                "top_ratings": [], "top_appearances": [], "top_minutes": [],
+            }
         data = await self._league_data(league_id)
         return {
             "top_scorers": self._league_players_from_data(data, "goals"),
