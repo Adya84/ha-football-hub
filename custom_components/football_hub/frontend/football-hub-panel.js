@@ -1,4 +1,4 @@
-const PANEL_VERSION = "0.15.3-developer-key-sanitising";
+const PANEL_VERSION = "0.15.4-paid-private-reminders";
 const LMS_SHARE_SERVICE = "https://football-hub-lms.zesty-flame-5295.chatgpt.site";
 
 class FootballHubPanel extends HTMLElement {
@@ -73,12 +73,14 @@ class FootballHubPanel extends HTMLElement {
     }
     this._lastRenderSig = null;
     this._lmsCountdownTimer = null;
+    this._lmsReminderTimer = null;
     this._lmsSharePullTimer = null;
     this._lmsShareSyncTimer = null;
     this._lmsShareBusy = false;
     this._lmsShareLastPull = 0;
     this._lmsAdminUnlocked = false;
     this._lmsAutoCheckBusy = false;
+    this._lmsReminderBusy = false;
   }
 
   _footballStateSignature() {
@@ -149,6 +151,9 @@ class FootballHubPanel extends HTMLElement {
     this._loadSupporters();
     clearInterval(this._lmsCountdownTimer);
     this._lmsCountdownTimer = setInterval(() => this._updateLmsCountdown(), 1000);
+    clearInterval(this._lmsReminderTimer);
+    this._lmsReminderTimer = setInterval(() => this._checkLmsEmailReminders(), 60000);
+    queueMicrotask(() => this._checkLmsEmailReminders());
     clearInterval(this._lmsSharePullTimer);
     this._lmsSharePullTimer = setInterval(() => this._pullLmsSharePicks(), 30000);
     queueMicrotask(() => this._pullLmsSharePicks());
@@ -157,6 +162,8 @@ class FootballHubPanel extends HTMLElement {
   disconnectedCallback() {
     clearInterval(this._lmsCountdownTimer);
     this._lmsCountdownTimer = null;
+    clearInterval(this._lmsReminderTimer);
+    this._lmsReminderTimer = null;
     clearInterval(this._lmsSharePullTimer);
     this._lmsSharePullTimer = null;
     clearTimeout(this._lmsShareSyncTimer);
@@ -419,7 +426,7 @@ class FootballHubPanel extends HTMLElement {
     return sections.length ? sections.join("\n\n") : "Round fixtures are not available yet.";
   }
 
-  async _sendLmsPlayerEmail(player, quiet = false) {
+  async _sendLmsPlayerEmail(player, quiet = false, reminderKind = "") {
     const competition = this._lmsCompetition;
     const action = String(competition?.emailNotifyService || "");
     if (!player?.email || !player?.pickUrl || !action || !this._hass?.callService) {
@@ -434,9 +441,14 @@ class FootballHubPanel extends HTMLElement {
     }
     try {
       const fixtures = this._lmsEmailFixtureList();
+      const reminderIntro = reminderKind === "day"
+        ? "This is your 24-hour reminder"
+        : reminderKind === "hours"
+          ? "Final reminder: only a few hours remain"
+          : "Choose your Last Man Standing team";
       await this._hass.callService(domain, service, {
-        title: `${competition.name} - Round ${competition.round} team selection`,
-        message: `Hi ${player.name},\n\nChoose your Last Man Standing team for Round ${competition.round}:\n${player.pickUrl}\n\nYour deadline is ${this._lmsEmailDeadline()} local time. Teams already used cannot be selected again.\n\nROUND ${competition.round} FIXTURES\n\n${fixtures}\n\nUse your private link above to make your selection.\n\nFootball Hub`,
+        title: `${reminderKind ? "Reminder: " : ""}${competition.name} - Round ${competition.round} team selection`,
+        message: `Hi ${player.name},\n\n${reminderIntro} for Round ${competition.round}:\n${player.pickUrl}\n\nYour deadline is ${this._lmsEmailDeadline()} local time. Teams already used cannot be selected again.\n\nROUND ${competition.round} FIXTURES\n\n${fixtures}\n\nUse your private link above to make your selection.\n\nFootball Hub`,
         target: [player.email],
       });
       player.lastEmailSent = Math.floor(Date.now() / 1000);
@@ -450,11 +462,17 @@ class FootballHubPanel extends HTMLElement {
     }
   }
 
-  async _sendLmsOutstandingEmails(includeSelected = false) {
+  async _sendLmsOutstandingEmails(includeSelected = false, paidOnly = true) {
     const competition = this._lmsCompetition;
     if (!competition) return 0;
     const roundKey = String(competition.round || 1);
-    const players = (competition.players || []).filter((player) => player.alive && player.email && player.pickUrl && (includeSelected || !player.picks?.[roundKey]));
+    const players = (competition.players || []).filter((player) =>
+      player.alive &&
+      player.email &&
+      player.pickUrl &&
+      (!paidOnly || competition.mode === "global" || player.paid === true) &&
+      (includeSelected || !player.picks?.[roundKey])
+    );
     let sent = 0;
     for (const player of players) if (await this._sendLmsPlayerEmail(player, true)) sent += 1;
     return sent;
@@ -484,7 +502,7 @@ class FootballHubPanel extends HTMLElement {
       this._applyLmsPlayerLinks(result.playerLinks);
       localStorage.setItem(this._lmsMode === "global" ? "football_hub_lms_global" : "football_hub_lms_private", JSON.stringify(this._lmsCompetition));
       this._render();
-      const emailed = this._lmsCompetition.emailNotifyService ? await this._sendLmsOutstandingEmails(true) : 0;
+      const emailed = this._lmsCompetition.emailNotifyService ? await this._sendLmsOutstandingEmails(true, false) : 0;
       const copied = await this._copyText(result.shareUrl);
       if (copied) window.alert(`Competition link generated and copied.${emailed ? ` Pick links emailed to ${emailed} player${emailed === 1 ? "" : "s"}.` : ""}`);
       else window.prompt("Competition link generated. Copy this link:", result.shareUrl);
@@ -676,6 +694,37 @@ class FootballHubPanel extends HTMLElement {
     this.shadowRoot.querySelectorAll(".lms-pick").forEach((select) => {
       if (state.locked) select.disabled = true;
     });
+  }
+
+  async _checkLmsEmailReminders() {
+    const competition = this._lmsCompetition;
+    if (!competition || this._lmsReminderBusy || !competition.emailNotifyService) return;
+    const deadline = this._lmsDeadlineState();
+    if (!deadline.timestamp || deadline.remaining <= 0 || deadline.remaining > 86400000) return;
+    const roundKey = String(competition.round || 1);
+    const reminderKind = deadline.remaining <= 10800000 ? "hours" : "day";
+    const eligiblePlayers = (competition.players || []).filter((player) =>
+      player.alive &&
+      player.email &&
+      player.pickUrl &&
+      !player.picks?.[roundKey] &&
+      (competition.mode === "global" || player.paid === true) &&
+      !player.emailReminders?.[roundKey]?.[reminderKind]
+    );
+    if (!eligiblePlayers.length) return;
+    this._lmsReminderBusy = true;
+    try {
+      for (const player of eligiblePlayers) {
+        if (await this._sendLmsPlayerEmail(player, true, reminderKind)) {
+          player.emailReminders = player.emailReminders || {};
+          player.emailReminders[roundKey] = player.emailReminders[roundKey] || {};
+          player.emailReminders[roundKey][reminderKind] = Math.floor(Date.now() / 1000);
+        }
+      }
+      this._saveLms();
+    } finally {
+      this._lmsReminderBusy = false;
+    }
   }
 
   _lmsTeams() {
