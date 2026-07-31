@@ -1,27 +1,37 @@
-const PANEL_VERSION = "0.13.17-lms-payment-groups";
+const PANEL_VERSION = "0.15.3-developer-key-sanitising";
 const LMS_SHARE_SERVICE = "https://football-hub-lms.zesty-flame-5295.chatgpt.site";
 
 class FootballHubPanel extends HTMLElement {
   constructor() {
     super();
     this.attachShadow({ mode: "open" });
+    this._formDraft = {};
     this._hass = null;
     this._selectInteracting = false;
     this._pendingHassRender = false;
     this._selectSafetyTimer = null;
     this.shadowRoot.addEventListener("pointerdown", (event) => {
-      if (event.target?.tagName === "SELECT") this._beginSelectInteraction();
+      if (["SELECT", "INPUT", "TEXTAREA"].includes(event.target?.tagName)) this._beginSelectInteraction();
     }, true);
     this.shadowRoot.addEventListener("focusin", (event) => {
-      if (event.target?.tagName === "SELECT") this._beginSelectInteraction();
+      if (["SELECT", "INPUT", "TEXTAREA"].includes(event.target?.tagName)) this._beginSelectInteraction();
+    }, true);
+    this.shadowRoot.addEventListener("input", (event) => {
+      if (["INPUT", "TEXTAREA"].includes(event.target?.tagName)) {
+        this._beginSelectInteraction();
+        if (event.target.id) this._formDraft[event.target.id] = { value: event.target.value };
+      }
     }, true);
     this.shadowRoot.addEventListener("change", (event) => {
+      if (event.target?.id) this._formDraft[event.target.id] = event.target.type === "checkbox" || event.target.type === "radio"
+        ? { checked: event.target.checked }
+        : { value: event.target.value };
       if (event.target?.tagName === "SELECT") queueMicrotask(() => this._endSelectInteraction());
     }, true);
     this.shadowRoot.addEventListener("focusout", (event) => {
-      if (event.target?.tagName !== "SELECT") return;
+      if (!["SELECT", "INPUT", "TEXTAREA"].includes(event.target?.tagName)) return;
       setTimeout(() => {
-        if (this.shadowRoot.activeElement?.tagName !== "SELECT") this._endSelectInteraction();
+        if (!["SELECT", "INPUT", "TEXTAREA"].includes(this.shadowRoot.activeElement?.tagName)) this._endSelectInteraction();
       }, 0);
     }, true);
     const savedTab = localStorage.getItem("football_hub_active_page") || "overview";
@@ -50,8 +60,9 @@ class FootballHubPanel extends HTMLElement {
     this._lmsMode = localStorage.getItem("football_hub_lms_mode") || "private";
     this._lmsActiveLeague = localStorage.getItem("football_hub_lms_active_league") || "";
     this._lmsPageView = localStorage.getItem("football_hub_lms_page_view") || "picks";
+    this._globalDeveloperKey = (String(localStorage.getItem("football_hub_global_developer_key") || "").match(/\b[a-f0-9]{64}\b/i) || [""])[0];
     try {
-      this._lmsCompetition = JSON.parse(localStorage.getItem("football_hub_lms_private") || "null");
+      this._lmsCompetition = JSON.parse(localStorage.getItem(this._lmsMode === "global" ? "football_hub_lms_global" : "football_hub_lms_private") || "null");
     } catch (_error) {
       this._lmsCompetition = null;
     }
@@ -94,7 +105,7 @@ class FootballHubPanel extends HTMLElement {
     if (this._pendingCup && this._attrs("cup_centre").competition_key === this._pendingCup) {
       this._pendingCup = "";
     }
-    if (this._selectInteracting || this.shadowRoot.activeElement?.tagName === "SELECT") {
+    if (this._selectInteracting || ["SELECT", "INPUT", "TEXTAREA"].includes(this.shadowRoot.activeElement?.tagName)) {
       this._pendingHassRender = true;
       return;
     }
@@ -107,7 +118,7 @@ class FootballHubPanel extends HTMLElement {
   _beginSelectInteraction() {
     this._selectInteracting = true;
     clearTimeout(this._selectSafetyTimer);
-    this._selectSafetyTimer = setTimeout(() => this._endSelectInteraction(), 15000);
+    this._selectSafetyTimer = setTimeout(() => this._endSelectInteraction(), 300000);
   }
 
   _endSelectInteraction() {
@@ -300,11 +311,12 @@ class FootballHubPanel extends HTMLElement {
   }
 
   _saveLms() {
+    const storageKey = this._lmsMode === "global" ? "football_hub_lms_global" : "football_hub_lms_private";
     if (this._lmsCompetition) {
-      localStorage.setItem("football_hub_lms_private", JSON.stringify(this._lmsCompetition));
+      localStorage.setItem(storageKey, JSON.stringify(this._lmsCompetition));
       this._queueLmsShareSync();
     } else {
-      localStorage.removeItem("football_hub_lms_private");
+      localStorage.removeItem(storageKey);
     }
   }
 
@@ -450,11 +462,18 @@ class FootballHubPanel extends HTMLElement {
 
   async _createLmsShare() {
     if (!this._isLmsAdmin() || !this._lmsCompetition || !LMS_SHARE_SERVICE || this._lmsShareBusy) return;
+    if (this._lmsMode === "global" && !/^[a-f0-9]{64}$/i.test(this._globalDeveloperKey)) {
+      window.alert("The private developer key is invalid. Copy only the 64-character key from the key file.");
+      return false;
+    }
     this._lmsShareBusy = true;
     try {
       const response = await fetch(`${LMS_SHARE_SERVICE}/api/competitions`, {
         method: "POST",
-        headers: { "content-type": "application/json" },
+        headers: {
+          "content-type": "application/json",
+          ...(this._lmsMode === "global" ? { "x-football-hub-owner": this._globalDeveloperKey } : {}),
+        },
         body: JSON.stringify({ competition: this._lmsSharePayload() }),
       });
       const result = await response.json();
@@ -463,14 +482,16 @@ class FootballHubPanel extends HTMLElement {
       this._lmsCompetition.shareEditToken = result.editToken;
       this._lmsCompetition.shareUrl = result.shareUrl;
       this._applyLmsPlayerLinks(result.playerLinks);
-      localStorage.setItem("football_hub_lms_private", JSON.stringify(this._lmsCompetition));
+      localStorage.setItem(this._lmsMode === "global" ? "football_hub_lms_global" : "football_hub_lms_private", JSON.stringify(this._lmsCompetition));
       this._render();
       const emailed = this._lmsCompetition.emailNotifyService ? await this._sendLmsOutstandingEmails(true) : 0;
       const copied = await this._copyText(result.shareUrl);
       if (copied) window.alert(`Competition link generated and copied.${emailed ? ` Pick links emailed to ${emailed} player${emailed === 1 ? "" : "s"}.` : ""}`);
       else window.prompt("Competition link generated. Copy this link:", result.shareUrl);
+      return true;
     } catch (error) {
       window.alert(error?.message || "Unable to generate the competition link.");
+      return false;
     } finally {
       this._lmsShareBusy = false;
     }
@@ -492,13 +513,14 @@ class FootballHubPanel extends HTMLElement {
         headers: {
           "content-type": "application/json",
           "authorization": `Bearer ${competition.shareEditToken}`,
+          ...(competition.mode === "global" ? { "x-football-hub-owner": this._globalDeveloperKey } : {}),
         },
         body: JSON.stringify({ competition: this._lmsSharePayload() }),
       });
       const result = await response.json();
       if (!response.ok) throw new Error(result.error || "Share update failed");
       this._applyLmsPlayerLinks(result.playerLinks);
-      localStorage.setItem("football_hub_lms_private", JSON.stringify(competition));
+      localStorage.setItem(this._lmsMode === "global" ? "football_hub_lms_global" : "football_hub_lms_private", JSON.stringify(competition));
     } catch (error) {
       console.warn("Football Hub LMS share update failed", error);
     } finally {
@@ -515,12 +537,23 @@ class FootballHubPanel extends HTMLElement {
     try {
       const response = await fetch(`${LMS_SHARE_SERVICE}/api/competitions/${encodeURIComponent(competition.shareId)}`, {
         cache: "no-store",
-        headers: competition.shareEditToken ? { "authorization": `Bearer ${competition.shareEditToken}` } : {},
+        headers: {
+          ...(competition.shareEditToken ? { "authorization": `Bearer ${competition.shareEditToken}` } : {}),
+          ...(competition.mode === "global" && this._globalDeveloperKey ? { "x-football-hub-owner": this._globalDeveloperKey } : {}),
+        },
       });
       if (!response.ok) return;
       const remote = (await response.json()).competition;
       const remotePlayers = new Map((remote?.players || []).map((player) => [String(player.id), player]));
       let changed = false;
+      if (competition.mode === "global") {
+        for (const remotePlayer of remote?.players || []) {
+          if (!(competition.players || []).some((player) => String(player.id) === String(remotePlayer.id))) {
+            competition.players.push({ ...remotePlayer, alive: true, points: Number(remotePlayer.points || 0) });
+            changed = true;
+          }
+        }
+      }
       for (const player of competition.players || []) {
         const remotePlayer = remotePlayers.get(String(player.id));
         if (!remotePlayer?.picks) continue;
@@ -532,7 +565,7 @@ class FootballHubPanel extends HTMLElement {
         }
       }
       if (changed) {
-        localStorage.setItem("football_hub_lms_private", JSON.stringify(competition));
+        localStorage.setItem(this._lmsMode === "global" ? "football_hub_lms_global" : "football_hub_lms_private", JSON.stringify(competition));
         this._render();
       }
     } catch (error) {
@@ -708,6 +741,10 @@ class FootballHubPanel extends HTMLElement {
       .filter((item) => leagueKeys.includes(item.key) && (item.type || "league") === "league")
       .map((item) => ({ key: item.key, name: item.name, country: item.country }));
     if (!selectedLeagues.length) return;
+    if (this._lmsMode === "global" && !this._globalDeveloperKey) {
+      window.alert("Enter the private Football Hub developer key.");
+      return;
+    }
     if (String(password).length < 4) {
       window.alert("Choose an administrator password with at least 4 characters.");
       return;
@@ -725,13 +762,16 @@ class FootballHubPanel extends HTMLElement {
       round: 1,
       roundStarted: Math.floor(Date.now() / 1000),
       deadlines: {},
-      entryFee: Math.max(0, Number(entryFee) || 0),
+      entryFee: this._lmsMode === "global" ? 0 : Math.max(0, Number(entryFee) || 0),
       carriedPrize: 0,
       edition: 1,
       completed: false,
       adminPasswordHash: await this._lmsPasswordHash(password),
       created: new Date().toISOString(),
       players: [],
+      mode: this._lmsMode,
+      joiningOpen: false,
+      scoring: this._lmsMode === "global" ? { win: 3, draw: 1, loss: 0, missed: 0 } : undefined,
     };
     this._lmsActiveLeague = selectedLeagues[0].key;
     this._lmsAdminUnlocked = true;
@@ -739,6 +779,14 @@ class FootballHubPanel extends HTMLElement {
     this._saveLms();
     if (status.competition_key !== this._lmsActiveLeague) this._setLeague(this._lmsActiveLeague);
     this._render();
+    if (this._lmsMode === "global") {
+      const published = await this._createLmsShare();
+      if (!published) {
+        this._lmsCompetition = null;
+        this._saveLms();
+        this._render();
+      }
+    }
   }
 
   _addLmsPlayer(name, email = "") {
@@ -913,6 +961,10 @@ class FootballHubPanel extends HTMLElement {
   _settleLmsRound(automatic = false) {
     const competition = this._lmsCompetition;
     if (!competition || competition.completed || (!automatic && !this._isLmsAdmin())) return;
+    if (competition.mode === "global") {
+      this._settleGlobalLmsRound();
+      return;
+    }
     const roundKey = String(competition.round);
     this._captureLmsLeagueData();
     const fixtures = this._lmsRoundFixtureGroups().flatMap((league) => league.roundFixtures || []);
@@ -963,6 +1015,44 @@ class FootballHubPanel extends HTMLElement {
     this._render();
   }
 
+  _settleGlobalLmsRound() {
+    const competition = this._lmsCompetition;
+    if (!competition) return;
+    const roundKey = String(competition.round);
+    this._captureLmsLeagueData();
+    const fixtures = this._lmsRoundFixtureGroups().flatMap((league) => league.roundFixtures || []);
+    let waiting = false;
+    for (const player of competition.players || []) {
+      player.results = player.results || {};
+      if (player.results[roundKey] !== undefined) continue;
+      const pick = player.picks?.[roundKey];
+      if (!pick) {
+        if (this._lmsDeadlineState().locked) player.results[roundKey] = "0";
+        else waiting = true;
+        continue;
+      }
+      const match = fixtures.find((fixture) => fixture.home_team === pick || fixture.away_team === pick);
+      if (!match || !["FT", "AET", "PEN"].includes(String(match.status_short || match.status || "").toUpperCase())) {
+        waiting = true;
+        continue;
+      }
+      const home = Number(match.home_goals);
+      const away = Number(match.away_goals);
+      const won = (match.home_team === pick && home > away) || (match.away_team === pick && away > home);
+      const drawn = home === away;
+      const earned = won ? 3 : drawn ? 1 : 0;
+      player.results[roundKey] = String(earned);
+      player.points = Number(player.points || 0) + earned;
+    }
+    const roundFinished = fixtures.length > 0 && fixtures.every((fixture) => ["FT", "AET", "PEN"].includes(String(fixture.status_short || fixture.status || "").toUpperCase()));
+    if (roundFinished && !waiting) {
+      competition.round += 1;
+      competition.roundStarted = Math.floor(Date.now() / 1000);
+    }
+    this._saveLms();
+    this._render();
+  }
+
   _lastManStandingPage() {
     const competition = this._lmsCompetition;
     const status = this._statusInfo();
@@ -996,10 +1086,18 @@ class FootballHubPanel extends HTMLElement {
       <section class="page-heading"><div><span class="eyebrow">SURVIVE EVERY ROUND</span><h2>Last Man Standing</h2></div>${competition ? `<div class="count-badge">${alive} remaining</div>` : ""}</section>
       <section class="lms-mode-grid">
         <button class="page-card lms-mode ${this._lmsMode === "private" ? "active" : ""}" data-lms-mode="private"><ha-icon icon="mdi:account-group-lock-outline"></ha-icon><strong>Private Competition</strong><span>Create a competition for friends and manage their weekly picks.</span></button>
-        <button class="page-card lms-mode ${this._lmsMode === "global" ? "active" : ""}" data-lms-mode="global"><ha-icon icon="mdi:earth"></ha-icon><strong>Football Hub Global</strong><span>Compete with Football Hub players around the world.</span><em>Coming soon</em></button>
+        <button class="page-card lms-mode ${this._lmsMode === "global" ? "active" : ""}" data-lms-mode="global"><ha-icon icon="mdi:earth"></ha-icon><strong>Football Hub Global</strong><span>Free public points tournaments for Football Hub players worldwide.</span></button>
       </section>
-      ${this._lmsMode === "global" ? `
-        <section class="page-card centred lms-coming"><ha-icon class="huge-icon" icon="mdi:earth"></ha-icon><h2>Football Hub Global</h2><p>The worldwide competition requires a secure shared player and deadline service. The page is ready for that connection and will be enabled in a future release.</p></section>
+      ${this._lmsMode === "global" ? !competition ? `
+        <section class="page-card lms-create"><div><span class="eyebrow">OFFICIAL FOOTBALL HUB GLOBAL</span><h2>Developer-controlled tournament</h2><p>Only the Football Hub developer can create and administer this official competition. Everyone else can join when entries are open.</p><a href="${LMS_SHARE_SERVICE}/lms/football-hub-global" target="_blank" rel="noopener noreferrer">Open official Global LMS page</a></div><div class="lms-form"><input id="lms-global-developer-key" type="password" autocomplete="off" placeholder="Private developer key" value="${this._escape(this._globalDeveloperKey)}"><input id="lms-name" maxlength="60" placeholder="Tournament name"></div><div class="lms-password-setup"><label><span>Administrator password</span><input id="lms-admin-password" type="password" minlength="4" autocomplete="new-password" placeholder="Create password"></label><label><span>Confirm password</span><input id="lms-admin-confirm" type="password" minlength="4" autocomplete="new-password" placeholder="Repeat password"></label></div><div class="lms-league-heading"><strong>Choose the leagues included</strong><span>Players can pick from every selected league</span></div><div class="lms-league-groups">${leagueCountries.map((country) => `<fieldset><legend>${this._escape(country)}</legend>${leagueCatalogue.filter((item) => item.country === country).map((item) => `<label><input type="checkbox" class="lms-league-check" value="${this._escape(item.key)}" ${item.key === status.competition_key ? "checked" : ""}><span>${this._escape(item.name)}</span></label>`).join("")}</fieldset>`).join("")}</div><button id="lms-create" class="lms-create-button">Create Official Global LMS</button></section>
+      ` : `
+        <section class="page-card lms-summary"><div><span class="eyebrow">GLOBAL POINTS TOURNAMENT</span><h2>${this._escape(competition.name)}</h2><p>${this._escape((competition.leagues || []).map((item) => item.name).join(" · "))} · Round ${competition.round}</p></div><div class="lms-summary-stats"><span><b>${competition.players.length}</b> players</span><span><b>${Math.max(0, ...competition.players.map((player) => Number(player.points || 0)))}</b> leading points</span>${adminUnlocked ? `<button id="lms-admin-lock">Lock admin</button><button id="lms-delete" class="danger">Delete</button>` : ""}</div></section>
+        ${adminUnlocked ? "" : `<section class="page-card lms-admin-unlock"><ha-icon icon="mdi:shield-key-outline"></ha-icon><div><strong>Administrator access required</strong><span>Enter your setup password to manage this tournament.</span></div><input id="lms-admin-unlock-password" type="password" autocomplete="current-password" placeholder="Administrator password"><button id="lms-admin-unlock">Unlock</button></section>`}
+        <section class="page-card lms-share"><ha-icon icon="mdi:earth"></ha-icon><div><span class="eyebrow">PUBLIC GLOBAL PAGE</span><strong>${competition.shareUrl ? "Tournament is live" : "Publish the tournament"}</strong><small>Only you can create and administer this tournament. Public visitors can join only while entries are open.</small>${competition.shareUrl ? `<a href="${this._escape(competition.shareUrl)}" target="_blank" rel="noopener noreferrer">${this._escape(competition.shareUrl)}</a>` : ""}</div>${adminUnlocked ? competition.shareUrl ? `<button id="lms-toggle-joining" class="${competition.joiningOpen ? "danger" : ""}">${competition.joiningOpen ? "Close entries" : "Open entries"}</button><button id="lms-copy-share">Copy link</button><button id="lms-share-sync">Update now</button>` : `<button id="lms-create-share">Publish Global LMS</button>` : ""}</section>
+        <section class="page-card lms-deadline ${deadline.locked ? "locked" : ""}"><ha-icon icon="mdi:timer-alert-outline"></ha-icon><div><span class="eyebrow">ROUND ${competition.round} DEADLINE</span><strong>${this._escape(deadlineLocal)} local time</strong><small>All picks lock before the first selected match.</small></div><b id="lms-countdown">${deadline.timestamp ? this._formatLmsCountdown(deadline.remaining) : "Waiting for fixture times"}</b></section>
+        <section class="page-card lms-rules"><strong>Points rules</strong><span>Win = 3 points</span><span>Draw = 1 point</span><span>Loss or missed pick = 0 points</span><span>No team can be used twice</span><span>Picks stay hidden until the deadline</span></section>
+        <section class="page-card lms-league-switch"><label><span>Load league data</span><select id="lms-active-league">${(competition.leagues || []).map((league) => `<option value="${this._escape(league.key)}" ${league.key === selectedLmsLeague ? "selected" : ""}>${this._escape(league.country)} · ${this._escape(league.name)}</option>`).join("")}</select></label><button id="lms-settle">Check scores & award points</button></section>
+        <section class="page-card lms-standings"><header><div><span class="eyebrow">GLOBAL LEADERBOARD</span><h2>Points table</h2></div><b>${competition.players.length} players</b></header><div class="lms-standings-table"><div class="lms-standings-row heading"><span>#</span><span>Player</span><span>Points</span><span>Current pick</span><span>Teams used</span><span>Round</span></div>${[...competition.players].sort((a,b) => Number(b.points || 0) - Number(a.points || 0) || String(a.name).localeCompare(String(b.name))).map((player,index) => `<div class="lms-standings-row through"><span>${index+1}</span><strong>${this._escape(player.name)}</strong><span><b>${Number(player.points || 0)} pts</b></span><span>${this._escape(player.picks?.[roundKey] || "Awaiting pick")}</span><span>${this._escape(Object.entries(player.picks || {}).map(([round,team]) => `R${round}: ${team}`).join(" · ") || "None")}</span><span>${competition.round}</span></div>`).join("") || `<div class="empty">Publish the tournament and share its link so players can join.</div>`}</div></section>
       ` : !competition ? `
         <section class="page-card lms-create"><div><span class="eyebrow">NEW PRIVATE GAME</span><h2>Create your competition</h2><p>Win to survive. A draw or defeat eliminates the player, and a team cannot be selected twice.</p></div><div class="lms-form"><input id="lms-name" maxlength="60" placeholder="Competition name"><label class="lms-fee-input"><span>Entry fee</span><b>£</b><input id="lms-entry-fee" type="number" min="0" step="0.50" value="5"></label></div><div class="lms-password-setup"><label><span>Administrator password</span><input id="lms-admin-password" type="password" minlength="4" autocomplete="new-password" placeholder="Create password"></label><label><span>Confirm password</span><input id="lms-admin-confirm" type="password" minlength="4" autocomplete="new-password" placeholder="Repeat password"></label><small>Only the administrator can change players, picks or results.</small></div><div class="lms-league-heading"><strong>Choose the leagues included</strong><span>Tick one or more leagues</span></div><div class="lms-league-groups">${leagueCountries.map((country) => `<fieldset><legend>${this._escape(country)}</legend>${leagueCatalogue.filter((item) => item.country === country).map((item) => `<label><input type="checkbox" class="lms-league-check" value="${this._escape(item.key)}" ${item.key === status.competition_key ? "checked" : ""}><span>${this._escape(item.name)}</span></label>`).join("")}</fieldset>`).join("")}</div><button id="lms-create" class="lms-create-button">Create competition</button><small>Football Hub will use the selected leagues for team picks and results.</small></section>
       ` : `
@@ -1485,10 +1583,24 @@ class FootballHubPanel extends HTMLElement {
     return value === null || value === undefined ? "–" : this._escape(value);
   }
 
+  _matchText(value) {
+    if (value === null || value === undefined) return "";
+    if (typeof value !== "object") return String(value);
+    for (const key of ["long", "short", "name", "label", "text", "description", "value", "reason", "status"]) {
+      if (value[key] !== null && value[key] !== undefined) {
+        const text = this._matchText(value[key]);
+        if (text) return text;
+      }
+    }
+    return "";
+  }
+
   _matchCard(match, mode = "fixture") {
     if (!match) return `<div class="empty">No match data available.</div>`;
 
     const isResult = mode === "result";
+    const roundText = this._matchText(match.round) || "Fixture";
+    const statusText = this._matchText(match.status) || this._matchText(match.status_short);
     const score = isResult || match.status_short !== "NS"
       ? `<div class="match-score">${this._score(match.home_goals)} <span>–</span> ${this._score(match.away_goals)}</div>`
       : `<div class="match-time">${this._formatDate(match.kickoff)}</div>`;
@@ -1496,8 +1608,8 @@ class FootballHubPanel extends HTMLElement {
     return `
       <article class="match-card">
         <div class="match-meta">
-          <span>${this._escape(match.round || "Fixture")}</span>
-          <span>${this._escape(match.status || match.status_short || "")}</span>
+          <span>${this._escape(roundText)}</span>
+          <span>${this._escape(statusText)}</span>
         </div>
         <div class="match-teams">
           <div class="team home">
@@ -2066,11 +2178,15 @@ class FootballHubPanel extends HTMLElement {
   _resultsPage() {
     const attrs = this._attrs("results");
     const results = attrs.latest_5 || [];
+    const rawTotal = attrs.total_results;
+    const totalResults = rawTotal && typeof rawTotal === "object"
+      ? rawTotal.total ?? rawTotal.count ?? rawTotal.value ?? results.length
+      : rawTotal ?? results.length;
 
     return `
       <section class="page-heading">
         <div><span class="eyebrow">COMPLETED MATCHES</span><h2>Results</h2></div>
-        <div class="count-badge">${this._escape(attrs.total_results || 0)} played</div>
+        <div class="count-badge">${this._escape(totalResults)} played</div>
       </section>
       <div class="match-list">${results.length ? results.map((m) => this._matchCard(m, "result")).join("") : `<div class="empty">No results available yet.</div>`}</div>
     `;
@@ -2528,6 +2644,13 @@ class FootballHubPanel extends HTMLElement {
 
     this._translateRenderedPage();
 
+    for (const [id, draft] of Object.entries(this._formDraft)) {
+      const control = this.shadowRoot.getElementById(id);
+      if (!control) continue;
+      if (Object.prototype.hasOwnProperty.call(draft, "checked")) control.checked = draft.checked;
+      if (Object.prototype.hasOwnProperty.call(draft, "value")) control.value = draft.value;
+    }
+
     this.shadowRoot.querySelectorAll("[data-tab]").forEach((button) => {
       button.addEventListener("click", () => this._setTab(button.dataset.tab));
     });
@@ -2636,12 +2759,24 @@ class FootballHubPanel extends HTMLElement {
 
     this.shadowRoot.querySelectorAll("[data-lms-mode]").forEach((button) => {
       button.addEventListener("click", () => {
+        this._saveLms();
         this._lmsMode = button.dataset.lmsMode;
         localStorage.setItem("football_hub_lms_mode", this._lmsMode);
+        try {
+          this._lmsCompetition = JSON.parse(localStorage.getItem(this._lmsMode === "global" ? "football_hub_lms_global" : "football_hub_lms_private") || "null");
+        } catch (_error) {
+          this._lmsCompetition = null;
+        }
+        this._lmsAdminUnlocked = false;
         this._render();
       });
     });
     this.shadowRoot.querySelector("#lms-create")?.addEventListener("click", async () => {
+      if (this._lmsMode === "global") {
+        const enteredKey = String(this.shadowRoot.querySelector("#lms-global-developer-key")?.value || "");
+        this._globalDeveloperKey = (enteredKey.match(/\b[a-f0-9]{64}\b/i) || [""])[0];
+        if (this._globalDeveloperKey) localStorage.setItem("football_hub_global_developer_key", this._globalDeveloperKey);
+      }
       const leagues = [...this.shadowRoot.querySelectorAll(".lms-league-check:checked")].map((input) => input.value);
       await this._createLmsCompetition(
         this.shadowRoot.querySelector("#lms-name")?.value,
@@ -2689,6 +2824,13 @@ class FootballHubPanel extends HTMLElement {
       );
     });
     this.shadowRoot.querySelector("#lms-create-share")?.addEventListener("click", () => this._createLmsShare());
+    this.shadowRoot.querySelector("#lms-toggle-joining")?.addEventListener("click", async () => {
+      if (!this._isLmsAdmin() || !this._lmsCompetition || this._lmsMode !== "global") return;
+      this._lmsCompetition.joiningOpen = !this._lmsCompetition.joiningOpen;
+      this._saveLms();
+      await this._syncLmsShare();
+      this._render();
+    });
     this.shadowRoot.querySelector("#lms-share-sync")?.addEventListener("click", async () => {
       await this._pullLmsSharePicks(true);
       await this._syncLmsShare();
