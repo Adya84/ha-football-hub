@@ -1,4 +1,4 @@
-const PANEL_VERSION = "0.15.4-paid-private-reminders";
+const PANEL_VERSION = "0.16.1-efl-cup-fixtures-results";
 const LMS_SHARE_SERVICE = "https://football-hub-lms.zesty-flame-5295.chatgpt.site";
 
 class FootballHubPanel extends HTMLElement {
@@ -60,6 +60,7 @@ class FootballHubPanel extends HTMLElement {
     this._lmsMode = localStorage.getItem("football_hub_lms_mode") || "private";
     this._lmsActiveLeague = localStorage.getItem("football_hub_lms_active_league") || "";
     this._lmsPageView = localStorage.getItem("football_hub_lms_page_view") || "picks";
+    this._lmsAdminPassword = "";
     this._globalDeveloperKey = (String(localStorage.getItem("football_hub_global_developer_key") || "").match(/\b[a-f0-9]{64}\b/i) || [""])[0];
     try {
       this._lmsCompetition = JSON.parse(localStorage.getItem(this._lmsMode === "global" ? "football_hub_lms_global" : "football_hub_lms_private") || "null");
@@ -155,7 +156,7 @@ class FootballHubPanel extends HTMLElement {
     this._lmsReminderTimer = setInterval(() => this._checkLmsEmailReminders(), 60000);
     queueMicrotask(() => this._checkLmsEmailReminders());
     clearInterval(this._lmsSharePullTimer);
-    this._lmsSharePullTimer = setInterval(() => this._pullLmsSharePicks(), 30000);
+    this._lmsSharePullTimer = setInterval(() => this._pullLmsSharePicks(), 2000);
     queueMicrotask(() => this._pullLmsSharePicks());
   }
 
@@ -317,11 +318,11 @@ class FootballHubPanel extends HTMLElement {
     return `<article class="supporter-card"><div class="supporter-avatar">${this._countryFlag(country, "supporter-avatar-flag")}</div><div class="supporter-copy"><strong>${this._escape(name || "Anonymous Supporter")}</strong><div class="supporter-meta">${country ? `<span class="supporter-country">${this._escape(country)}</span>` : ""}${date ? `<span>${this._escape(date)}</span>` : ""}</div>${message ? `<p>${this._escape(message)}</p>` : ""}</div></article>`;
   }
 
-  _saveLms() {
+  _saveLms(sync = true) {
     const storageKey = this._lmsMode === "global" ? "football_hub_lms_global" : "football_hub_lms_private";
     if (this._lmsCompetition) {
       localStorage.setItem(storageKey, JSON.stringify(this._lmsCompetition));
-      this._queueLmsShareSync();
+      if (sync) this._queueLmsShareSync();
     } else {
       localStorage.removeItem(storageKey);
     }
@@ -359,6 +360,7 @@ class FootballHubPanel extends HTMLElement {
     for (const player of competition.players || []) {
       const link = byId.get(String(player.id));
       if (link?.url) player.pickUrl = link.url;
+      if (link?.email && !player.email) player.email = link.email;
     }
   }
 
@@ -492,7 +494,7 @@ class FootballHubPanel extends HTMLElement {
           "content-type": "application/json",
           ...(this._lmsMode === "global" ? { "x-football-hub-owner": this._globalDeveloperKey } : {}),
         },
-        body: JSON.stringify({ competition: this._lmsSharePayload() }),
+        body: JSON.stringify({ competition: this._lmsSharePayload(), ...(this._lmsMode === "private" ? { adminPassword: this._lmsAdminPassword } : {}) }),
       });
       const result = await response.json();
       if (!response.ok) throw new Error(result.error || "Unable to generate share link");
@@ -516,40 +518,52 @@ class FootballHubPanel extends HTMLElement {
   }
 
   _queueLmsShareSync() {
-    if (!this._lmsCompetition?.shareId || !this._lmsCompetition?.shareEditToken || !LMS_SHARE_SERVICE) return;
+    if (!this._lmsCompetition?.shareId || (!this._lmsCompetition?.shareEditToken && !this._lmsAdminPassword) || !LMS_SHARE_SERVICE) return;
+    this._lmsShareSyncPending = true;
     clearTimeout(this._lmsShareSyncTimer);
-    this._lmsShareSyncTimer = setTimeout(() => this._syncLmsShare(), 1200);
+    this._lmsShareSyncTimer = setTimeout(() => this._syncLmsShare(), 250);
   }
 
   async _syncLmsShare() {
     const competition = this._lmsCompetition;
-    if (!competition?.shareId || !competition?.shareEditToken || !LMS_SHARE_SERVICE || this._lmsShareBusy) return;
+    if (!competition?.shareId || (!competition?.shareEditToken && !this._lmsAdminPassword) || !LMS_SHARE_SERVICE) return;
+    if (this._lmsShareBusy) {
+      clearTimeout(this._lmsShareSyncTimer);
+      this._lmsShareSyncTimer = setTimeout(() => this._syncLmsShare(), 1500);
+      return;
+    }
     this._lmsShareBusy = true;
     try {
       const response = await fetch(`${LMS_SHARE_SERVICE}/api/competitions/${encodeURIComponent(competition.shareId)}`, {
         method: "PUT",
         headers: {
           "content-type": "application/json",
-          "authorization": `Bearer ${competition.shareEditToken}`,
+          ...(competition.shareEditToken ? { "authorization": `Bearer ${competition.shareEditToken}` } : {}),
+          ...(this._lmsAdminPassword ? { "x-admin-password": this._lmsAdminPassword } : {}),
           ...(competition.mode === "global" ? { "x-football-hub-owner": this._globalDeveloperKey } : {}),
         },
-        body: JSON.stringify({ competition: this._lmsSharePayload() }),
+        body: JSON.stringify({ competition: this._lmsSharePayload(), ...(competition.mode === "private" && this._lmsAdminPassword ? { adminPassword: this._lmsAdminPassword } : {}) }),
       });
       const result = await response.json();
       if (!response.ok) throw new Error(result.error || "Share update failed");
       this._applyLmsPlayerLinks(result.playerLinks);
       localStorage.setItem(this._lmsMode === "global" ? "football_hub_lms_global" : "football_hub_lms_private", JSON.stringify(competition));
+      this._lmsShareSyncPending = false;
     } catch (error) {
       console.warn("Football Hub LMS share update failed", error);
     } finally {
       this._lmsShareBusy = false;
+      if (this._lmsShareSyncPending) {
+        clearTimeout(this._lmsShareSyncTimer);
+        this._lmsShareSyncTimer = setTimeout(() => this._syncLmsShare(), 1500);
+      }
     }
   }
 
   async _pullLmsSharePicks(force = false) {
     const competition = this._lmsCompetition;
-    if (this._activeTab !== "last-man-standing" || !competition?.shareId || !LMS_SHARE_SERVICE || this._lmsShareBusy) return;
-    if (!force && Date.now() - this._lmsShareLastPull < 25000) return;
+    if (this._activeTab !== "last-man-standing" || !competition?.shareId || !LMS_SHARE_SERVICE || this._lmsShareBusy || this._lmsShareSyncPending) return;
+    if (!force && Date.now() - this._lmsShareLastPull < 1500) return;
     this._lmsShareLastPull = Date.now();
     this._lmsShareBusy = true;
     try {
@@ -557,11 +571,30 @@ class FootballHubPanel extends HTMLElement {
         cache: "no-store",
         headers: {
           ...(competition.shareEditToken ? { "authorization": `Bearer ${competition.shareEditToken}` } : {}),
+          ...(this._lmsAdminPassword ? { "x-admin-password": this._lmsAdminPassword } : {}),
           ...(competition.mode === "global" && this._globalDeveloperKey ? { "x-football-hub-owner": this._globalDeveloperKey } : {}),
         },
       });
       if (!response.ok) return;
-      const remote = (await response.json()).competition;
+      const result = await response.json();
+      const remote = result.competition;
+      if (competition.mode === "private" && Object.prototype.hasOwnProperty.call(result, "playerLinks")) {
+        const localAccess = {
+          shareId: competition.shareId,
+          shareUrl: competition.shareUrl,
+          shareEditToken: competition.shareEditToken,
+          adminPasswordHash: competition.adminPasswordHash,
+        };
+        Object.assign(competition, remote, localAccess);
+        this._applyLmsPlayerLinks(result.playerLinks || []);
+        if (!(competition.leagues || []).some((league) => league.key === this._lmsActiveLeague)) {
+          this._lmsActiveLeague = competition.leagues?.[0]?.key || "";
+          localStorage.setItem("football_hub_lms_active_league", this._lmsActiveLeague);
+        }
+        localStorage.setItem("football_hub_lms_private", JSON.stringify(competition));
+        this._render();
+        return;
+      }
       const remotePlayers = new Map((remote?.players || []).map((player) => [String(player.id), player]));
       let changed = false;
       if (competition.mode === "global") {
@@ -638,7 +671,51 @@ class FootballHubPanel extends HTMLElement {
       return;
     }
     this._lmsAdminUnlocked = true;
+    this._lmsAdminPassword = String(password || "");
     this._render();
+  }
+
+  async _openRemoteLmsGame(value, password) {
+    const entered = String(value || "").trim();
+    const adminPassword = String(password || "");
+    if (!entered || adminPassword.length < 4 || !LMS_SHARE_SERVICE) {
+      window.alert("Enter the competition link or ID and its administrator password.");
+      return;
+    }
+    let shareId = entered;
+    try {
+      const url = new URL(entered);
+      shareId = url.searchParams.get("competition") || url.pathname.match(/\/lms\/([^/?#]+)/)?.[1] || entered;
+    } catch (_error) {
+      shareId = entered;
+    }
+    shareId = decodeURIComponent(String(shareId).trim());
+    try {
+      const response = await fetch(`${LMS_SHARE_SERVICE}/api/competitions/${encodeURIComponent(shareId)}`, {
+        cache: "no-store",
+        headers: { "x-admin-password": adminPassword },
+      });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error || "Competition could not be opened");
+      const competition = result.competition || {};
+      if (competition.mode && competition.mode !== "private") throw new Error("This is not a private LMS competition.");
+      competition.shareId = shareId;
+      competition.shareUrl = `${LMS_SHARE_SERVICE}/lms/${encodeURIComponent(shareId)}`;
+      competition.adminPasswordHash = await this._lmsPasswordHash(adminPassword);
+      this._lmsCompetition = competition;
+      this._lmsMode = "private";
+      this._lmsAdminPassword = adminPassword;
+      this._lmsAdminUnlocked = true;
+      this._lmsActiveLeague = competition.leagues?.[0]?.key || "";
+      this._applyLmsPlayerLinks(result.playerLinks || []);
+      localStorage.setItem("football_hub_lms_mode", "private");
+      localStorage.setItem("football_hub_lms_private", JSON.stringify(competition));
+      if (this._lmsActiveLeague) localStorage.setItem("football_hub_lms_active_league", this._lmsActiveLeague);
+      this._render();
+      window.alert(`Opened ${competition.name || "the competition"}. Changes will stay synced across devices.`);
+    } catch (error) {
+      window.alert(error?.message || "Competition could not be opened. Check the link and password.");
+    }
   }
 
   _lmsFixtureTimestamp(fixture) {
@@ -794,8 +871,8 @@ class FootballHubPanel extends HTMLElement {
       window.alert("Enter the private Football Hub developer key.");
       return;
     }
-    if (String(password).length < 4) {
-      window.alert("Choose an administrator password with at least 4 characters.");
+    if (String(password).length < 6) {
+      window.alert("Choose an administrator password with at least 6 characters.");
       return;
     }
     if (password !== confirmation) {
@@ -824,13 +901,14 @@ class FootballHubPanel extends HTMLElement {
     };
     this._lmsActiveLeague = selectedLeagues[0].key;
     this._lmsAdminUnlocked = true;
+    this._lmsAdminPassword = String(password);
     localStorage.setItem("football_hub_lms_active_league", this._lmsActiveLeague);
     this._saveLms();
     if (status.competition_key !== this._lmsActiveLeague) this._setLeague(this._lmsActiveLeague);
     this._render();
-    if (this._lmsMode === "global") {
+    if (this._lmsMode === "global" || this._lmsMode === "private") {
       const published = await this._createLmsShare();
-      if (!published) {
+      if (!published && this._lmsMode === "global") {
         this._lmsCompetition = null;
         this._saveLms();
         this._render();
@@ -879,13 +957,43 @@ class FootballHubPanel extends HTMLElement {
     this._render();
   }
 
-  _toggleLmsPaid(playerId) {
+  async _toggleLmsPaid(playerId) {
     if (!this._isLmsAdmin()) return;
     const player = this._lmsCompetition?.players?.find((item) => item.id === playerId);
     if (!player) return;
-    player.paid = !player.paid;
-    this._saveLms();
+    const previous = Boolean(player.paid);
+    player.paid = !previous;
+    this._saveLms(false);
     this._render();
+    const competition = this._lmsCompetition;
+    if (!competition?.shareId || (!competition.shareEditToken && !this._lmsAdminPassword)) {
+      player.paid = previous;
+      this._saveLms(false);
+      this._render();
+      window.alert("This payment was not saved. Reopen the shared game with its link and administrator password.");
+      return;
+    }
+    this._lmsShareBusy = true;
+    try {
+      const response = await fetch(`${LMS_SHARE_SERVICE}/api/competitions/${encodeURIComponent(competition.shareId)}`, {
+        method: "PATCH",
+        headers: {
+          "content-type": "application/json",
+          ...(competition.shareEditToken ? { "authorization": `Bearer ${competition.shareEditToken}` } : {}),
+          ...(this._lmsAdminPassword ? { "x-admin-password": this._lmsAdminPassword } : {}),
+        },
+        body: JSON.stringify({ action: "set-player-paid", playerId, paid: player.paid }),
+      });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error || "Payment status could not be shared");
+    } catch (error) {
+      player.paid = previous;
+      this._saveLms(false);
+      this._render();
+      window.alert(error?.message || "Payment status could not be shared.");
+    } finally {
+      this._lmsShareBusy = false;
+    }
   }
 
   _editLmsPlayerEmail(playerId) {
@@ -1137,6 +1245,8 @@ class FootballHubPanel extends HTMLElement {
         <button class="page-card lms-mode ${this._lmsMode === "private" ? "active" : ""}" data-lms-mode="private"><ha-icon icon="mdi:account-group-lock-outline"></ha-icon><strong>Private Competition</strong><span>Create a competition for friends and manage their weekly picks.</span></button>
         <button class="page-card lms-mode ${this._lmsMode === "global" ? "active" : ""}" data-lms-mode="global"><ha-icon icon="mdi:earth"></ha-icon><strong>Football Hub Global</strong><span>Free public points tournaments for Football Hub players worldwide.</span></button>
       </section>
+      <section class="page-card lms-share lms-external-organiser"><ha-icon icon="mdi:open-in-new"></ha-icon><div><span class="eyebrow">EXTERNAL LMS ORGANISER</span><strong>Create a private competition outside Home Assistant</strong><small>Open the standalone Football Hub LMS, then copy its competition and player links to share with friends.</small><a href="${LMS_SHARE_SERVICE}/organise" target="_blank" rel="noopener noreferrer">Football_hub_External</a></div><a class="button-link" href="${LMS_SHARE_SERVICE}/organise" target="_blank" rel="noopener noreferrer">Open organiser</a><button id="lms-copy-external-organiser"><ha-icon icon="mdi:content-copy"></ha-icon> Copy link</button></section>
+      ${this._lmsMode === "private" ? `<section class="page-card lms-remote-login"><ha-icon icon="mdi:devices"></ha-icon><div><span class="eyebrow">OPEN ON THIS DEVICE</span><strong>Open or switch to an existing private game</strong><small>Paste its competition or admin link and enter the administrator password. The game will sync between devices.</small></div><input id="lms-remote-game" autocomplete="off" placeholder="Paste competition link or ID here"><input id="lms-remote-password" type="password" autocomplete="current-password" placeholder="Administrator password"><button id="lms-remote-open">Open game</button></section>` : ""}
       ${this._lmsMode === "global" ? !competition ? `
         <section class="page-card lms-create"><div><span class="eyebrow">OFFICIAL FOOTBALL HUB GLOBAL</span><h2>Developer-controlled tournament</h2><p>Only the Football Hub developer can create and administer this official competition. Everyone else can join when entries are open.</p><a href="${LMS_SHARE_SERVICE}/lms/football-hub-global" target="_blank" rel="noopener noreferrer">Open official Global LMS page</a></div><div class="lms-form"><input id="lms-global-developer-key" type="password" autocomplete="off" placeholder="Private developer key" value="${this._escape(this._globalDeveloperKey)}"><input id="lms-name" maxlength="60" placeholder="Tournament name"></div><div class="lms-password-setup"><label><span>Administrator password</span><input id="lms-admin-password" type="password" minlength="4" autocomplete="new-password" placeholder="Create password"></label><label><span>Confirm password</span><input id="lms-admin-confirm" type="password" minlength="4" autocomplete="new-password" placeholder="Repeat password"></label></div><div class="lms-league-heading"><strong>Choose the leagues included</strong><span>Players can pick from every selected league</span></div><div class="lms-league-groups">${leagueCountries.map((country) => `<fieldset><legend>${this._escape(country)}</legend>${leagueCatalogue.filter((item) => item.country === country).map((item) => `<label><input type="checkbox" class="lms-league-check" value="${this._escape(item.key)}" ${item.key === status.competition_key ? "checked" : ""}><span>${this._escape(item.name)}</span></label>`).join("")}</fieldset>`).join("")}</div><button id="lms-create" class="lms-create-button">Create Official Global LMS</button></section>
       ` : `
@@ -1148,7 +1258,7 @@ class FootballHubPanel extends HTMLElement {
         <section class="page-card lms-league-switch"><label><span>Load league data</span><select id="lms-active-league">${(competition.leagues || []).map((league) => `<option value="${this._escape(league.key)}" ${league.key === selectedLmsLeague ? "selected" : ""}>${this._escape(league.country)} · ${this._escape(league.name)}</option>`).join("")}</select></label><button id="lms-settle">Check scores & award points</button></section>
         <section class="page-card lms-standings"><header><div><span class="eyebrow">GLOBAL LEADERBOARD</span><h2>Points table</h2></div><b>${competition.players.length} players</b></header><div class="lms-standings-table"><div class="lms-standings-row heading"><span>#</span><span>Player</span><span>Points</span><span>Current pick</span><span>Teams used</span><span>Round</span></div>${[...competition.players].sort((a,b) => Number(b.points || 0) - Number(a.points || 0) || String(a.name).localeCompare(String(b.name))).map((player,index) => `<div class="lms-standings-row through"><span>${index+1}</span><strong>${this._escape(player.name)}</strong><span><b>${Number(player.points || 0)} pts</b></span><span>${this._escape(player.picks?.[roundKey] || "Awaiting pick")}</span><span>${this._escape(Object.entries(player.picks || {}).map(([round,team]) => `R${round}: ${team}`).join(" · ") || "None")}</span><span>${competition.round}</span></div>`).join("") || `<div class="empty">Publish the tournament and share its link so players can join.</div>`}</div></section>
       ` : !competition ? `
-        <section class="page-card lms-create"><div><span class="eyebrow">NEW PRIVATE GAME</span><h2>Create your competition</h2><p>Win to survive. A draw or defeat eliminates the player, and a team cannot be selected twice.</p></div><div class="lms-form"><input id="lms-name" maxlength="60" placeholder="Competition name"><label class="lms-fee-input"><span>Entry fee</span><b>£</b><input id="lms-entry-fee" type="number" min="0" step="0.50" value="5"></label></div><div class="lms-password-setup"><label><span>Administrator password</span><input id="lms-admin-password" type="password" minlength="4" autocomplete="new-password" placeholder="Create password"></label><label><span>Confirm password</span><input id="lms-admin-confirm" type="password" minlength="4" autocomplete="new-password" placeholder="Repeat password"></label><small>Only the administrator can change players, picks or results.</small></div><div class="lms-league-heading"><strong>Choose the leagues included</strong><span>Tick one or more leagues</span></div><div class="lms-league-groups">${leagueCountries.map((country) => `<fieldset><legend>${this._escape(country)}</legend>${leagueCatalogue.filter((item) => item.country === country).map((item) => `<label><input type="checkbox" class="lms-league-check" value="${this._escape(item.key)}" ${item.key === status.competition_key ? "checked" : ""}><span>${this._escape(item.name)}</span></label>`).join("")}</fieldset>`).join("")}</div><button id="lms-create" class="lms-create-button">Create competition</button><small>Football Hub will use the selected leagues for team picks and results.</small></section>
+        <section class="page-card lms-create"><div><span class="eyebrow">NEW PRIVATE GAME</span><h2>Create your competition</h2><p>Win to survive. A draw or defeat eliminates the player, and a team cannot be selected twice.</p></div><div class="lms-form"><input id="lms-name" maxlength="60" placeholder="Competition name"><label class="lms-fee-input"><span>Entry fee</span><b>£</b><input id="lms-entry-fee" type="number" min="0" step="0.50" value="5"></label></div><div class="lms-password-setup"><label><span>Administrator password</span><input id="lms-admin-password" type="password" minlength="6" autocomplete="new-password" placeholder="Create password"></label><label><span>Confirm password</span><input id="lms-admin-confirm" type="password" minlength="6" autocomplete="new-password" placeholder="Repeat password"></label><small>Use this password with the competition link to manage the same game on another device.</small></div><div class="lms-league-heading"><strong>Choose the leagues included</strong><span>Tick one or more leagues</span></div><div class="lms-league-groups">${leagueCountries.map((country) => `<fieldset><legend>${this._escape(country)}</legend>${leagueCatalogue.filter((item) => item.country === country).map((item) => `<label><input type="checkbox" class="lms-league-check" value="${this._escape(item.key)}" ${item.key === status.competition_key ? "checked" : ""}><span>${this._escape(item.name)}</span></label>`).join("")}</fieldset>`).join("")}</div><button id="lms-create" class="lms-create-button">Create competition</button><small>Football Hub will use the selected leagues for team picks and results.</small></section>
       ` : `
         <section class="page-card lms-summary"><div><span class="eyebrow">PRIVATE COMPETITION · EDITION ${Number(competition.edition || 1)}</span><h2>${this._escape(competition.name)}</h2><p>${this._escape((competition.leagues || []).map((item) => item.name).join(" · ") || competition.competitionName)} · Round ${competition.round}</p></div><div class="lms-summary-stats"><span><b>${(competition.leagues || []).length || 1}</b> leagues</span><span><b>${competition.players.length}</b> players</span><span><b>${alive}</b> remaining</span><span class="lms-picked-total"><b>${pickedThisRound}/${alive}</b> selected</span>${adminUnlocked ? `<button id="lms-admin-lock"><ha-icon icon="mdi:lock-outline"></ha-icon> Lock admin</button><button id="lms-delete" class="danger">Delete</button>` : `<span class="lms-admin-status"><ha-icon icon="mdi:shield-lock-outline"></ha-icon> ${needsAdminPassword ? "Password setup required" : "Admin locked"}</span>`}</div></section>
         <section class="page-card lms-prize"><div><span class="eyebrow">PRIZE FUND</span><strong>£${prizeFund.toFixed(2)}</strong><small>${paidCount} entries${buyBackCount ? ` + ${buyBackCount} buy-back${buyBackCount === 1 ? "" : "s"}` : ""} × £${entryFee.toFixed(2)}${carriedPrize ? ` + £${carriedPrize.toFixed(2)} rollover` : ""}</small></div>${adminUnlocked ? `<label><span>Entry fee</span><b>£</b><input id="lms-edit-entry-fee" type="number" min="0" step="0.50" value="${entryFee.toFixed(2)}"></label><button id="lms-rollover"><ha-icon icon="mdi:cash-sync"></ha-icon> Rollover competition</button>` : `<span>${paidCount}/${competition.players.length} players paid</span>`}</section>
@@ -2835,6 +2945,15 @@ class FootballHubPanel extends HTMLElement {
         this.shadowRoot.querySelector("#lms-entry-fee")?.value,
       );
     });
+    this.shadowRoot.querySelector("#lms-remote-open")?.addEventListener("click", async () => {
+      await this._openRemoteLmsGame(
+        this.shadowRoot.querySelector("#lms-remote-game")?.value,
+        this.shadowRoot.querySelector("#lms-remote-password")?.value,
+      );
+    });
+    this.shadowRoot.querySelector("#lms-remote-password")?.addEventListener("keydown", async (event) => {
+      if (event.key === "Enter") await this._openRemoteLmsGame(this.shadowRoot.querySelector("#lms-remote-game")?.value, event.target.value);
+    });
     this.shadowRoot.querySelectorAll("[data-lms-view]").forEach((button) => {
       button.addEventListener("click", () => {
         this._lmsPageView = button.dataset.lmsView;
@@ -2873,6 +2992,12 @@ class FootballHubPanel extends HTMLElement {
       );
     });
     this.shadowRoot.querySelector("#lms-create-share")?.addEventListener("click", () => this._createLmsShare());
+    this.shadowRoot.querySelector("#lms-copy-external-organiser")?.addEventListener("click", async () => {
+      const url = `${LMS_SHARE_SERVICE}/organise`;
+      const copied = await this._copyText(url);
+      if (copied) window.alert("External LMS organiser link copied.");
+      else window.prompt("Copy the external LMS organiser link:", url);
+    });
     this.shadowRoot.querySelector("#lms-toggle-joining")?.addEventListener("click", async () => {
       if (!this._isLmsAdmin() || !this._lmsCompetition || this._lmsMode !== "global") return;
       this._lmsCompetition.joiningOpen = !this._lmsCompetition.joiningOpen;
@@ -3004,6 +3129,11 @@ class FootballHubPanel extends HTMLElement {
       .lms-admin-unlock div { display:flex; flex-direction:column; gap:4px; }
       .lms-admin-unlock span { color:var(--secondary-text-color); }
       .lms-admin-unlock button { min-height:44px; border:1px solid rgba(255,196,72,.55); border-radius:10px; padding:0 18px; color:#fff; background:rgba(180,117,0,.25); font-weight:900; cursor:pointer; }
+      .lms-remote-login { display:grid; grid-template-columns:auto minmax(260px,1fr) minmax(220px,1fr) minmax(190px,.7fr) auto; align-items:center; gap:14px; margin:14px 0; border-color:rgba(0,183,255,.5); }
+      .lms-remote-login > ha-icon { color:#00b7ff; --mdc-icon-size:34px; }
+      .lms-remote-login div { display:flex; flex-direction:column; gap:4px; }
+      .lms-remote-login input, .lms-remote-login button { min-height:44px; border:1px solid var(--fh-border); border-radius:10px; padding:0 13px; color:#fff; background:rgba(1,13,27,.9); }
+      .lms-remote-login button { border-color:rgba(0,183,255,.55); background:rgba(0,126,190,.3); cursor:pointer; font-weight:900; }
       .lms-summary button ha-icon, .lms-admin-status ha-icon { vertical-align:middle; --mdc-icon-size:18px; }
       .lms-summary-stats span { padding:10px 14px; border:1px solid var(--fh-border); border-radius:10px; }
       .lms-summary .danger { border-color:rgba(255,77,77,.6); background:rgba(255,77,77,.14); }
@@ -4479,7 +4609,7 @@ class FootballHubPanel extends HTMLElement {
         .lms-round-match time { grid-column:1/-1; text-align:center; }
         .lms-password-setup { grid-template-columns:1fr; }
         .lms-password-setup small { grid-column:auto; }
-        .lms-admin-unlock { grid-template-columns:1fr; align-items:stretch; }
+        .lms-admin-unlock, .lms-remote-login { grid-template-columns:1fr; align-items:stretch; }
         .lms-league-switch { align-items:stretch; flex-direction:column; }
         .lms-form input, .lms-add-player input { min-width:0; width:100%; }
       }
