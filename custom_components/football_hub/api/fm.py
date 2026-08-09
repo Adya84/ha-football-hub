@@ -87,6 +87,13 @@ FM_LEAGUES = {
     2302: 194,   # Turkish Super Cup
 }
 
+FM_CUP_LEAGUES = {
+    1001, 1002, 1003, 1101, 1102, 1103, 1201, 1202, 1301,
+    1401, 1501, 1601, 1602, 1701, 1702, 1801, 1802, 1901,
+    1902, 2001, 2002, 2101, 2102, 2103, 2201, 2202, 2301, 2302,
+    3101, 3102, 3103,
+}
+
 FM_COUNTRY_CODES = {
     39: "ENG", 40: "ENG", 41: "ENG", 42: "ENG", 43: "ENG",
     179: "SCO", 180: "SCO", 181: "SCO", 182: "SCO", 183: "SCO",
@@ -603,15 +610,17 @@ class FMProvider:
 
     async def _league_data(self, league_id: Any) -> dict:
         fm_id = self._league_id(league_id)
-        key = f"league:{fm_id}"
+        cache_version = "v2" if int(league_id) in FM_CUP_LEAGUES else "v1"
+        key = f"league:{cache_version}:{fm_id}"
         cached = self._cache_get(key, LEAGUE_TTL)
         if cached is not None:
             return cached
-        persisted = await self._persistent_get("league_data", str(fm_id), LEAGUE_TTL)
+        persistent_key = f"{cache_version}:{fm_id}"
+        persisted = await self._persistent_get("league_data", persistent_key, LEAGUE_TTL)
         if isinstance(persisted, dict):
             return self._cache_put(key, persisted)
         data = await self._get_first(("api/data/leagues", "api/leagues"), {"id": fm_id, "ccode3": "GBR"})
-        await self._persistent_put("league_data", str(fm_id), data)
+        await self._persistent_put("league_data", persistent_key, data)
         return self._cache_put(key, data)
 
     async def _all_wales_data(self, league_id: Any) -> dict:
@@ -807,10 +816,16 @@ class FMProvider:
 
         # Include today's matches so live/new fixtures are not missed.
         for item in await self._matches_for_date(datetime.now(timezone.utc)):
-            if (item.get("league") or {}).get("id") in (fm_id, str(fm_id), None):
+            if (item.get("league") or {}).get("id") in (fm_id, str(fm_id)):
                 output[str((item.get("fixture") or {}).get("id"))] = item
 
-        return await self._merge_friendly_results(list(output.values()))
+        fixtures = sorted(
+            output.values(),
+            key=lambda item: ((item.get("fixture") or {}).get("timestamp") or 0),
+        )
+        if int(league_id) in FM_CUP_LEAGUES:
+            return fixtures
+        return await self._merge_friendly_results(fixtures)
 
     async def get_standings(self, league_id, season):
         """Return the current FM league table."""
