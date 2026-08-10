@@ -1,4 +1,4 @@
-const PANEL_VERSION = "0.16.1-efl-cup-fixtures-results";
+const PANEL_VERSION = "0.17.0-cups-and-live-today";
 const LMS_SHARE_SERVICE = "https://football-hub-lms.zesty-flame-5295.chatgpt.site";
 
 class FootballHubPanel extends HTMLElement {
@@ -394,13 +394,34 @@ class FootballHubPanel extends HTMLElement {
 
   _lmsEmailServices() {
     const services = this._hass?.services?.notify || {};
-    return Object.entries(services)
+    const entities = Object.entries(this._hass?.states || {})
+      .filter(([entityId]) => entityId.startsWith("notify."))
+      .map(([entityId, state]) => ({
+        value: entityId,
+        label: `${state?.attributes?.friendly_name || entityId.slice(7).replaceAll("_", " ")} · notify entity`,
+        modern: true,
+      }));
+    const legacy = Object.entries(services)
       .filter(([service]) => service !== "send_message")
       .map(([service, details]) => ({
         value: `notify.${service}`,
-        label: details?.name || details?.description || service.replaceAll("_", " "),
-      }))
+        label: `${details?.name || details?.description || service.replaceAll("_", " ")} · legacy`,
+        modern: false,
+      }));
+    return [{ value: "__auto__", label: "Automatically match each player email · recommended", modern: true }, ...entities, ...legacy.filter((item) => !entities.some((entity) => entity.value === item.value))]
       .sort((a, b) => String(a.label).localeCompare(String(b.label)));
+  }
+
+  _lmsNotifyEntityForEmail(email) {
+    const normalise = (value) => String(value || "").toLocaleLowerCase().replace(/[^a-z0-9]/g, "");
+    const wanted = normalise(email);
+    if (!wanted) return "";
+    return Object.entries(this._hass?.states || {}).find(([entityId, state]) => {
+      if (!entityId.startsWith("notify.")) return false;
+      const entityName = normalise(entityId.slice(7));
+      const friendlyName = normalise(state?.attributes?.friendly_name);
+      return entityName.includes(wanted) || friendlyName.includes(wanted);
+    })?.[0] || "";
   }
 
   _lmsEmailDeadline() {
@@ -430,14 +451,19 @@ class FootballHubPanel extends HTMLElement {
 
   async _sendLmsPlayerEmail(player, quiet = false, reminderKind = "") {
     const competition = this._lmsCompetition;
-    const action = String(competition?.emailNotifyService || "");
+    const action = String(competition?.emailNotifyService || "__auto__");
     if (!player?.email || !player?.pickUrl || !action || !this._hass?.callService) {
       if (!quiet) window.alert(!player?.email ? "Add an email address for this player first." : !player?.pickUrl ? "Generate the public competition link first." : "Choose a Home Assistant email service first.");
       return false;
     }
+    const matchedEntity = this._lmsNotifyEntityForEmail(player.email);
     const [domain, ...serviceParts] = action.split(".");
     const service = serviceParts.join(".");
-    if (domain !== "notify" || !service) {
+    if (!matchedEntity && action === "__auto__") {
+      if (!quiet) window.alert(`No Home Assistant SMTP recipient entity matches ${player.email}. Add this recipient to the SMTP integration first.`);
+      return false;
+    }
+    if (!matchedEntity && (domain !== "notify" || !service)) {
       if (!quiet) window.alert("The selected email service is not valid.");
       return false;
     }
@@ -448,11 +474,15 @@ class FootballHubPanel extends HTMLElement {
         : reminderKind === "hours"
           ? "Final reminder: only a few hours remain"
           : "Choose your Last Man Standing team";
-      await this._hass.callService(domain, service, {
+      const messageData = {
         title: `${reminderKind ? "Reminder: " : ""}${competition.name} - Round ${competition.round} team selection`,
         message: `Hi ${player.name},\n\n${reminderIntro} for Round ${competition.round}:\n${player.pickUrl}\n\nYour deadline is ${this._lmsEmailDeadline()} local time. Teams already used cannot be selected again.\n\nROUND ${competition.round} FIXTURES\n\n${fixtures}\n\nUse your private link above to make your selection.\n\nFootball Hub`,
-        target: [player.email],
-      });
+      };
+      if (matchedEntity || this._hass.states?.[action]) {
+        await this._hass.callService("notify", "send_message", messageData, { entity_id: matchedEntity || action });
+      } else {
+        await this._hass.callService(domain, service, { ...messageData, target: [player.email] });
+      }
       player.lastEmailSent = Math.floor(Date.now() / 1000);
       this._saveLms();
       if (!quiet) window.alert(`Pick link emailed to ${player.name}.`);
@@ -1237,7 +1267,7 @@ class FootballHubPanel extends HTMLElement {
     const roundFixtureGroups = this._lmsRoundFixtureGroups();
     const roundFixtureCount = roundFixtureGroups.reduce((total, league) => total + league.roundFixtures.length, 0);
     const emailServices = this._lmsEmailServices();
-    const selectedEmailService = String(competition?.emailNotifyService || "");
+    const selectedEmailService = String(competition?.emailNotifyService || "__auto__");
     const deadlineLocal = deadline.timestamp ? new Date(deadline.timestamp * 1000).toLocaleString([], { weekday: "short", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" }) : "Waiting for fixture times";
     return `
       <section class="page-heading"><div><span class="eyebrow">SURVIVE EVERY ROUND</span><h2>Last Man Standing</h2></div>${competition ? `<div class="count-badge">${alive} remaining</div>` : ""}</section>
@@ -2168,6 +2198,8 @@ class FootballHubPanel extends HTMLElement {
   _livePage() {
     const primary = this._attrs("live_match");
     const matches = this._attrs("live_matches").matches || [];
+    const todayMatches = this._attrs("matches_today").matches || [];
+    const todaySection = `<section class="section"><div class="section-title-row"><div><span class="eyebrow">TODAY'S SCHEDULE</span><h2>Today's fixtures and results</h2></div><span class="pill">${todayMatches.length} matches</span></div><div class="match-list">${todayMatches.length ? todayMatches.map((match) => this._matchCard(match, ["FT", "AET", "PEN"].includes(match.status_short) ? "result" : undefined)).join("") : `<div class="empty">No fixtures are scheduled today.</div>`}</div></section>`;
     const leagueTeams = [...new Set((this._attrs("standings").table || [])
       .map((row) => row.team || row.team_name)
       .filter(Boolean))].sort((a, b) => a.localeCompare(b));
@@ -2191,6 +2223,7 @@ class FootballHubPanel extends HTMLElement {
           <h2>Current live feed</h2>
           <div class="match-list">${matches.length ? matches.map((m) => this._matchCard(m, "result")).join("") : ""}</div>
         </section>
+        ${todaySection}
       `;
     }
 
@@ -2261,6 +2294,7 @@ class FootballHubPanel extends HTMLElement {
         <article class="page-card lineup-panel"><h2>Starting line-ups</h2>${this._lineupCards(lineups)}</article>
       </section>
       <section class="section country-live-section"><div class="page-heading"><div><span class="eyebrow">LIVE AROUND THE WORLD</span><h2>All live scores</h2></div><div class="count-badge">${liveMatches.length} live</div></div>${this._liveCompetitionGroups(liveMatches, this._selectedLiveMatch)}</section>
+      ${todaySection}
     `;
   }
 
@@ -2611,6 +2645,7 @@ class FootballHubPanel extends HTMLElement {
     const activeCup = catalogue.find((item) => item.key === selectedCupKey);
     const cupDataReady = Boolean(activeCup && cupData.competition_key === activeCup.key && !this._pendingCup);
     const fixtures = cupDataReady && Array.isArray(cupData.fixtures) ? cupData.fixtures : [];
+    const live = cupDataReady && Array.isArray(cupData.live) ? cupData.live : [];
     const results = cupDataReady && Array.isArray(cupData.results) ? cupData.results : [];
     const table = cupDataReady && Array.isArray(cupData.table) ? cupData.table : [];
     const scorers = cupDataReady && Array.isArray(cupData.top_scorers) ? cupData.top_scorers : [];
@@ -2619,12 +2654,14 @@ class FootballHubPanel extends HTMLElement {
       cupContent = `<article class="page-card"><div class="empty">Loading ${this._escape(activeCup.name)} data…</div></article>`;
     } else if (activeCup && this._cupView === "fixtures") {
       cupContent = `<section class="section"><h2>${this._escape(activeCup.name)} fixtures</h2><div class="match-list">${fixtures.length ? fixtures.map((match) => this._matchCard(match)).join("") : `<div class="empty">No cup fixtures are available yet.</div>`}</div></section>`;
+    } else if (activeCup && this._cupView === "live") {
+      cupContent = `<section class="section"><h2>${this._escape(activeCup.name)} live matches</h2><div class="match-list">${live.length ? live.map((match) => this._matchCard(match, "result")).join("") : `<div class="empty">No matches from this cup are live right now.</div>`}</div></section>`;
     } else if (activeCup && this._cupView === "results") {
       cupContent = `<section class="section"><h2>${this._escape(activeCup.name)} results</h2><div class="match-list">${results.length ? results.map((match) => this._matchCard(match, "result")).join("") : `<div class="empty">No cup results are available yet.</div>`}</div></section>`;
     } else if (activeCup && this._cupView === "table") {
       cupContent = `<section class="page-card cup-table"><h2>${activeCup.has_table ? "Table / phase standings" : "Knockout competition"}</h2>${activeCup.has_table ? this._tableRows(table) : `<div class="empty">This competition uses knockout rounds, so follow it through Fixtures and Results.</div>`}</section>`;
     } else if (activeCup) {
-      cupContent = `<section class="dashboard-grid cup-overview"><article class="stat-card"><div class="card-heading"><span>Competition</span></div><div class="big-stat cup-name">${this._escape(activeCup.name)}</div><div class="stat-label">${this._escape(activeCup.country)}</div></article><article class="stat-card"><div class="card-heading"><span>Matches</span></div><div class="big-stat">${fixtures.length + results.length}</div><div class="stat-label">${fixtures.length} upcoming · ${results.length} completed</div></article><article class="list-card cup-fixtures-card"><div class="card-heading"><span>Next fixtures</span><button class="text-button" data-cup-view="fixtures">View all</button></div><div class="match-list">${fixtures.length ? fixtures.slice(0, 3).map((match) => this._matchCard(match)).join("") : `<div class="empty">No upcoming fixtures.</div>`}</div></article><article class="list-card cup-scorers-card"><div class="card-heading"><span>Top scorers</span></div>${this._playerRows(scorers, "goals")}</article></section>`;
+      cupContent = `<section class="dashboard-grid cup-overview"><article class="stat-card"><div class="card-heading"><span>Competition</span></div><div class="big-stat cup-name">${this._escape(activeCup.name)}</div><div class="stat-label">${this._escape(activeCup.country)}</div></article><article class="stat-card"><div class="card-heading"><span>Matches</span></div><div class="big-stat">${fixtures.length + live.length + results.length}</div><div class="stat-label">${fixtures.length} upcoming · ${live.length} live · ${results.length} completed</div></article><article class="list-card cup-fixtures-card"><div class="card-heading"><span>Latest results</span><button class="text-button" data-cup-view="results">View all</button></div><div class="match-list">${results.length ? results.slice(0, 5).map((match) => this._matchCard(match, "result")).join("") : `<div class="empty">No completed matches yet.</div>`}</div></article><article class="list-card cup-scorers-card"><div class="card-heading"><span>Top scorers</span></div>${this._playerRows(scorers, "goals")}</article></section>`;
     }
 
     return `
@@ -2651,7 +2688,7 @@ class FootballHubPanel extends HTMLElement {
       ${activeCup ? `
         <section class="section cup-data">
           <div class="section-title-row"><div><span class="eyebrow">SELECTED COMPETITION</span><h2>${this._escape(activeCup.name)}</h2></div><span class="pill">${this._escape(activeCup.country)}</span></div>
-          <nav class="cup-tabs"><button data-cup-view="overview" class="${this._cupView === "overview" ? "active" : ""}">Overview</button><button data-cup-view="fixtures" class="${this._cupView === "fixtures" ? "active" : ""}">Fixtures</button><button data-cup-view="results" class="${this._cupView === "results" ? "active" : ""}">Results</button><button data-cup-view="table" class="${this._cupView === "table" ? "active" : ""}">Table</button></nav>
+          <nav class="cup-tabs"><button data-cup-view="overview" class="${this._cupView === "overview" ? "active" : ""}">Overview</button><button data-cup-view="live" class="${this._cupView === "live" ? "active" : ""}">Live (${live.length})</button><button data-cup-view="fixtures" class="${this._cupView === "fixtures" ? "active" : ""}">Fixtures (${fixtures.length})</button><button data-cup-view="results" class="${this._cupView === "results" ? "active" : ""}">Results (${results.length})</button><button data-cup-view="table" class="${this._cupView === "table" ? "active" : ""}">Table</button></nav>
           ${cupContent}
           ${false ? `
           ${!cupDataReady ? `<article class="page-card"><div class="empty">Loading ${this._escape(activeCup.name)} data…</div></article>` : ""}
