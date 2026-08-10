@@ -77,6 +77,7 @@ class FootballHubCoordinator(DataUpdateCoordinator):
         )
         self.my_clubs = dict(entry.options.get("my_clubs", {}))
         self.my_club = self.my_clubs.get(self.competition_key, "")
+        self.ui_preferences = dict(entry.options.get("ui_preferences", {}))
         stored_favourites = entry.options.get("favourite_clubs", [])
         self.favourite_clubs = [dict(item) for item in stored_favourites if isinstance(item, dict)]
         if not self.favourite_clubs:
@@ -314,6 +315,15 @@ class FootballHubCoordinator(DataUpdateCoordinator):
         }
         self.hass.config_entries.async_update_entry(self.entry, options=options)
         await self.async_request_refresh()
+
+    async def async_set_ui_preferences(self, preferences: dict[str, Any]) -> None:
+        """Persist shared panel preferences for use on every device."""
+        self.ui_preferences = dict(preferences or {})
+        options = {**self.entry.options, "ui_preferences": self.ui_preferences}
+        self.hass.config_entries.async_update_entry(self.entry, options=options)
+        current = dict(self.data or {})
+        current["ui_preferences"] = self.ui_preferences
+        self.async_set_updated_data(current)
 
     async def async_remove_favourite_club(self, team: str, competition_key: str = "") -> None:
         """Remove a permanent favourite while leaving the viewed club selectable."""
@@ -721,6 +731,7 @@ class FootballHubCoordinator(DataUpdateCoordinator):
             "my_club": self.my_club,
             "my_club_team_id": team_id,
             "favourite_clubs": self.favourite_clubs,
+            "ui_preferences": self.ui_preferences,
             "favourite_clubs_data": favourite_data,
             "club_profile": club_profile,
             "club_statistics": self._cache.get("club_statistics", []),
