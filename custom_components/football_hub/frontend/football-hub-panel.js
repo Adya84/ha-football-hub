@@ -1,4 +1,4 @@
-const PANEL_VERSION = "0.17.1-all-cup-fixtures-live";
+const PANEL_VERSION = "0.17.4-live-competition-filters";
 const LMS_SHARE_SERVICE = "https://football-hub-lms.zesty-flame-5295.chatgpt.site";
 
 class FootballHubPanel extends HTMLElement {
@@ -42,6 +42,21 @@ class FootballHubPanel extends HTMLElement {
     this._fixturePage = 0;
     this._selectedLiveMatch = localStorage.getItem("football_hub_live_match") || "";
     this._selectedLiveTeam = localStorage.getItem("football_hub_live_team") || "";
+    try {
+      this._hiddenLiveCompetitions = new Set(JSON.parse(localStorage.getItem("football_hub_hidden_live_competitions") || "[]"));
+    } catch (_error) {
+      this._hiddenLiveCompetitions = new Set();
+    }
+    try {
+      this._hiddenLiveCountries = new Set(JSON.parse(localStorage.getItem("football_hub_hidden_live_countries") || "[]"));
+    } catch (_error) {
+      this._hiddenLiveCountries = new Set();
+    }
+    try {
+      this._hiddenLiveGenders = new Set(JSON.parse(localStorage.getItem("football_hub_hidden_live_genders") || "[]"));
+    } catch (_error) {
+      this._hiddenLiveGenders = new Set();
+    }
     this._selectedPrefix = localStorage.getItem("football_hub_selected_prefix") || "";
     this._selectedCountry = localStorage.getItem("football_hub_selected_country") || "";
     this._selectedCupCountry = localStorage.getItem("football_hub_cup_country") || "Europe";
@@ -1788,6 +1803,7 @@ class FootballHubPanel extends HTMLElement {
     if (!match) return `<div class="empty">No match data available.</div>`;
 
     const isResult = mode === "result";
+    const competitionText = this._matchText(match.league || match.competition) || "Football";
     const roundText = this._matchText(match.round) || "Fixture";
     const statusText = this._matchText(match.status) || this._matchText(match.status_short);
     const score = isResult || match.status_short !== "NS"
@@ -1796,6 +1812,7 @@ class FootballHubPanel extends HTMLElement {
 
     return `
       <article class="match-card">
+        <div class="match-competition"><ha-icon icon="mdi:trophy-outline"></ha-icon><strong>${this._escape(competitionText)}</strong></div>
         <div class="match-meta">
           <span>${this._escape(roundText)}</span>
           <span>${this._escape(statusText)}</span>
@@ -2197,9 +2214,19 @@ class FootballHubPanel extends HTMLElement {
 
   _livePage() {
     const primary = this._attrs("live_match");
-    const matches = this._attrs("live_matches").matches || [];
-    const todayMatches = this._attrs("matches_today").matches || [];
-    const todaySection = `<section class="section"><div class="section-title-row"><div><span class="eyebrow">TODAY'S SCHEDULE</span><h2>Today's fixtures and results</h2></div><span class="pill">${todayMatches.length} matches</span></div><div class="match-list">${todayMatches.length ? todayMatches.map((match) => this._matchCard(match, ["FT", "AET", "PEN"].includes(match.status_short) ? "result" : undefined)).join("") : `<div class="empty">No fixtures are scheduled today.</div>`}</div></section>`;
+    const allLiveMatches = this._attrs("live_matches").matches || [];
+    const allTodayMatches = this._attrs("matches_today").matches || [];
+    const competitionName = (match) => this._matchText(match.league || match.competition) || "Other matches";
+    const countryName = (match) => this._matchText(match.country || match.country_code) || "International";
+    const genderName = (match) => /\b(women|women's|womens|female|feminine|femenina|frauen|dames)\b/i.test(`${competitionName(match)} ${match.home_team || ""} ${match.away_team || ""}`) ? "Women's" : "Men's";
+    const competitionNames = [...new Set([...allTodayMatches, ...allLiveMatches].map(competitionName))].sort((a, b) => a.localeCompare(b));
+    const countryNames = [...new Set([...allTodayMatches, ...allLiveMatches].map(countryName))].sort((a, b) => a.localeCompare(b));
+    const isVisible = (match) => !this._hiddenLiveCompetitions.has(competitionName(match)) && !this._hiddenLiveCountries.has(countryName(match)) && !this._hiddenLiveGenders.has(genderName(match));
+    const matches = allLiveMatches.filter(isVisible);
+    const todayMatches = allTodayMatches.filter(isVisible);
+    const filterChecks = (items, kind, hidden) => items.map((name) => `<label><input type="checkbox" data-live-filter-kind="${kind}" data-live-filter-value="${this._escape(name)}" ${hidden.has(name) ? "" : "checked"}><span>${this._escape(name)}</span></label>`).join("");
+    const liveFilters = `<section class="page-card live-competition-filter"><div><span class="eyebrow">MATCH FILTERS</span><h2>Choose what appears</h2><p>All FotMob matches are included. Untick categories to hide them. Your choices are remembered.</p></div><div class="live-filter-groups"><details open><summary>Men's and women's football</summary><div class="live-filter-options">${filterChecks(["Men's", "Women's"], "gender", this._hiddenLiveGenders)}</div></details><details open><summary>Countries (${countryNames.length})</summary><div class="live-filter-options">${filterChecks(countryNames, "country", this._hiddenLiveCountries)}</div></details><details open><summary>Leagues, cups and friendlies (${competitionNames.length})</summary><div class="live-filter-options">${filterChecks(competitionNames, "competition", this._hiddenLiveCompetitions)}</div></details></div></section>`;
+    const todaySection = `${liveFilters}<section class="section"><div class="section-title-row"><div><span class="eyebrow">TODAY'S WORLDWIDE SCHEDULE</span><h2>Today's fixtures and results</h2></div><span class="pill">${todayMatches.length} of ${allTodayMatches.length} shown</span></div><div class="match-list">${todayMatches.length ? todayMatches.map((match) => this._matchCard(match, ["FT", "AET", "PEN"].includes(match.status_short) ? "result" : undefined)).join("") : `<div class="empty">No matches are shown. Tick a country or competition above to add it.</div>`}</div></section>`;
     const leagueTeams = [...new Set((this._attrs("standings").table || [])
       .map((row) => row.team || row.team_name)
       .filter(Boolean))].sort((a, b) => a.localeCompare(b));
@@ -2944,6 +2971,19 @@ class FootballHubPanel extends HTMLElement {
       button.addEventListener("click", () => {
         this._cupView = button.dataset.cupView;
         localStorage.setItem("football_hub_cup_view", this._cupView);
+        this._render();
+      });
+    });
+
+    this.shadowRoot.querySelectorAll("[data-live-filter-kind]").forEach((checkbox) => {
+      checkbox.addEventListener("change", () => {
+        const kind = checkbox.dataset.liveFilterKind;
+        const value = checkbox.dataset.liveFilterValue;
+        const filters = kind === "country" ? this._hiddenLiveCountries : kind === "gender" ? this._hiddenLiveGenders : this._hiddenLiveCompetitions;
+        if (checkbox.checked) filters.delete(value);
+        else filters.add(value);
+        const storageKey = kind === "country" ? "football_hub_hidden_live_countries" : kind === "gender" ? "football_hub_hidden_live_genders" : "football_hub_hidden_live_competitions";
+        localStorage.setItem(storageKey, JSON.stringify([...filters]));
         this._render();
       });
     });
@@ -3987,6 +4027,27 @@ class FootballHubPanel extends HTMLElement {
         color: var(--secondary-text-color);
         font-size: .76rem;
       }
+      .match-competition {
+        display: flex;
+        align-items: center;
+        gap: 7px;
+        margin-bottom: 10px;
+        color: var(--primary-color);
+        font-size: 0.78rem;
+        letter-spacing: 0.04em;
+        text-transform: uppercase;
+      }
+      .match-competition ha-icon { width: 17px; height: 17px; }
+      .live-competition-filter { display: grid; grid-template-columns: minmax(220px, .65fr) 1.35fr; gap: 24px; margin: 20px 0; }
+      .live-competition-filter h2 { margin: 5px 0 6px; }
+      .live-competition-filter p { margin: 0; color: var(--secondary-text-color); }
+      .live-filter-groups { display: grid; gap: 10px; }
+      .live-filter-groups details { border: 1px solid rgba(255,255,255,.14); border-radius: 14px; padding: 11px 13px; background: rgba(255,255,255,.04); }
+      .live-filter-groups summary { cursor: pointer; font-weight: 750; }
+      .live-filter-options { display: flex; flex-wrap: wrap; gap: 9px; padding-top: 11px; max-height: 210px; overflow: auto; }
+      .live-filter-options label { display: flex; align-items: center; gap: 7px; padding: 8px 10px; border: 1px solid rgba(255,255,255,.15); border-radius: 11px; cursor: pointer; background: rgba(255,255,255,.05); }
+      .live-filter-options input { width: 18px; height: 18px; accent-color: var(--primary-color); }
+      @media (max-width: 760px) { .live-competition-filter { grid-template-columns: 1fr; } }
 
       .match-teams {
         display: grid;
