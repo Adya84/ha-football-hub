@@ -96,6 +96,10 @@ FM_CUP_LEAGUES = {
     3101, 3102, 3103,
 }
 
+# These cups run inside a single calendar year rather than a European-style
+# July-to-June season.
+FM_CALENDAR_YEAR_CUPS = {1501, 3101, 3102, 3103}
+
 FM_COUNTRY_CODES = {
     39: "ENG", 40: "ENG", 41: "ENG", 42: "ENG", 43: "ENG",
     179: "SCO", 180: "SCO", 181: "SCO", 182: "SCO", 183: "SCO",
@@ -622,7 +626,7 @@ class FMProvider:
 
     async def _league_data(self, league_id: Any) -> dict:
         fm_id = self._league_id(league_id)
-        cache_version = "v4" if int(league_id) in FM_CUP_LEAGUES else "v1"
+        cache_version = "v6" if int(league_id) in FM_CUP_LEAGUES else "v1"
         key = f"league:{cache_version}:{fm_id}"
         cached = self._cache_get(key, LEAGUE_TTL)
         if cached is not None:
@@ -668,6 +672,17 @@ class FMProvider:
             for match in league.get("matches") or []:
                 item = self._fixture(match, league_name, country_code)
                 if item:
+                    # Daily feeds use a season-specific league ID for cups
+                    # (for example 938221), while league feeds and our mapping
+                    # use the permanent primary ID (for example EFL Cup 133).
+                    # Normalise it so today's cup fixtures reach Live/Fixtures.
+                    primary_league_id = (
+                        league.get("primaryId")
+                        or league.get("parentLeagueId")
+                        or league.get("id")
+                    )
+                    if primary_league_id not in (None, ""):
+                        item.setdefault("league", {})["id"] = primary_league_id
                     output.append(item)
         return self._cache_put(key, output)
 
@@ -823,17 +838,17 @@ class FMProvider:
             if node_league not in (None, fm_id, str(fm_id)):
                 continue
             item = self._fixture(node, data.get("details", {}).get("name"))
-        if item:
-            fixture_key = str(match_id)
-            existing = output.get(fixture_key)
-            existing_goals = (existing or {}).get("goals") or {}
-            candidate_goals = item.get("goals") or {}
-            existing_has_score = existing_goals.get("home") is not None and existing_goals.get("away") is not None
-            candidate_has_score = candidate_goals.get("home") is not None and candidate_goals.get("away") is not None
-            # League responses can contain duplicate copies of a match. Never
-            # let a later, scoreless summary overwrite the completed version.
-            if existing is None or candidate_has_score or not existing_has_score:
-                output[fixture_key] = item
+            if item:
+                fixture_key = str(match_id)
+                existing = output.get(fixture_key)
+                existing_goals = (existing or {}).get("goals") or {}
+                candidate_goals = item.get("goals") or {}
+                existing_has_score = existing_goals.get("home") is not None and existing_goals.get("away") is not None
+                candidate_has_score = candidate_goals.get("home") is not None and candidate_goals.get("away") is not None
+                # League responses can contain duplicate copies of a match. Never
+                # let a later, scoreless summary overwrite the completed version.
+                if existing is None or candidate_has_score or not existing_has_score:
+                    output[fixture_key] = item
 
         # Include today's matches so live/new fixtures are not missed.
         for item in await self._matches_for_date(datetime.now(timezone.utc)):
@@ -845,7 +860,17 @@ class FMProvider:
             key=lambda item: ((item.get("fixture") or {}).get("timestamp") or 0),
         )
         if int(league_id) in FM_CUP_LEAGUES:
-            return fixtures
+            season_year = int(season)
+            if int(league_id) in FM_CALENDAR_YEAR_CUPS:
+                season_start = datetime(season_year, 1, 1, tzinfo=timezone.utc).timestamp()
+                season_end = datetime(season_year + 1, 1, 1, tzinfo=timezone.utc).timestamp()
+            else:
+                season_start = datetime(season_year, 7, 1, tzinfo=timezone.utc).timestamp()
+                season_end = datetime(season_year + 1, 7, 1, tzinfo=timezone.utc).timestamp()
+            return [
+                item for item in fixtures
+                if season_start <= (((item.get("fixture") or {}).get("timestamp")) or 0) < season_end
+            ]
         return await self._merge_friendly_results(fixtures)
 
     async def get_standings(self, league_id, season):
