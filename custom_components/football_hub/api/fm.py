@@ -648,7 +648,9 @@ class FMProvider:
 
     async def _league_data(self, league_id: Any) -> dict:
         fm_id = self._league_id(league_id)
-        cache_version = "v6" if int(league_id) in FM_CUP_LEAGUES else "v1"
+        # v7 invalidates older cup responses that were cached before the
+        # season-specific cup-ID parser accepted every match in the feed.
+        cache_version = "v7" if int(league_id) in FM_CUP_LEAGUES else "v1"
         key = f"league:{cache_version}:{fm_id}"
         cached = self._cache_get(key, LEAGUE_TTL)
         if cached is not None:
@@ -898,21 +900,36 @@ class FMProvider:
                 item for item in fixtures
                 if season_start <= (((item.get("fixture") or {}).get("timestamp")) or 0) < season_end
             ]
-            missing_venues = [
+            completed_matches = [
                 item for item in reversed(cup_fixtures)
-                if not ((((item.get("fixture") or {}).get("venue") or {}).get("name")))
-                and (((item.get("fixture") or {}).get("status") or {}).get("short")) in {"FT", "AET", "PEN"}
-            ][:16]
-            if missing_venues:
+                if (((item.get("fixture") or {}).get("status") or {}).get("short")) in {"FT", "AET", "PEN"}
+            ][:24]
+            if completed_matches:
                 details = await asyncio.gather(
-                    *(self.get_fixture_details((item.get("fixture") or {}).get("id")) for item in missing_venues),
+                    *(self.get_fixture_details((item.get("fixture") or {}).get("id")) for item in completed_matches),
                     return_exceptions=True,
                 )
-                for item, detail in zip(missing_venues, details):
+                for item, detail in zip(completed_matches, details):
                     if isinstance(detail, dict) and detail.get("stadium") not in (None, "", "Venue TBC"):
                         venue = (item.get("fixture") or {}).setdefault("venue", {})
                         venue["name"] = detail["stadium"]
                         venue["city"] = detail.get("city") or venue.get("city")
+                    if not isinstance(detail, dict):
+                        continue
+                    teams = item.get("teams") or {}
+                    goals = item.get("goals") or {}
+                    winner = detail.get("winner")
+                    if not winner and goals.get("home") is not None and goals.get("away") is not None:
+                        if goals["home"] > goals["away"]:
+                            winner = (teams.get("home") or {}).get("name")
+                        elif goals["away"] > goals["home"]:
+                            winner = (teams.get("away") or {}).get("name")
+                    if winner:
+                        status_short = (((item.get("fixture") or {}).get("status") or {}).get("short"))
+                        method = detail.get("qualification_method") or ("extra time" if status_short == "AET" else "full time")
+                        penalty_score = detail.get("penalty_score")
+                        suffix = f" ({penalty_score[0]}-{penalty_score[1]})" if method == "penalties" and isinstance(penalty_score, list) and len(penalty_score) == 2 else ""
+                        item["qualification"] = {"winner": winner, "method": method, "penalty_score": penalty_score, "text": f"{winner} through on {method}{suffix}" if method != "full time" else f"{winner} through"}
             return cup_fixtures
         return await self._merge_friendly_results(fixtures)
 
@@ -1284,6 +1301,17 @@ class FMProvider:
         if isinstance(venue, str):
             venue = {"name": venue}
         live_time = status.get("liveTime") or {}
+        reason = status.get("reason") or {}
+        if not isinstance(reason, dict):
+            reason = {}
+        penalty_score = reason.get("penalties")
+        home_name = self._name(general.get("homeTeam"))
+        away_name = self._name(general.get("awayTeam"))
+        penalty_loser = status.get("whoLostOnPenalties")
+        aggregate_loser = status.get("whoLostOnAggregated")
+        loser = penalty_loser or aggregate_loser
+        winner = away_name if loser and loser == home_name else home_name if loser and loser == away_name else None
+        qualification_method = "penalties" if penalty_loser or penalty_score else "aggregate" if aggregate_loser else None
         elapsed = live_time.get("short") if isinstance(live_time, dict) else live_time
         if elapsed in (None, ""):
             elapsed = status.get("elapsed") or status.get("minutes")
@@ -1300,6 +1328,9 @@ class FMProvider:
             "temperature": weather.get("temperature"),
             "humidity": weather.get("relativeHumidity"),
             "wind_speed": weather.get("windSpeed"),
+            "winner": winner,
+            "qualification_method": qualification_method,
+            "penalty_score": penalty_score,
         }
 
     async def get_fixture_statistics(self, fixture_id):
