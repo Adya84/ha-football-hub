@@ -658,9 +658,11 @@ class FootballHubCoordinator(DataUpdateCoordinator):
                     venue.setdefault("city", fixture_venue.get("city"))
                 break
 
+        cup_fixtures = self._cache.get("cup_fixtures", []) or []
+        cup_live = [item for item in cup_fixtures if (((item.get("fixture") or {}).get("status") or {}).get("short")) in {"1H", "HT", "2H", "ET", "BT", "P", "SUSP", "INT", "LIVE"}]
         self.cup_engine.update({
-            "live": [],
-            "fixtures": self._cache.get("cup_fixtures", []),
+            "live": cup_live,
+            "fixtures": cup_fixtures,
             "standings": self._cache.get("cup_standings", []),
             "top_scorers": self._cache.get("cup_top_scorers", []),
             "top_assists": [],
