@@ -463,10 +463,27 @@ class FMProvider:
         return self._normalise_market_transfers(data)[:40]
 
     async def get_competition_catalogue(self) -> Any:
-        return await self._global_fetch(
+        data = await self._global_fetch(
             "competition_catalogue", ("api/data/allLeagues", "api/allLeagues"),
             {"locale": "en-GB", "country": "GBR"}, COMPETITION_CATALOGUE_TTL,
         )
+        competitions: list[dict[str, Any]] = []
+        seen: set[tuple[str, str]] = set()
+        country_groups = data.get("countries", []) if isinstance(data, dict) else []
+        for group in country_groups if isinstance(country_groups, list) else []:
+            if not isinstance(group, dict):
+                continue
+            country = self._name(group.get("country") or group.get("countryName") or group.get("name"))
+            leagues = group.get("leagues") or group.get("competitions") or group.get("tournaments") or []
+            for league in leagues if isinstance(leagues, list) else []:
+                if not isinstance(league, dict):
+                    continue
+                name = self._name(league.get("name") or league.get("leagueName") or league.get("competitionName"))
+                key = (country.casefold(), name.casefold())
+                if country and name and key not in seen:
+                    seen.add(key)
+                    competitions.append({"country": country, "name": name, "id": league.get("id") or league.get("leagueId")})
+        return competitions
 
     @staticmethod
     def _walk(value: Any):
@@ -825,7 +842,7 @@ class FMProvider:
             if match_id in (None, "") or not isinstance(home, dict) or not isinstance(away, dict):
                 continue
             node_league = node.get("leagueId")
-            if node_league not in (None, fm_id, str(fm_id)):
+            if int(league_id) not in FM_CUP_LEAGUES and node_league not in (None, fm_id, str(fm_id)):
                 continue
             item = self._fixture(node, data.get("details", {}).get("name"))
             if item:
@@ -868,17 +885,35 @@ class FMProvider:
             key=lambda item: ((item.get("fixture") or {}).get("timestamp") or 0),
         )
         if int(league_id) in FM_CUP_LEAGUES:
-            season_year = int(season)
+            now = datetime.now(timezone.utc)
+            current_season_year = now.year if now.month >= 7 else now.year - 1
+            season_year = max(int(season), current_season_year)
             if int(league_id) in FM_CALENDAR_YEAR_CUPS:
                 season_start = datetime(season_year, 1, 1, tzinfo=timezone.utc).timestamp()
                 season_end = datetime(season_year + 1, 1, 1, tzinfo=timezone.utc).timestamp()
             else:
                 season_start = datetime(season_year, 7, 1, tzinfo=timezone.utc).timestamp()
                 season_end = datetime(season_year + 1, 7, 1, tzinfo=timezone.utc).timestamp()
-            return [
+            cup_fixtures = [
                 item for item in fixtures
                 if season_start <= (((item.get("fixture") or {}).get("timestamp")) or 0) < season_end
             ]
+            missing_venues = [
+                item for item in reversed(cup_fixtures)
+                if not ((((item.get("fixture") or {}).get("venue") or {}).get("name")))
+                and (((item.get("fixture") or {}).get("status") or {}).get("short")) in {"FT", "AET", "PEN"}
+            ][:16]
+            if missing_venues:
+                details = await asyncio.gather(
+                    *(self.get_fixture_details((item.get("fixture") or {}).get("id")) for item in missing_venues),
+                    return_exceptions=True,
+                )
+                for item, detail in zip(missing_venues, details):
+                    if isinstance(detail, dict) and detail.get("stadium") not in (None, "", "Venue TBC"):
+                        venue = (item.get("fixture") or {}).setdefault("venue", {})
+                        venue["name"] = detail["stadium"]
+                        venue["city"] = detail.get("city") or venue.get("city")
+            return cup_fixtures
         return await self._merge_friendly_results(fixtures)
 
     async def get_standings(self, league_id, season):
@@ -1169,6 +1204,9 @@ class FMProvider:
 
     async def _match_details(self, fixture_id: Any) -> dict:
         key = f"match:{fixture_id}"
+        finished_cached = self._cache_get(f"{key}:finished", MATCH_TTL_FINISHED)
+        if finished_cached is not None:
+            return finished_cached
         cached = self._cache_get(key, MATCH_TTL_LIVE)
         if cached is not None:
             return cached
