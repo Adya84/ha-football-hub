@@ -1,4 +1,4 @@
-const PANEL_VERSION = "0.17.4-live-competition-filters";
+const PANEL_VERSION = "0.17.6-one-club-per-selector";
 const LMS_SHARE_SERVICE = "https://football-hub-lms.zesty-flame-5295.chatgpt.site";
 
 class FootballHubPanel extends HTMLElement {
@@ -2221,10 +2221,16 @@ class FootballHubPanel extends HTMLElement {
     const genderName = (match) => /\b(women|women's|womens|female|feminine|femenina|frauen|dames)\b/i.test(`${competitionName(match)} ${match.home_team || ""} ${match.away_team || ""}`) ? "Women's" : "Men's";
     const competitionNames = [...new Set([...allTodayMatches, ...allLiveMatches].map(competitionName))].sort((a, b) => a.localeCompare(b));
     const countryNames = [...new Set([...allTodayMatches, ...allLiveMatches].map(countryName))].sort((a, b) => a.localeCompare(b));
+    const competitionCountries = new Map();
+    [...allTodayMatches, ...allLiveMatches].forEach((match) => {
+      const competition = competitionName(match);
+      if (!competitionCountries.has(competition)) competitionCountries.set(competition, new Set());
+      competitionCountries.get(competition).add(countryName(match));
+    });
     const isVisible = (match) => !this._hiddenLiveCompetitions.has(competitionName(match)) && !this._hiddenLiveCountries.has(countryName(match)) && !this._hiddenLiveGenders.has(genderName(match));
     const matches = allLiveMatches.filter(isVisible);
     const todayMatches = allTodayMatches.filter(isVisible);
-    const filterChecks = (items, kind, hidden) => items.map((name) => `<label><input type="checkbox" data-live-filter-kind="${kind}" data-live-filter-value="${this._escape(name)}" ${hidden.has(name) ? "" : "checked"}><span>${this._escape(name)}</span></label>`).join("");
+    const filterChecks = (items, kind, hidden) => items.map((name) => `<label><input type="checkbox" data-live-filter-kind="${kind}" data-live-filter-value="${this._escape(name)}" ${kind === "competition" ? `data-live-filter-countries="${this._escape([...(competitionCountries.get(name) || [])].join("|"))}"` : ""} ${hidden.has(name) ? "" : "checked"}><span>${this._escape(name)}</span></label>`).join("");
     const liveFilters = `<section class="page-card live-competition-filter"><div><span class="eyebrow">MATCH FILTERS</span><h2>Choose what appears</h2><p>All FotMob matches are included. Untick categories to hide them. Your choices are remembered.</p></div><div class="live-filter-groups"><details open><summary>Men's and women's football</summary><div class="live-filter-options">${filterChecks(["Men's", "Women's"], "gender", this._hiddenLiveGenders)}</div></details><details open><summary>Countries (${countryNames.length})</summary><div class="live-filter-options">${filterChecks(countryNames, "country", this._hiddenLiveCountries)}</div></details><details open><summary>Leagues, cups and friendlies (${competitionNames.length})</summary><div class="live-filter-options">${filterChecks(competitionNames, "competition", this._hiddenLiveCompetitions)}</div></details></div></section>`;
     const todaySection = `${liveFilters}<section class="section"><div class="section-title-row"><div><span class="eyebrow">TODAY'S WORLDWIDE SCHEDULE</span><h2>Today's fixtures and results</h2></div><span class="pill">${todayMatches.length} of ${allTodayMatches.length} shown</span></div><div class="match-list">${todayMatches.length ? todayMatches.map((match) => this._matchCard(match, ["FT", "AET", "PEN"].includes(match.status_short) ? "result" : undefined)).join("") : `<div class="empty">No matches are shown. Tick a country or competition above to add it.</div>`}</div></section>`;
     const leagueTeams = [...new Set((this._attrs("standings").table || [])
@@ -2332,9 +2338,16 @@ class FootballHubPanel extends HTMLElement {
     const standingsTeams = (this._attrs("standings").table || [])
       .map((row) => row.team || row.team_name)
       .filter(Boolean);
-    const fixtureTeams = [...new Set(
-      allFixtures.flatMap((match) => [match.home_team, match.away_team]).filter(Boolean)
-    )];
+    const clubsById = new Map();
+    allFixtures.forEach((match) => [
+      [match.home_team_id, match.home_team],
+      [match.away_team_id, match.away_team],
+    ].forEach(([id, name]) => {
+      if (!name) return;
+      const key = id == null ? `name:${String(name).toLowerCase()}` : `id:${id}`;
+      if (!clubsById.has(key) || String(name).length > String(clubsById.get(key)).length) clubsById.set(key, name);
+    }));
+    const fixtureTeams = [...new Set(clubsById.values())];
     const teams = (fixtureTeams.length > 10 ? fixtureTeams : [...new Set([...fixtureTeams, ...standingsTeams])])
       .sort((a, b) => a.localeCompare(b));
     const normaliseTeam = (name) => String(name || "").trim().toLowerCase();
@@ -2519,7 +2532,7 @@ class FootballHubPanel extends HTMLElement {
   }
 
   _myClubPage() {
-    const club = this._selectedClub;
+    let club = this._selectedClub;
     const favourites = Array.isArray(this._statusInfo().favourite_clubs)
       ? this._statusInfo().favourite_clubs
       : [];
@@ -2573,11 +2586,28 @@ class FootballHubPanel extends HTMLElement {
       if (!Number.isFinite(amount) || amount <= 0) return "";
       return new Intl.NumberFormat(this._language || "en", { style: "currency", currency: "EUR", notation: "compact", maximumFractionDigits: 1 }).format(amount);
     };
-    const teams = [...new Set([
-      this._selectedClub,
-      ...table.map((row) => row.team || row.team_name),
-      ...fixtures.flatMap((match) => [match.home_team, match.away_team]),
-    ].filter(Boolean))].sort((a, b) => a.localeCompare(b));
+    const selectorClubs = new Map();
+    const addSelectorClub = (id, name) => {
+      if (!name) return;
+      const key = id == null ? `name:${String(name).toLowerCase()}` : `id:${id}`;
+      if (!selectorClubs.has(key) || String(name).length > String(selectorClubs.get(key)).length) selectorClubs.set(key, name);
+    };
+    table.forEach((row) => addSelectorClub(row.team_id || row.id, row.team || row.team_name));
+    fixtures.forEach((match) => {
+      addSelectorClub(match.home_team_id, match.home_team);
+      addSelectorClub(match.away_team_id, match.away_team);
+    });
+    const canonicalSelection = club && [...selectorClubs.values()].find((name) => {
+      const selected = String(club).trim().toLowerCase();
+      const candidate = String(name).trim().toLowerCase();
+      return candidate === selected || candidate.startsWith(`${selected} `);
+    });
+    if (canonicalSelection) {
+      club = canonicalSelection;
+      this._selectedClub = canonicalSelection;
+      localStorage.setItem("football_hub_my_club", canonicalSelection);
+    } else if (club) addSelectorClub(null, club);
+    const teams = [...new Set(selectorClubs.values())].sort((a, b) => a.localeCompare(b));
 
     const clubFixtures = fixtures.filter((match) => match.home_team === club || match.away_team === club);
     const clubResults = results.filter((match) => match.home_team === club || match.away_team === club);
@@ -2982,6 +3012,19 @@ class FootballHubPanel extends HTMLElement {
         const filters = kind === "country" ? this._hiddenLiveCountries : kind === "gender" ? this._hiddenLiveGenders : this._hiddenLiveCompetitions;
         if (checkbox.checked) filters.delete(value);
         else filters.add(value);
+        if (kind === "country") {
+          this.shadowRoot.querySelectorAll('[data-live-filter-kind="competition"]').forEach((competitionCheckbox) => {
+            const countries = String(competitionCheckbox.dataset.liveFilterCountries || "").split("|");
+            // Only link competitions belonging exclusively to this country.
+            // Worldwide labels such as "Friendlies" must remain independent.
+            if (countries.length !== 1 || !countries.includes(value)) return;
+            competitionCheckbox.checked = checkbox.checked;
+            const competition = competitionCheckbox.dataset.liveFilterValue;
+            if (checkbox.checked) this._hiddenLiveCompetitions.delete(competition);
+            else this._hiddenLiveCompetitions.add(competition);
+          });
+          localStorage.setItem("football_hub_hidden_live_competitions", JSON.stringify([...this._hiddenLiveCompetitions]));
+        }
         const storageKey = kind === "country" ? "football_hub_hidden_live_countries" : kind === "gender" ? "football_hub_hidden_live_genders" : "football_hub_hidden_live_competitions";
         localStorage.setItem(storageKey, JSON.stringify([...filters]));
         this._render();
