@@ -548,6 +548,16 @@ class FMProvider:
 
         home_score = home.get("score")
         away_score = away.get("score")
+        # Some league payload sections omit team score fields but retain the
+        # authoritative full-time score in status.scoreStr.
+        if home_score in (None, "") or away_score in (None, ""):
+            score_text = str(status.get("scoreStr") or match.get("scoreStr") or "")
+            score_parts = score_text.split("(", 1)[0].replace("–", "-").split("-", 1)
+            if len(score_parts) == 2:
+                if home_score in (None, ""):
+                    home_score = score_parts[0].strip()
+                if away_score in (None, ""):
+                    away_score = score_parts[1].strip()
         try:
             home_score = int(home_score) if home_score not in (None, "") else None
         except (TypeError, ValueError):
@@ -612,7 +622,7 @@ class FMProvider:
 
     async def _league_data(self, league_id: Any) -> dict:
         fm_id = self._league_id(league_id)
-        cache_version = "v3" if int(league_id) in FM_CUP_LEAGUES else "v1"
+        cache_version = "v4" if int(league_id) in FM_CUP_LEAGUES else "v1"
         key = f"league:{cache_version}:{fm_id}"
         cached = self._cache_get(key, LEAGUE_TTL)
         if cached is not None:
@@ -813,8 +823,17 @@ class FMProvider:
             if node_league not in (None, fm_id, str(fm_id)):
                 continue
             item = self._fixture(node, data.get("details", {}).get("name"))
-            if item:
-                output[str(match_id)] = item
+        if item:
+            fixture_key = str(match_id)
+            existing = output.get(fixture_key)
+            existing_goals = (existing or {}).get("goals") or {}
+            candidate_goals = item.get("goals") or {}
+            existing_has_score = existing_goals.get("home") is not None and existing_goals.get("away") is not None
+            candidate_has_score = candidate_goals.get("home") is not None and candidate_goals.get("away") is not None
+            # League responses can contain duplicate copies of a match. Never
+            # let a later, scoreless summary overwrite the completed version.
+            if existing is None or candidate_has_score or not existing_has_score:
+                output[fixture_key] = item
 
         # Include today's matches so live/new fixtures are not missed.
         for item in await self._matches_for_date(datetime.now(timezone.utc)):
