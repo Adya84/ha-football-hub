@@ -1,4 +1,4 @@
-const PANEL_VERSION = "0.17.0-cups-and-live-today";
+const PANEL_VERSION = "0.17.1-all-cup-fixtures-live";
 const LMS_SHARE_SERVICE = "https://football-hub-lms.zesty-flame-5295.chatgpt.site";
 
 class FootballHubPanel extends HTMLElement {
@@ -2646,6 +2646,9 @@ class FootballHubPanel extends HTMLElement {
     const cupDataReady = Boolean(activeCup && cupData.competition_key === activeCup.key && !this._pendingCup);
     const fixtures = cupDataReady && Array.isArray(cupData.fixtures) ? cupData.fixtures : [];
     const live = cupDataReady && Array.isArray(cupData.live) ? cupData.live : [];
+    const cupMatchKey = (match) => String(match.fixture_id ?? match.id ?? `${match.home_team}-${match.away_team}-${match.timestamp || ""}`);
+    const allCupFixtures = [...new Map([...live, ...fixtures].map((match) => [cupMatchKey(match), match])).values()]
+      .sort((a, b) => (a.timestamp || 0) - (b.timestamp || 0));
     const results = cupDataReady && Array.isArray(cupData.results) ? cupData.results : [];
     const table = cupDataReady && Array.isArray(cupData.table) ? cupData.table : [];
     const scorers = cupDataReady && Array.isArray(cupData.top_scorers) ? cupData.top_scorers : [];
@@ -2653,7 +2656,7 @@ class FootballHubPanel extends HTMLElement {
     if (activeCup && !cupDataReady) {
       cupContent = `<article class="page-card"><div class="empty">Loading ${this._escape(activeCup.name)} data…</div></article>`;
     } else if (activeCup && this._cupView === "fixtures") {
-      cupContent = `<section class="section"><h2>${this._escape(activeCup.name)} fixtures</h2><div class="match-list">${fixtures.length ? fixtures.map((match) => this._matchCard(match)).join("") : `<div class="empty">No cup fixtures are available yet.</div>`}</div></section>`;
+      cupContent = `<section class="section"><h2>${this._escape(activeCup.name)} fixtures</h2><p>Includes every upcoming fixture and any match currently in progress.</p><div class="match-list">${allCupFixtures.length ? allCupFixtures.map((match) => this._matchCard(match, live.some((item) => cupMatchKey(item) === cupMatchKey(match)) ? "result" : undefined)).join("") : `<div class="empty">No cup fixtures are available yet.</div>`}</div></section>`;
     } else if (activeCup && this._cupView === "live") {
       cupContent = `<section class="section"><h2>${this._escape(activeCup.name)} live matches</h2><div class="match-list">${live.length ? live.map((match) => this._matchCard(match, "result")).join("") : `<div class="empty">No matches from this cup are live right now.</div>`}</div></section>`;
     } else if (activeCup && this._cupView === "results") {
@@ -2688,7 +2691,7 @@ class FootballHubPanel extends HTMLElement {
       ${activeCup ? `
         <section class="section cup-data">
           <div class="section-title-row"><div><span class="eyebrow">SELECTED COMPETITION</span><h2>${this._escape(activeCup.name)}</h2></div><span class="pill">${this._escape(activeCup.country)}</span></div>
-          <nav class="cup-tabs"><button data-cup-view="overview" class="${this._cupView === "overview" ? "active" : ""}">Overview</button><button data-cup-view="live" class="${this._cupView === "live" ? "active" : ""}">Live (${live.length})</button><button data-cup-view="fixtures" class="${this._cupView === "fixtures" ? "active" : ""}">Fixtures (${fixtures.length})</button><button data-cup-view="results" class="${this._cupView === "results" ? "active" : ""}">Results (${results.length})</button><button data-cup-view="table" class="${this._cupView === "table" ? "active" : ""}">Table</button></nav>
+          <nav class="cup-tabs"><button data-cup-view="overview" class="${this._cupView === "overview" ? "active" : ""}">Overview</button><button data-cup-view="live" class="${this._cupView === "live" ? "active" : ""}">Live (${live.length})</button><button data-cup-view="fixtures" class="${this._cupView === "fixtures" ? "active" : ""}">Fixtures (${allCupFixtures.length})</button><button data-cup-view="results" class="${this._cupView === "results" ? "active" : ""}">Results (${results.length})</button><button data-cup-view="table" class="${this._cupView === "table" ? "active" : ""}">Table</button></nav>
           ${cupContent}
           ${false ? `
           ${!cupDataReady ? `<article class="page-card"><div class="empty">Loading ${this._escape(activeCup.name)} data…</div></article>` : ""}
