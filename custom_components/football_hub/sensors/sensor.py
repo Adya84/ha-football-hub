@@ -288,6 +288,7 @@ class FootballHubStatusSensor(FootballHubBaseSensor):
     def extra_state_attributes(self):
         competition = self.coordinator.competition
         season = self.entry.data.get("season")
+        last_updated = getattr(self.coordinator, "last_update_success_time", None)
         return {
             "competition": competition.get("name"),
             "competition_key": self.coordinator.competition_key,
@@ -310,6 +311,8 @@ class FootballHubStatusSensor(FootballHubBaseSensor):
             "my_club": self.coordinator.my_club,
             "my_club_team_id": (self.coordinator.data or {}).get("my_club_team_id"),
             "favourite_clubs": self.coordinator.favourite_clubs,
+            "ui_preferences": self.coordinator.ui_preferences,
+            "last_updated": last_updated.isoformat() if last_updated else None,
             "live_count": len(self.engine.live.matches()),
             "fixtures_count": len(self.engine.fixtures.all()),
             "results_count": len(self.engine.results.all()),
