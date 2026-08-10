@@ -1,4 +1,4 @@
-const PANEL_VERSION = "0.18.4-cup-results-venue-fix";
+const PANEL_VERSION = "0.18.6-cup-qualification-outcomes";
 const LMS_SHARE_SERVICE = "https://football-hub-lms.zesty-flame-5295.chatgpt.site";
 const FULL_COMPETITION_CATALOGUE = {
   England: ["Premier League", "Championship", "League One", "League Two", "National League", "FA Cup", "EFL Cup", "Community Shield"],
@@ -1910,6 +1910,7 @@ class FootballHubPanel extends HTMLElement {
             <strong>${this._escape(match.away_team || "Away")}</strong>
           </div>
         </div>
+        ${isResult && match.qualification?.text ? `<div class="match-qualification"><ha-icon icon="mdi:check-decagram"></ha-icon><strong>${this._escape(match.qualification.text)}</strong></div>` : ""}
         ${venueText || match.city ? `<div class="match-footer">
           <span>${this._escape(venueText)}</span>
           <span>${this._escape(match.city || "")}</span>
@@ -2299,12 +2300,25 @@ class FootballHubPanel extends HTMLElement {
     const primary = this._attrs("live_match");
     const allLiveMatches = this._attrs("live_matches").matches || [];
     const allTodayMatches = this._attrs("matches_today").matches || [];
-    const competitionName = (match) => this._matchText(match.league || match.competition) || "Other matches";
-    const countryName = (match) => this._matchText(match.country || match.country_code) || "International";
-    const genderName = (match) => /\b(women|women's|womens|female|feminine|femenina|frauen|dames)\b/i.test(`${competitionName(match)} ${match.home_team || ""} ${match.away_team || ""}`) ? "Women's" : "Men's";
     const builtInCatalogue = Object.entries(FULL_COMPETITION_CATALOGUE).flatMap(([country, names]) => names.map((name) => ({ country, name })));
     const providerCatalogue = this._attrs("competition_catalogue").competitions || [];
     const catalogue = [...builtInCatalogue, ...(this._statusInfo().available_competitions || []), ...providerCatalogue].filter((item) => item?.name && item?.country);
+    const competitionName = (match) => this._matchText(match.league || match.competition) || "Other matches";
+    const catalogueCountries = new Map();
+    catalogue.forEach((item) => { if (!catalogueCountries.has(item.name)) catalogueCountries.set(item.name, new Set()); catalogueCountries.get(item.name).add(item.country); });
+    const countryCodes = { ENG:"England", SCO:"Scotland", WAL:"Wales", NIR:"Northern Ireland", IRL:"Ireland", GBR:"United Kingdom", USA:"United States", BRA:"Brazil", ARG:"Argentina", ESP:"Spain", GER:"Germany", ITA:"Italy", FRA:"France", NED:"Netherlands", POR:"Portugal", BEL:"Belgium", TUR:"Türkiye", MEX:"Mexico", CAN:"Canada", AUS:"Australia", JPN:"Japan", KOR:"South Korea", CHN:"China", IND:"India", AUT:"Austria", SUI:"Switzerland", DEN:"Denmark", SWE:"Sweden", NOR:"Norway", FIN:"Finland", POL:"Poland", CZE:"Czech Republic", GRE:"Greece", CRO:"Croatia", SRB:"Serbia", UKR:"Ukraine", RUS:"Russia", ROU:"Romania", BUL:"Bulgaria", HUN:"Hungary", ISR:"Israel", KSA:"Saudi Arabia", UAE:"United Arab Emirates", QAT:"Qatar", EGY:"Egypt", MAR:"Morocco", RSA:"South Africa", NGA:"Nigeria", COL:"Colombia", CHI:"Chile", URU:"Uruguay", PAR:"Paraguay", ECU:"Ecuador", PER:"Peru", VEN:"Venezuela", INT:"International", FIFA:"International", UEFA:"Europe" };
+    const countryName = (match) => {
+      const raw = this._matchText(match.country || match.country_code).trim();
+      if (!raw) return "International";
+      const code = raw.toUpperCase();
+      if (/^[A-Z]{3,4}$/.test(code)) {
+        const inferred = [...(catalogueCountries.get(competitionName(match)) || [])];
+        if (inferred.length === 1) return inferred[0];
+        return countryCodes[code] || "International";
+      }
+      return raw;
+    };
+    const genderName = (match) => /\b(women|women's|womens|female|feminine|femenina|frauen|dames)\b/i.test(`${competitionName(match)} ${match.home_team || ""} ${match.away_team || ""}`) ? "Women's" : "Men's";
     const competitionCountries = new Map();
     catalogue.forEach((item) => {
       if (!competitionCountries.has(item.name)) competitionCountries.set(item.name, new Set());
@@ -4195,6 +4209,8 @@ class FootballHubPanel extends HTMLElement {
         text-transform: uppercase;
       }
       .match-competition ha-icon { width: 17px; height: 17px; }
+      .match-qualification { display:flex; align-items:center; justify-content:center; gap:7px; margin:10px 0; padding:8px 10px; border-radius:10px; color:#7dff9b; background:rgba(31,190,85,.13); font-size:.82rem; text-align:center; }
+      .match-qualification ha-icon { width:18px; height:18px; }
       .live-competition-filter { display: grid; grid-template-columns: minmax(220px, .65fr) 1.35fr; gap: 24px; margin: 20px 0; }
       .live-competition-filter h2 { margin: 5px 0 6px; }
       .live-competition-filter p { margin: 0; color: var(--secondary-text-color); }
