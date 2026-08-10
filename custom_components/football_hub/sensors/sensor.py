@@ -42,6 +42,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry, async_add_e
             FootballHubPortalDataSensor(coordinator, entry, "news", "News"),
             FootballHubPortalDataSensor(coordinator, entry, "tv_guide", "TV Guide"),
             FootballHubTransferMarketSensor(coordinator, entry),
+            FootballHubCompetitionCatalogueSensor(coordinator, entry),
             FootballHubClubDataSensor(coordinator, entry, "club_profile", "My Club Profile"),
             FootballHubClubDataSensor(coordinator, entry, "club_statistics", "My Club Statistics"),
             FootballHubClubDataSensor(coordinator, entry, "club_squad", "My Club Squad"),
@@ -84,6 +85,23 @@ class FootballHubBaseSensor(CoordinatorEntity, SensorEntity):
     @property
     def engine(self):
         return self.coordinator.engine
+
+
+class FootballHubCompetitionCatalogueSensor(FootballHubBaseSensor):
+    """Expose the provider's complete country and competition catalogue."""
+
+    _unrecorded_attributes = frozenset({"competitions"})
+
+    def __init__(self, coordinator, entry):
+        super().__init__(coordinator, entry, "competition_catalogue", "Competition Catalogue")
+
+    @property
+    def native_value(self):
+        return len((self.coordinator.data or {}).get("competition_catalogue", []) or [])
+
+    @property
+    def extra_state_attributes(self):
+        return {"competitions": (self.coordinator.data or {}).get("competition_catalogue", []) or []}
 
 
 class FootballHubClubDataSensor(FootballHubBaseSensor):
