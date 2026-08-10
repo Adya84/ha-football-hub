@@ -1,4 +1,4 @@
-const PANEL_VERSION = "0.18.8-collapsible-persistent-filters";
+const PANEL_VERSION = "0.19.1-exclusive-match-status-pages";
 const LMS_SHARE_SERVICE = "https://football-hub-lms.zesty-flame-5295.chatgpt.site";
 const FULL_COMPETITION_CATALOGUE = {
   England: ["Premier League", "Championship", "League One", "League Two", "National League", "FA Cup", "EFL Cup", "Community Shield"],
@@ -57,7 +57,7 @@ class FootballHubPanel extends HTMLElement {
       : "overview";
     this._selectedFixtureTeam = localStorage.getItem("football_hub_fixture_team") || "__all__";
     this._fixturePage = 0;
-    this._selectedLiveMatch = localStorage.getItem("football_hub_live_match") || "";
+    this._selectedLiveMatch = "";
     this._selectedLiveTeam = localStorage.getItem("football_hub_live_team") || "";
     try {
       this._hiddenLiveCompetitions = new Set(JSON.parse(localStorage.getItem("football_hub_hidden_live_competitions") || "[]"));
@@ -1489,6 +1489,10 @@ class FootballHubPanel extends HTMLElement {
   }
 
   _setTab(tab) {
+    if (tab === "live" && this._activeTab !== "live") {
+      this._selectedLiveMatch = "";
+      localStorage.removeItem("football_hub_live_match");
+    }
     this._activeTab = tab;
     localStorage.setItem("football_hub_active_page", tab);
     this._render();
@@ -2361,11 +2365,11 @@ class FootballHubPanel extends HTMLElement {
     const liveFilters = `${toolbar}<details id="live-filter-panel" class="page-card live-competition-filter live-filter-panel" ${this._liveFiltersOpen ? "open" : ""}><summary><div><span class="eyebrow">MATCH FILTERS</span><h2>Countries and competitions</h2></div><span class="live-filter-summary-count">${selectedCompetitionCount} selected <ha-icon icon="mdi:chevron-down"></ha-icon></span></summary><div class="live-filter-panel-body"><p>Expand a country to choose its leagues and cups. Favourites are pinned first and settings synchronise through Home Assistant.</p><div class="live-filter-groups"><details open><summary>Men's and women's football ${filterActions("gender")}</summary><div class="live-filter-options">${filterChecks(["Men's", "Women's"], "gender", this._hiddenLiveGenders)}</div></details>${countryCompetitionFilters}</div></div></details>`;
     const statusInfo = this._statusInfo();
     const notifyChecks = [["kickoff", "Kickoff"], ["goals", "Goals"], ["halftime", "Half-time"], ["fulltime", "Full-time"], ["selectedClubOnly", "Selected club only"]].map(([key, label]) => `<label><input type="checkbox" data-live-notification="${key}" ${this._liveNotifications[key] ? "checked" : ""}><span>${label}</span></label>`).join("");
-    const liveExtras = `<section class="live-utility-grid"><article class="page-card"><span class="eyebrow">BROWSER ALERTS</span><h2>Match notifications</h2><p>Alerts appear while Football Hub is open.</p><div class="live-filter-options">${notifyChecks}</div></article><article class="page-card live-diagnostics"><span class="eyebrow">DATA STATUS</span><h2>${this._escape(statusInfo.state)}</h2><div><span>Worldwide matches</span><strong>${allTodayMatches.length}</strong></div><div><span>Live now</span><strong>${allLiveMatches.length}</strong></div><div><span>Competitions</span><strong>${competitionNames.length}</strong></div><div><span>Last updated</span><strong>${this._escape(statusInfo.last_updated ? this._formatDate(statusInfo.last_updated) : "Waiting for refresh")}</strong></div></article></section>`;
+    const liveExtras = `<section class="live-utility-grid compact"><article class="page-card live-alerts-compact"><header><span class="eyebrow">BROWSER ALERTS</span><strong>Match notifications</strong></header><div class="live-alert-options">${notifyChecks}</div></article><article class="page-card live-diagnostics compact"><header><span class="eyebrow">DATA STATUS</span><strong>${this._escape(statusInfo.state)}</strong></header><div><span>Matches</span><strong>${allTodayMatches.length}</strong></div><div><span>Live</span><strong>${allLiveMatches.length}</strong></div><div><span>Competitions</span><strong>${competitionNames.length}</strong></div><div><span>Updated</span><strong>${this._escape(statusInfo.last_updated ? this._formatDate(statusInfo.last_updated) : "Waiting")}</strong></div></article></section>`;
     const grouped = new Map();
     todayMatches.forEach((match) => { const key = `${countryName(match)}|||${competitionName(match)}`; if (!grouped.has(key)) grouped.set(key, []); grouped.get(key).push(match); });
     const groupedMatches = [...grouped.entries()].sort(([a], [b]) => { const ac = a.split("|||")[1], bc = b.split("|||")[1]; return Number(this._favouriteLiveCompetitions.has(bc)) - Number(this._favouriteLiveCompetitions.has(ac)) || a.localeCompare(b); }).map(([key, games]) => { const [country, competition] = key.split("|||"); return `<article class="live-schedule-group"><header><div><span>${this._escape(this._displayCountry(country))}</span><strong>${this._escape(competition)}</strong></div><span>${games.length} match${games.length === 1 ? "" : "es"}</span></header><div class="match-list ${this._liveDisplayMode === "compact" ? "compact" : ""}">${games.map((match) => this._matchCard(match, statusGroup(match) === "completed" ? "result" : undefined)).join("")}</div></article>`; }).join("");
-    const todaySection = `${liveFilters}${liveExtras}<section class="section"><div class="section-title-row"><div><span class="eyebrow">TODAY'S WORLDWIDE SCHEDULE</span><h2>Today's fixtures and results</h2></div><span class="pill">${todayMatches.length} of ${allTodayMatches.length} shown</span></div>${groupedMatches || `<div class="empty">No matches are shown. Change the filters above to add them.</div>`}</section>`;
+    const todaySection = `<section class="section"><div class="section-title-row"><div><span class="eyebrow">TODAY'S WORLDWIDE SCHEDULE</span><h2>Today's fixtures and results</h2></div><span class="pill">${todayMatches.length} of ${allTodayMatches.length} shown</span></div>${groupedMatches || `<div class="empty">No matches are shown. Change the filters above to add them.</div>`}</section>`;
     const leagueTeams = [...new Set((this._attrs("standings").table || [])
       .map((row) => row.team || row.team_name)
       .filter(Boolean))].sort((a, b) => a.localeCompare(b));
@@ -2380,6 +2384,7 @@ class FootballHubPanel extends HTMLElement {
 
     if (!primary.is_live) {
       return `
+        ${liveFilters}${liveExtras}
         <section class="page-card live-control-empty">
           <div><span class="live-kicker">⚽ MATCHDAY CONTROL ROOM</span><h2>Live Centre</h2><p>The feed updates automatically when a match begins.</p></div>
           ${teamOptions()}
@@ -2396,13 +2401,16 @@ class FootballHubPanel extends HTMLElement {
     const liveMatches = matches.length ? matches : [primary];
     const matchId = (match, index = 0) => String(match.fixture_id ?? match.id ?? `${match.home_team}-${match.away_team}-${index}`);
     const availableIds = liveMatches.map((match, index) => matchId(match, index));
-    const selectedTeamMatchIndex = liveMatches.findIndex((match) =>
-      match.home_team === this._selectedLiveTeam || match.away_team === this._selectedLiveTeam
-    );
-    if (!availableIds.includes(this._selectedLiveMatch)) {
-      this._selectedLiveMatch = selectedTeamMatchIndex >= 0
-        ? availableIds[selectedTeamMatchIndex]
-        : (availableIds[0] || "");
+    if (!availableIds.includes(this._selectedLiveMatch)) this._selectedLiveMatch = "";
+    const totalLiveGoals = liveMatches.reduce((total, match) => {
+      const home = Number(match.home_goals);
+      const away = Number(match.away_goals);
+      return total + (Number.isFinite(home) ? home : 0) + (Number.isFinite(away) ? away : 0);
+    }, 0);
+    if (!this._selectedLiveMatch) {
+      return `${liveFilters}${liveExtras}
+        <section class="page-card live-control-hero"><div><span class="live-kicker">⚽ MATCHDAY CONTROL ROOM</span><h2>Live Centre <b>LIVE</b></h2><p>Select any match below to open its full live details.</p></div>${teamOptions(this._selectedLiveTeam)}<div class="live-control-stats"><div><strong>${liveMatches.length}</strong><span>Live now</span></div><div><strong>${totalLiveGoals}</strong><span>Goals</span></div><div><strong>0</strong><span>Selected</span></div></div></section>
+        <section class="section country-live-section"><div class="page-heading"><div><span class="eyebrow">LIVE AROUND THE WORLD</span><h2>All live scores</h2></div><div class="count-badge">${liveMatches.length} live</div></div>${this._liveCompetitionGroups(liveMatches, "")}</section>${todaySection}`;
     }
     const selectedIndex = Math.max(0, availableIds.indexOf(this._selectedLiveMatch));
     const selectedBasic = liveMatches[selectedIndex] || primary;
@@ -2413,19 +2421,14 @@ class FootballHubPanel extends HTMLElement {
     const events = selectedIsPrimary ? (primary.events || []) : (selectedBasic.events || []);
     const stats = selectedIsPrimary ? (primary.statistics || []) : (selectedBasic.statistics || []);
     const lineups = selectedIsPrimary ? (primary.lineups || []) : (selectedBasic.lineups || []);
-    const totalLiveGoals = liveMatches.reduce((total, match) => {
-      const home = Number(match.home_goals);
-      const away = Number(match.away_goals);
-      return total + (Number.isFinite(home) ? home : 0) + (Number.isFinite(away) ? away : 0);
-    }, 0);
-
     return `
+      ${liveFilters}${liveExtras}
       <section class="page-card live-control-hero">
         <div><span class="live-kicker">⚽ MATCHDAY CONTROL ROOM</span><h2>Live Centre <b>LIVE</b></h2><p>Scores, incidents, statistics and team sheets update automatically.</p></div>
         ${teamOptions(this._selectedLiveTeam || live.home_team)}
         <div class="live-control-stats"><div><strong>${liveMatches.length}</strong><span>Live now</span></div><div><strong>${totalLiveGoals}</strong><span>Goals</span></div><div><strong>${events.length}</strong><span>Selected events</span></div></div>
       </section>
-      <section class="live-centre-card" id="selected-live-match">
+      <section class="live-centre-card" id="selected-live-match"><button type="button" id="live-close-match" class="live-close-match"><ha-icon icon="mdi:arrow-left"></ha-icon> All live matches</button>
         <div class="live-banner"><span class="pulse"></span> LIVE · ${this._escape(
           live.elapsed ? `${String(live.elapsed).replace(/'+$/, "")}'` : (live.status_short || "")
         )}</div>
@@ -2466,8 +2469,11 @@ class FootballHubPanel extends HTMLElement {
 
   _fixturesPage() {
     const fixtures = this._attrs("fixtures");
-    const today = this._attrs("matches_today").matches || [];
-    const allFixtures = fixtures.fixtures || fixtures.next_5 || [];
+    const liveStatuses = new Set(["LIVE", "1H", "HT", "2H", "ET", "BT", "P", "SUSP", "INT"]);
+    const completedStatuses = new Set(["FT", "AET", "PEN", "AWD", "WO", "CANC", "ABD"]);
+    const statusOf = (match) => String(match.status_short || match.status || "NS").toUpperCase();
+    const today = (this._attrs("matches_today").matches || []).filter((match) => !liveStatuses.has(statusOf(match)) && !completedStatuses.has(statusOf(match)));
+    const allFixtures = (fixtures.fixtures || fixtures.next_5 || []).filter((match) => !liveStatuses.has(statusOf(match)) && !completedStatuses.has(statusOf(match)));
     const standingsTeams = (this._attrs("standings").table || [])
       .map((row) => row.team || row.team_name)
       .filter(Boolean);
@@ -2535,7 +2541,8 @@ class FootballHubPanel extends HTMLElement {
 
   _resultsPage() {
     const attrs = this._attrs("results");
-    const results = attrs.latest_5 || [];
+    const completedStatuses = new Set(["FT", "AET", "PEN", "AWD", "WO", "CANC", "ABD"]);
+    const results = (attrs.latest_5 || []).filter((match) => completedStatuses.has(String(match.status_short || match.status || "").toUpperCase()));
     const rawTotal = attrs.total_results;
     const totalResults = rawTotal && typeof rawTotal === "object"
       ? rawTotal.total ?? rawTotal.count ?? rawTotal.value ?? results.length
@@ -2824,19 +2831,22 @@ class FootballHubPanel extends HTMLElement {
     const selectedCupKey = this._pendingCup || cupData.competition_key || "";
     const activeCup = catalogue.find((item) => item.key === selectedCupKey);
     const cupDataReady = Boolean(activeCup && cupData.competition_key === activeCup.key && !this._pendingCup);
-    const fixtures = cupDataReady && Array.isArray(cupData.fixtures) ? cupData.fixtures : [];
-    const live = cupDataReady && Array.isArray(cupData.live) ? cupData.live : [];
+    const liveStatuses = new Set(["LIVE", "1H", "HT", "2H", "ET", "BT", "P", "SUSP", "INT"]);
+    const completedStatuses = new Set(["FT", "AET", "PEN", "AWD", "WO", "CANC", "ABD"]);
+    const cupStatus = (match) => String(match.status_short || match.status || "NS").toUpperCase();
+    const fixtures = cupDataReady && Array.isArray(cupData.fixtures) ? cupData.fixtures.filter((match) => !liveStatuses.has(cupStatus(match)) && !completedStatuses.has(cupStatus(match))) : [];
+    const live = cupDataReady && Array.isArray(cupData.live) ? cupData.live.filter((match) => liveStatuses.has(cupStatus(match))) : [];
     const cupMatchKey = (match) => String(match.fixture_id ?? match.id ?? `${match.home_team}-${match.away_team}-${match.timestamp || ""}`);
-    const allCupFixtures = [...new Map([...live, ...fixtures].map((match) => [cupMatchKey(match), match])).values()]
+    const allCupFixtures = [...new Map(fixtures.map((match) => [cupMatchKey(match), match])).values()]
       .sort((a, b) => (a.timestamp || 0) - (b.timestamp || 0));
-    const results = cupDataReady && Array.isArray(cupData.results) ? cupData.results : [];
+    const results = cupDataReady && Array.isArray(cupData.results) ? cupData.results.filter((match) => completedStatuses.has(cupStatus(match))) : [];
     const table = cupDataReady && Array.isArray(cupData.table) ? cupData.table : [];
     const scorers = cupDataReady && Array.isArray(cupData.top_scorers) ? cupData.top_scorers : [];
     let cupContent = `<article class="page-card"><div class="empty">Choose a cup competition to load its data.</div></article>`;
     if (activeCup && !cupDataReady) {
       cupContent = `<article class="page-card"><div class="empty">Loading ${this._escape(activeCup.name)} data…</div></article>`;
     } else if (activeCup && this._cupView === "fixtures") {
-      cupContent = `<section class="section"><h2>${this._escape(activeCup.name)} fixtures</h2><p>Includes every upcoming fixture and any match currently in progress.</p><div class="match-list">${allCupFixtures.length ? allCupFixtures.map((match) => this._matchCard(match, live.some((item) => cupMatchKey(item) === cupMatchKey(match)) ? "result" : undefined)).join("") : `<div class="empty">No cup fixtures are available yet.</div>`}</div></section>`;
+      cupContent = `<section class="section"><h2>${this._escape(activeCup.name)} fixtures</h2><p>Upcoming matches only. In-progress matches move to Live automatically.</p><div class="match-list">${allCupFixtures.length ? allCupFixtures.map((match) => this._matchCard(match)).join("") : `<div class="empty">No cup fixtures are available yet.</div>`}</div></section>`;
     } else if (activeCup && this._cupView === "live") {
       cupContent = `<section class="section"><h2>${this._escape(activeCup.name)} live matches</h2><div class="match-list">${live.length ? live.map((match) => this._matchCard(match, "result")).join("") : `<div class="empty">No matches from this cup are live right now.</div>`}</div></section>`;
     } else if (activeCup && this._cupView === "results") {
@@ -3076,6 +3086,11 @@ class FootballHubPanel extends HTMLElement {
           fixture_id: this._selectedLiveMatch,
         }).catch(() => {});
       });
+    });
+    this.shadowRoot.querySelector("#live-close-match")?.addEventListener("click", () => {
+      this._selectedLiveMatch = "";
+      localStorage.removeItem("football_hub_live_match");
+      this._render();
     });
 
     this.shadowRoot.querySelector("#my-club-select")?.addEventListener("change", (event) => {
@@ -4267,9 +4282,19 @@ class FootballHubPanel extends HTMLElement {
       .live-utility-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin: 16px 0 24px; }
       .live-utility-grid p { color: var(--secondary-text-color); }
       .live-diagnostics > div { display: flex; justify-content: space-between; gap: 12px; padding: 7px 0; border-bottom: 1px solid rgba(255,255,255,.08); }
+      .live-utility-grid.compact { grid-template-columns:minmax(0,1.35fr) minmax(300px,.65fr); gap:10px; margin:8px 0 14px; }
+      .live-utility-grid.compact .page-card { padding:11px 14px; border-radius:14px; }
+      .live-utility-grid.compact header { display:flex; align-items:center; justify-content:space-between; gap:12px; margin-bottom:8px; }
+      .live-utility-grid.compact header .eyebrow { margin:0; }
+      .live-alert-options { display:flex; flex-wrap:wrap; gap:6px 14px; }
+      .live-alert-options label { display:flex; align-items:center; gap:5px; font-size:.76rem; }
+      .live-diagnostics.compact { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:6px 12px; }
+      .live-diagnostics.compact header { grid-column:1/-1; margin-bottom:0; }
+      .live-diagnostics.compact > div { display:flex; flex-direction:column; gap:2px; padding:4px 0; border:0; font-size:.72rem; }
+      .live-diagnostics.compact > div strong { white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
       .fixture-filter > div { display: flex; gap: 8px; margin-top: 7px; }
       @media (max-width: 1050px) { .live-toolbar { grid-template-columns: 1fr 1fr; } }
-      @media (max-width: 700px) { .live-toolbar, .live-utility-grid { grid-template-columns: 1fr; } }
+      @media (max-width: 700px) { .live-toolbar, .live-utility-grid, .live-utility-grid.compact { grid-template-columns: 1fr; } .live-diagnostics.compact { grid-template-columns:repeat(2,minmax(0,1fr)); } }
 
       .match-teams {
         display: grid;
@@ -4304,6 +4329,8 @@ class FootballHubPanel extends HTMLElement {
       }
 
       .live-centre-card { padding: clamp(22px, 4vw, 42px); scroll-margin-top: 76px; }
+      .live-close-match { display:inline-flex; align-items:center; gap:6px; margin:0 0 14px; padding:7px 11px; border:1px solid rgba(255,255,255,.18); border-radius:10px; background:rgba(255,255,255,.07); color:var(--primary-text-color); cursor:pointer; }
+      .live-close-match ha-icon { width:18px; height:18px; }
 
       .live-picker { margin-bottom: 18px; }
       .live-picker-control { display: flex; align-items: center; gap: 12px; margin-bottom: 14px; }
