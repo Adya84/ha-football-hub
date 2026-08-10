@@ -1,5 +1,22 @@
-const PANEL_VERSION = "0.18.0-live-centre-pro";
+const PANEL_VERSION = "0.18.4-cup-results-venue-fix";
 const LMS_SHARE_SERVICE = "https://football-hub-lms.zesty-flame-5295.chatgpt.site";
+const FULL_COMPETITION_CATALOGUE = {
+  England: ["Premier League", "Championship", "League One", "League Two", "National League", "FA Cup", "EFL Cup", "Community Shield"],
+  Scotland: ["Scottish Premiership", "Scottish Championship", "Scottish League One", "Scottish League Two", "Highland / Lowland Leagues", "Scottish Cup", "Scottish League Cup"],
+  Wales: ["Cymru Premier", "Cymru North", "Cymru South", "Welsh Cup"],
+  "Northern Ireland": ["Premiership", "Irish Cup"],
+  Ireland: ["Premier Division", "FAI Cup"],
+  Spain: ["La Liga", "Copa del Rey", "Spanish Super Cup"],
+  Germany: ["Bundesliga", "DFB-Pokal", "German Super Cup"],
+  Italy: ["Serie A", "Coppa Italia", "Supercoppa Italiana"],
+  France: ["Ligue 1", "Coupe de France", "Trophée des Champions"],
+  Netherlands: ["Eredivisie", "KNVB Cup", "Johan Cruyff Shield"],
+  Portugal: ["Primeira Liga", "Taça de Portugal", "Portuguese League Cup", "Portuguese Super Cup"],
+  Belgium: ["Jupiler Pro League", "Belgian Cup", "Belgian Super Cup"],
+  Türkiye: ["Süper Lig", "Turkish Cup", "Turkish Super Cup"],
+  "United States": ["MLS", "USL Championship", "USL League One", "MLS Next Pro", "NISA", "NWSL", "US Open Cup", "USL Cup", "NWSL Challenge Cup"],
+  Europe: ["UEFA Champions League", "UEFA Europa League", "UEFA Conference League"],
+};
 
 class FootballHubPanel extends HTMLElement {
   constructor() {
@@ -1873,6 +1890,7 @@ class FootballHubPanel extends HTMLElement {
     const score = isResult || match.status_short !== "NS"
       ? `<div class="match-score">${this._score(match.home_goals)} <span>–</span> ${this._score(match.away_goals)}</div>`
       : `<div class="match-time">${this._formatDate(match.kickoff)}</div>`;
+    const venueText = match.stadium || (!isResult ? "Venue TBC" : "");
 
     return `
       <article class="match-card">
@@ -1892,10 +1910,10 @@ class FootballHubPanel extends HTMLElement {
             <strong>${this._escape(match.away_team || "Away")}</strong>
           </div>
         </div>
-        <div class="match-footer">
-          <span>${this._escape(match.stadium || "Venue TBC")}</span>
+        ${venueText || match.city ? `<div class="match-footer">
+          <span>${this._escape(venueText)}</span>
           <span>${this._escape(match.city || "")}</span>
-        </div>
+        </div>` : ""}
       </article>
     `;
   }
@@ -2284,17 +2302,24 @@ class FootballHubPanel extends HTMLElement {
     const competitionName = (match) => this._matchText(match.league || match.competition) || "Other matches";
     const countryName = (match) => this._matchText(match.country || match.country_code) || "International";
     const genderName = (match) => /\b(women|women's|womens|female|feminine|femenina|frauen|dames)\b/i.test(`${competitionName(match)} ${match.home_team || ""} ${match.away_team || ""}`) ? "Women's" : "Men's";
-    const competitionNames = [...new Set([...allTodayMatches, ...allLiveMatches].map(competitionName))].sort((a, b) => {
-      const favouriteDiff = Number(this._favouriteLiveCompetitions.has(b)) - Number(this._favouriteLiveCompetitions.has(a));
-      return favouriteDiff || a.localeCompare(b);
-    });
-    const countryNames = [...new Set([...allTodayMatches, ...allLiveMatches].map(countryName))].sort((a, b) => a.localeCompare(b));
+    const builtInCatalogue = Object.entries(FULL_COMPETITION_CATALOGUE).flatMap(([country, names]) => names.map((name) => ({ country, name })));
+    const providerCatalogue = this._attrs("competition_catalogue").competitions || [];
+    const catalogue = [...builtInCatalogue, ...(this._statusInfo().available_competitions || []), ...providerCatalogue].filter((item) => item?.name && item?.country);
     const competitionCountries = new Map();
+    catalogue.forEach((item) => {
+      if (!competitionCountries.has(item.name)) competitionCountries.set(item.name, new Set());
+      competitionCountries.get(item.name).add(item.country);
+    });
     [...allTodayMatches, ...allLiveMatches].forEach((match) => {
       const competition = competitionName(match);
       if (!competitionCountries.has(competition)) competitionCountries.set(competition, new Set());
       competitionCountries.get(competition).add(countryName(match));
     });
+    const competitionNames = [...competitionCountries.keys()].sort((a, b) => {
+      const favouriteDiff = Number(this._favouriteLiveCompetitions.has(b)) - Number(this._favouriteLiveCompetitions.has(a));
+      return favouriteDiff || a.localeCompare(b);
+    });
+    const countryNames = [...new Set([...catalogue.map((item) => item.country), ...allTodayMatches.map(countryName), ...allLiveMatches.map(countryName)])].sort((a, b) => a.localeCompare(b));
     const statusGroup = (match) => ["FT", "AET", "PEN", "CANC", "PST", "ABD", "AWD", "WO"].includes(match.status_short) ? "completed" : ["1H", "HT", "2H", "ET", "BT", "P", "SUSP", "INT", "LIVE"].includes(match.status_short) ? "live" : "upcoming";
     const competitionFilterKey = (match) => `${countryName(match)}|||${competitionName(match)}`;
     const isVisible = (match) => !this._hiddenLiveCompetitions.has(competitionFilterKey(match)) && !this._hiddenLiveCompetitions.has(competitionName(match)) && !this._hiddenLiveCountries.has(countryName(match)) && !this._hiddenLiveGenders.has(genderName(match)) && (this._liveStatusFilter === "all" || statusGroup(match) === this._liveStatusFilter);
