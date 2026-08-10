@@ -590,14 +590,14 @@ class FMProvider:
                 "round": match.get("roundName") or match.get("round"),
             },
             "teams": {
-                "home": {
-                    "id": home.get("id"),
-                    "name": home.get("name"),
+            "home": {
+                "id": home.get("id"),
+                "name": home.get("longName") or home.get("name"),
                     "logo": self._logo(home.get("id")),
                 },
-                "away": {
-                    "id": away.get("id"),
-                    "name": away.get("name"),
+            "away": {
+                "id": away.get("id"),
+                "name": away.get("longName") or away.get("name"),
                     "logo": self._logo(away.get("id")),
                 },
             },
@@ -609,13 +609,17 @@ class FMProvider:
         }
 
         self._fixture_context[str(match_id)] = {
-            "home": home.get("name"),
-            "away": away.get("name"),
+            "home": home.get("longName") or home.get("name"),
+            "away": away.get("longName") or away.get("name"),
             "date": date,
         }
         for team in (home, away):
-            if team.get("id") is not None and team.get("name"):
-                self._team_names[str(team["id"])] = team["name"]
+            canonical_name = team.get("longName") or team.get("name")
+            if team.get("id") is not None and canonical_name:
+                team_key = str(team["id"])
+                existing_name = self._team_names.get(team_key, "")
+                if len(str(canonical_name)) >= len(existing_name):
+                    self._team_names[team_key] = canonical_name
         return item
 
     @staticmethod
@@ -840,6 +844,24 @@ class FMProvider:
         for item in await self._matches_for_date(datetime.now(timezone.utc)):
             if (item.get("league") or {}).get("id") in (fm_id, str(fm_id)):
                 output[str((item.get("fixture") or {}).get("id"))] = item
+
+        # FotMob can mix short and full names for one team. Use the permanent
+        # team ID to retain one canonical (normally longest) club name.
+        canonical_names: dict[str, str] = dict(self._team_names)
+        for item in output.values():
+            for side in ("home", "away"):
+                team = ((item.get("teams") or {}).get(side) or {})
+                team_id, team_name = team.get("id"), str(team.get("name") or "")
+                if team_id not in (None, "") and team_name:
+                    team_key = str(team_id)
+                    if len(team_name) >= len(canonical_names.get(team_key, "")):
+                        canonical_names[team_key] = team_name
+        for item in output.values():
+            for side in ("home", "away"):
+                team = ((item.get("teams") or {}).get(side) or {})
+                team_key = str(team.get("id"))
+                if team_key in canonical_names:
+                    team["name"] = canonical_names[team_key]
 
         fixtures = sorted(
             output.values(),
