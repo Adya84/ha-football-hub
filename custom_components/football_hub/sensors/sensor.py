@@ -12,7 +12,7 @@ from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from ..competitions import COMPETITIONS, SEASONS
 from ..const import DOMAIN
-from ..engine.helpers import limit_items
+from ..engine.helpers import clean_fixture, fixture_timestamp, limit_items
 
 ATTRIBUTE_LIMIT = 5
 
@@ -426,12 +426,17 @@ class FootballHubMatchesTodaySensor(FootballHubBaseSensor):
 
     @property
     def native_value(self):
-        return len(self.engine.fixtures.today())
+        return self.extra_state_attributes["total_today"]
 
     @property
     def extra_state_attributes(self):
-        matches = self.engine.fixtures.today()
-        return {"total_today": len(matches), "matches": limit_items(matches, ATTRIBUTE_LIMIT)}
+        now = datetime.now(timezone.utc)
+        start = int(datetime(now.year, now.month, now.day, tzinfo=timezone.utc).timestamp())
+        end = start + 86400
+        raw = self.coordinator._cache.get("live_feed", []) or []
+        matches = [clean_fixture(item) for item in raw if start <= fixture_timestamp(item) < end]
+        matches.sort(key=lambda item: item.get("timestamp") or 0)
+        return {"total_today": len(matches), "matches": limit_items(matches, 50)}
 
 
 class FootballHubThisWeekSensor(FootballHubBaseSensor):
@@ -595,6 +600,7 @@ class FootballHubCupCentreSensor(FootballHubBaseSensor):
             "country": competition.get("country"),
             "has_table": competition.get("has_table", False),
             "fixtures": engine.fixtures.all(),
+            "live": engine.live.matches(),
             "results": engine.results.all(),
             "table": engine.standings.table(),
             "top_scorers": limit_items(engine.top_scorers, 10),
