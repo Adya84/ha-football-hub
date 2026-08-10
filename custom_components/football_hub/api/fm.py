@@ -60,31 +60,33 @@ FM_LEAGUES = {
     1101: 132,   # FA Cup
     1102: 133,   # EFL Cup
     1103: 247,   # Community Shield
-    1201: 65,    # Scottish Cup
-    1202: 66,    # Scottish League Cup
+    1201: 137,   # Scottish Cup
+    1202: 180,   # Scottish League Cup
     1301: 9166,  # Welsh Cup
     3101: 9441,  # US Open Cup
     3102: 10654, # USL Cup
     3103: 10167, # NWSL Challenge Cup
-    1401: 113,   # Irish Cup
-    1501: 128,   # FAI Cup
+    1401: 9389,  # Irish Cup
+    1501: 219,   # FAI Cup
     1601: 138,   # Copa del Rey
     1602: 139,   # Spanish Super Cup
     1701: 209,   # DFB-Pokal
-    1702: 210,   # German Super Cup
+    1702: 8924,  # German Super Cup
     1801: 141,   # Coppa Italia
     1802: 222,   # Supercoppa Italiana
     1901: 134,   # Coupe de France
     1902: 219,   # Trophée des Champions
-    2001: 58,    # KNVB Cup
-    2002: 189,   # Johan Cruyff Shield
+    2001: 235,   # KNVB Cup
+    2002: 237,   # Johan Cruyff Shield
     2101: 96,    # Taça de Portugal
-    2102: 228,   # Portuguese League Cup
-    2103: 129,   # Portuguese Super Cup
-    2201: 112,   # Belgian Cup
-    2202: 174,   # Belgian Super Cup
-    2301: 193,   # Turkish Cup
-    2302: 194,   # Turkish Super Cup
+    2102: 187,   # Portuguese League Cup
+    2103: 188,   # Portuguese Super Cup
+    2201: 149,   # Belgian Cup
+    2202: 266,   # Belgian Super Cup
+    2301: 151,   # Turkish Cup
+    2302: 166,   # Turkish Super Cup
+    1902: 207,   # Trophee des Champions (correct FotMob ID)
+    2101: 186,   # Taca de Portugal (correct FotMob ID)
 }
 
 FM_CUP_LEAGUES = {
@@ -610,7 +612,7 @@ class FMProvider:
 
     async def _league_data(self, league_id: Any) -> dict:
         fm_id = self._league_id(league_id)
-        cache_version = "v2" if int(league_id) in FM_CUP_LEAGUES else "v1"
+        cache_version = "v3" if int(league_id) in FM_CUP_LEAGUES else "v1"
         key = f"league:{cache_version}:{fm_id}"
         cached = self._cache_get(key, LEAGUE_TTL)
         if cached is not None:
