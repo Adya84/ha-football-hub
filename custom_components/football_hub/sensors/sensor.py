@@ -615,12 +615,20 @@ class FootballHubCupCentreSensor(FootballHubBaseSensor):
     def extra_state_attributes(self):
         engine = self.coordinator.cup_engine
         competition = self.coordinator.cup_competition or {}
+        raw_by_id = {
+            str(((item or {}).get("fixture") or {}).get("id")): item
+            for item in ((self.coordinator.data or {}).get("cup_fixtures", []) or [])
+        }
+        fixtures = []
+        for fixture in engine.fixtures.all():
+            raw = raw_by_id.get(str(fixture.get("fixture_id") or fixture.get("id")), {})
+            fixtures.append({**fixture, "qualification": raw.get("qualification")})
         return {
             "competition_key": self.coordinator.cup_key,
             "competition": competition.get("name"),
             "country": competition.get("country"),
             "has_table": competition.get("has_table", False),
-            "fixtures": engine.fixtures.all(),
+            "fixtures": fixtures,
             "live": engine.live.matches(),
             "results": engine.results.all(),
             "table": engine.standings.table(),
