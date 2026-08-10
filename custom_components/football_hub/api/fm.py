@@ -582,10 +582,11 @@ class FMProvider:
                     "city": None,
                 },
             },
-            "league": {
+        "league": {
                 "id": match.get("leagueId"),
                 "name": league_name or match.get("leagueName"),
-                "country_code": country_code or match.get("ccode"),
+            "country_code": country_code or match.get("ccode"),
+            "country": country_code or match.get("ccode"),
                 "round": match.get("roundName") or match.get("round"),
             },
             "teams": {
@@ -787,25 +788,10 @@ class FMProvider:
         return is_selected_country or is_uefa_club_competition or is_international
 
     async def get_live_feed(self, league_id, season):
-        """Return today's configured competitions and supported friendlies."""
+        """Return every match in FotMob's worldwide feed for today."""
         matches = await self._matches_for_date(datetime.now(timezone.utc))
         await self._remember_finished_friendlies(matches)
-        output = []
-        for item in matches:
-            league = item.get("league") or {}
-            competition_id = str(league.get("id") or "")
-            name = str(league.get("name") or "").casefold()
-            is_uefa_or_international = any(
-                label in name
-                for label in (
-                    "champions league", "europa league", "conference league",
-                    "nations league", "european championship", "euro qualification",
-                    "world cup", "international friendly", "friendlies",
-                )
-            )
-            if competition_id in LIVE_COMPETITION_IDS or is_uefa_or_international:
-                output.append(item)
-        return output
+        return matches
 
     async def get_live(self, league_id, season):
         feed = await self.get_live_feed(league_id, season)
