@@ -587,7 +587,7 @@ class FMProvider:
                 "name": league_name or match.get("leagueName"),
             "country_code": country_code or match.get("ccode"),
             "country": country_code or match.get("ccode"),
-                "round": match.get("roundName") or match.get("round"),
+                "round": match.get("roundName") or match.get("round") or match.get("tournamentStage") or ((match.get("tournament") or {}).get("stage")),
             },
             "teams": {
             "home": {
