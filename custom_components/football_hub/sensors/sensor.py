@@ -436,7 +436,7 @@ class FootballHubMatchesTodaySensor(FootballHubBaseSensor):
         raw = self.coordinator._cache.get("live_feed", []) or []
         matches = [clean_fixture(item) for item in raw if start <= fixture_timestamp(item) < end]
         matches.sort(key=lambda item: item.get("timestamp") or 0)
-        return {"total_today": len(matches), "matches": limit_items(matches, 50)}
+        return {"total_today": len(matches), "matches": limit_items(matches, 500)}
 
 
 class FootballHubThisWeekSensor(FootballHubBaseSensor):
