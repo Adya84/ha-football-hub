@@ -1,4 +1,4 @@
-const PANEL_VERSION = "0.19.1-exclusive-match-status-pages";
+const PANEL_VERSION = "0.19.2-fixture-club-count-fix";
 const LMS_SHARE_SERVICE = "https://football-hub-lms.zesty-flame-5295.chatgpt.site";
 const FULL_COMPETITION_CATALOGUE = {
   England: ["Premier League", "Championship", "League One", "League Two", "National League", "FA Cup", "EFL Cup", "Community Shield"],
@@ -2472,7 +2472,7 @@ class FootballHubPanel extends HTMLElement {
     const liveStatuses = new Set(["LIVE", "1H", "HT", "2H", "ET", "BT", "P", "SUSP", "INT"]);
     const completedStatuses = new Set(["FT", "AET", "PEN", "AWD", "WO", "CANC", "ABD"]);
     const statusOf = (match) => String(match.status_short || match.status || "NS").toUpperCase();
-    const today = (this._attrs("matches_today").matches || []).filter((match) => !liveStatuses.has(statusOf(match)) && !completedStatuses.has(statusOf(match)));
+    const todayFixtures = (this._attrs("matches_today").matches || []).filter((match) => !liveStatuses.has(statusOf(match)) && !completedStatuses.has(statusOf(match)));
     const allFixtures = (fixtures.fixtures || fixtures.next_5 || []).filter((match) => !liveStatuses.has(statusOf(match)) && !completedStatuses.has(statusOf(match)));
     const standingsTeams = (this._attrs("standings").table || [])
       .map((row) => row.team || row.team_name)
@@ -2490,14 +2490,19 @@ class FootballHubPanel extends HTMLElement {
     const teams = (fixtureTeams.length > 10 ? fixtureTeams : [...new Set([...fixtureTeams, ...standingsTeams])])
       .sort((a, b) => a.localeCompare(b));
     const normaliseTeam = (name) => String(name || "").trim().toLowerCase();
+    const isSelectedClubMatch = (match) =>
+      normaliseTeam(match.home_team) === normaliseTeam(this._selectedFixtureTeam) ||
+      normaliseTeam(match.away_team) === normaliseTeam(this._selectedFixtureTeam);
     const filteredFixtures = this._selectedFixtureTeam === "__all__"
       ? allFixtures
       : this._selectedFixtureTeam
-      ? allFixtures.filter((match) =>
-          normaliseTeam(match.home_team) === normaliseTeam(this._selectedFixtureTeam) ||
-          normaliseTeam(match.away_team) === normaliseTeam(this._selectedFixtureTeam)
-        )
+      ? allFixtures.filter(isSelectedClubMatch)
       : allFixtures.slice(0, 6);
+    const filteredToday = this._selectedFixtureTeam === "__all__"
+      ? todayFixtures
+      : this._selectedFixtureTeam
+      ? todayFixtures.filter(isSelectedClubMatch)
+      : todayFixtures.slice(0, 6);
     const pageSize = 20;
     const totalPages = Math.max(1, Math.ceil(filteredFixtures.length / pageSize));
     const currentPage = Math.min(this._fixturePage, totalPages - 1);
@@ -2506,7 +2511,7 @@ class FootballHubPanel extends HTMLElement {
     return `
       <section class="page-heading">
         <div><span class="eyebrow">MATCH SCHEDULE</span><h2>Fixtures</h2></div>
-        <div class="count-badge">${this._escape(fixtures.total_fixtures || 0)} matches</div>
+        <div class="count-badge">${this._escape(filteredFixtures.length)} matches</div>
       </section>
       <div class="fixture-filter">
         <label for="fixture-team-select">Show fixtures for</label>
@@ -2515,8 +2520,8 @@ class FootballHubPanel extends HTMLElement {
         <div><button type="button" data-fixture-team-quick="__all__">All fixtures (${this._escape(allFixtures.length)})</button><button type="button" data-fixture-team-quick="">Next 6</button></div>
       </div>
       ${
-        today.length
-          ? `<section class="section"><h3>Today</h3><div class="match-list">${today
+        filteredToday.length
+          ? `<section class="section"><h3>Today</h3><div class="match-list">${filteredToday
               .map((m) => this._matchCard(m))
               .join("")}</div></section>`
           : ""
