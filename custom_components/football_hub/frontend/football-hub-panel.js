@@ -1538,6 +1538,11 @@ class FootballHubPanel extends HTMLElement {
   _doublePickSharePayload() {
     const game = structuredClone(this._doublePickGame || {});
     game.gameType = "acca";
+    game.teamBadges = {};
+    for (const fixture of this._doublePickRoundFixtures() || []) {
+      if (fixture.home_team && fixture.home_logo) game.teamBadges[fixture.home_team] = fixture.home_logo;
+      if (fixture.away_team && fixture.away_logo) game.teamBadges[fixture.away_team] = fixture.away_logo;
+    }
     delete game.shareId; delete game.shareUrl; delete game.shareEditToken;
     game.players = (game.players || []).map((player) => { const clean = { ...player }; delete clean.email; return clean; });
     return game;
