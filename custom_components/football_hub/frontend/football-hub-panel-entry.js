@@ -9,15 +9,78 @@ if (FootballHubPanel && !FootballHubPanel.prototype.__lmsLiveSharePatched) {
     `${fixture?.home_team || ""}-${fixture?.away_team || ""}-${panel._lmsFixtureTimestamp(fixture) || index}`
   );
 
+  const statusCode = (fixture) => String(
+    fixture?.status_short ?? fixture?.status?.short ?? fixture?.status ?? ""
+  ).trim().toUpperCase();
+
+  const isPreMatch = (panel, fixture) => {
+    const status = statusCode(fixture);
+    if (["NS", "TBD", "SCHEDULED", "NOT STARTED"].includes(status)) return true;
+    if (["1H", "2H", "HT", "ET", "BT", "P", "LIVE", "FT", "AET", "PEN", "AWD", "WO"].includes(status)) return false;
+    const kickoff = Number(panel._lmsFixtureTimestamp(fixture) || 0);
+    return kickoff > Math.floor(Date.now() / 1000);
+  };
+
+  const matchEvents = (fixture) => {
+    const candidates = [fixture?.events, fixture?.timeline, fixture?.incidents, fixture?.match_events];
+    for (const value of candidates) {
+      if (Array.isArray(value)) return value;
+    }
+    return [];
+  };
+
+  const normaliseFixtureForShare = (panel, fixture) => {
+    const result = { ...fixture };
+    if (isPreMatch(panel, result)) {
+      result.home_goals = null;
+      result.away_goals = null;
+      if (result.goals && typeof result.goals === "object" && !Array.isArray(result.goals)) {
+        result.goals = { ...result.goals, home: null, away: null };
+      }
+    }
+
+    const events = matchEvents(result);
+    if (events.length) result.events = events;
+
+    result.status_short = statusCode(result) || result.status_short || "";
+    result.elapsed = result.elapsed ?? result.status?.elapsed ?? null;
+    return result;
+  };
+
+  const eventSignature = (fixture) => {
+    const events = matchEvents(fixture);
+    return events.map((event) => [
+      event?.time?.elapsed ?? event?.elapsed ?? event?.minute ?? null,
+      event?.time?.extra ?? event?.extra ?? null,
+      event?.type ?? event?.event_type ?? "",
+      event?.detail ?? event?.event_detail ?? "",
+      event?.player?.name ?? event?.player ?? event?.scorer ?? "",
+      event?.team?.name ?? event?.team ?? "",
+    ]);
+  };
+
   const fixtureSignature = (panel, fixtures = []) => JSON.stringify(
     fixtures.map((fixture, index) => [
       fixtureKey(panel, fixture, index),
-      fixture?.home_goals ?? null,
-      fixture?.away_goals ?? null,
-      String(fixture?.status_short ?? fixture?.status ?? ""),
-      fixture?.elapsed ?? null,
+      isPreMatch(panel, fixture) ? null : (fixture?.home_goals ?? fixture?.goals?.home ?? null),
+      isPreMatch(panel, fixture) ? null : (fixture?.away_goals ?? fixture?.goals?.away ?? null),
+      statusCode(fixture),
+      fixture?.elapsed ?? fixture?.status?.elapsed ?? null,
+      eventSignature(fixture),
     ])
   );
+
+  const originalSharePayload = FootballHubPanel.prototype._lmsSharePayload;
+  FootballHubPanel.prototype._lmsSharePayload = function () {
+    const payload = originalSharePayload.call(this);
+    if (!payload?.roundFixtures) return payload;
+
+    payload.roundFixtures = payload.roundFixtures.map((group) => ({
+      ...group,
+      fixtures: (group.fixtures || []).map((fixture) => normaliseFixtureForShare(this, fixture)),
+    }));
+    return payload;
+  };
 
   FootballHubPanel.prototype._captureLmsLeagueData = function () {
     const competition = this._lmsCompetition;
@@ -62,8 +125,8 @@ if (FootballHubPanel && !FootballHubPanel.prototype.__lmsLiveSharePatched) {
     this._ensureLmsDeadline();
     queueMicrotask(() => this._maybeAutoSettleLmsRound());
 
-    // Push score/status/minute changes into the existing public competition.
-    // This updates the same shareId; it never creates or replaces the public URL.
+    // Push score, status, minute and event changes into the existing public competition.
+    // The same shareId is always reused, so existing public/player URLs never change.
     if (competition.shareId && previousSignature !== nextSignature) {
       this._queueLmsShareSync();
     }
