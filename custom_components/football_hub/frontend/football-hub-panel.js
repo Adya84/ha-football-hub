@@ -1615,24 +1615,32 @@ class FootballHubPanel extends HTMLElement {
     let waiting = false;
     for (const player of game.players || []) {
       const picks = round.picks?.[player.id] || [];
-      round.results[player.id] = round.results[player.id] || {};
+      const previousResults = round.results[player.id] || {};
+      const refreshedResults = {};
       for (let slot = 0; slot < Number(game.pickCount || 2); slot += 1) {
-        if (round.results[player.id][slot]) continue;
         const value = picks[slot];
         if (!value) { waiting = true; continue; }
         const [competitionKey, ...teamParts] = value.split("|||");
         const team = teamParts.join("|||");
         const match = fixtures.find((fixture) => fixture.competitionKey === competitionKey && (fixture.home_team === team || fixture.away_team === team));
         const status = String(match?.status_short || match?.status || "").toUpperCase();
-        if (!match || !finishedStatuses.has(status)) { waiting = true; continue; }
+        if (!match || !finishedStatuses.has(status)) {
+          waiting = true;
+          if (previousResults[slot]) refreshedResults[slot] = previousResults[slot];
+          continue;
+        }
         const home = Number(match.home_goals), away = Number(match.away_goals);
         const won = (match.home_team === team && home > away) || (match.away_team === team && away > home);
         const drawn = home === away;
         const points = won ? 3 : drawn ? 1 : 0;
         const opponent = match.home_team === team ? match.away_team : match.home_team;
-        round.results[player.id][slot] = { team, competitionKey, competitionName: match.competitionName, kickoff: this._lmsFixtureTimestamp(match), points, outcome: won ? "Win" : drawn ? "Draw" : "Loss", score: `${home}-${away}`, opponent, fixtureId: match.fixture_id ?? match.id };
-        player.points = Number(player.points || 0) + points;
+        refreshedResults[slot] = { team, competitionKey, competitionName: match.competitionName, kickoff: this._lmsFixtureTimestamp(match), points, outcome: won ? "Win" : drawn ? "Draw" : "Loss", score: `${home}-${away}`, opponent, fixtureId: match.fixture_id ?? match.id };
       }
+      round.results[player.id] = refreshedResults;
+    }
+    for (const player of game.players || []) {
+      player.points = Object.values(game.rounds || {}).reduce((total, savedRound) =>
+        total + Object.values(savedRound.results?.[player.id] || {}).reduce((roundTotal, result) => roundTotal + Number(result?.points || 0), 0), 0);
     }
     round.settled = !waiting && (game.players || []).every((player) => Object.keys(round.results?.[player.id] || {}).length === Number(game.pickCount || 2));
     this._saveDoublePickGame();

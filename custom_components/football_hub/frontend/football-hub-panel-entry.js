@@ -1,4 +1,4 @@
-import "/football_hub/football-hub-panel.js?v=0.20.21-lms-settlement-email-fix";
+import "/football_hub/football-hub-panel.js?v=0.20.22-acca-score-refresh";
 
 const FootballHubPanel = customElements.get("football-hub-panel");
 
