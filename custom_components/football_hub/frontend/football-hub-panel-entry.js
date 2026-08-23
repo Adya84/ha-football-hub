@@ -96,18 +96,24 @@ if (FootballHubPanel && !FootballHubPanel.prototype.__lmsLiveSharePatched) {
     const belongsToLeague = (fixture) =>
       leagueTeams.has(fixture?.home_team) || leagueTeams.has(fixture?.away_team);
 
-    const sourceFixtures = [
-      ...(this._attrs("fixtures").fixtures || []),
-      ...(this._attrs("results").latest_5 || []).filter(belongsToLeague),
-      ...(this._attrs("live_matches").matches || []).filter(belongsToLeague),
+    // Live Home Assistant data is authoritative for an active/just-finished match.
+    // Put the scheduled fixtures in first and overlay results, then live matches,
+    // so the freshest score/status wins when the same fixture appears in each sensor.
+    const sourceGroups = [
+      this._attrs("fixtures").fixtures || [],
+      (this._attrs("results").latest_5 || []).filter(belongsToLeague),
+      (this._attrs("live_matches").matches || []).filter(belongsToLeague),
     ];
 
     const merged = new Map();
-    sourceFixtures.forEach((fixture, index) => {
-      const key = fixtureKey(this, fixture, index);
-      const previous = merged.get(key);
-      merged.set(key, previous ? { ...previous, ...fixture } : fixture);
-    });
+    let sourceIndex = 0;
+    for (const sourceFixtures of sourceGroups) {
+      sourceFixtures.forEach((fixture) => {
+        const key = fixtureKey(this, fixture, sourceIndex++);
+        const previous = merged.get(key);
+        merged.set(key, previous ? { ...previous, ...fixture } : fixture);
+      });
+    }
 
     const fixtures = [...merged.values()].sort(
       (left, right) => this._lmsFixtureTimestamp(left) - this._lmsFixtureTimestamp(right)
@@ -146,8 +152,32 @@ if (FootballHubPanel && !FootballHubPanel.prototype.__lmsLiveSharePatched) {
     }
   };
 
-  // Keep 0.6.24 settlement rules, but always refresh public player-link data and
-  // current fixture results before deciding whether the round can move on.
+  const settlementState = (panel, competition, fixtures) => {
+    const roundKey = String(competition.round);
+    const roundStarted = Number(competition.roundStarted || 0);
+    const activePlayers = (competition.players || []).filter((player) => player.alive);
+    const pickedTeams = new Set(activePlayers.map((player) => player.picks?.[roundKey]).filter(Boolean));
+
+    const matchingFinishedFixture = (team) => fixtures.find((fixture) =>
+      (fixture.home_team === team || fixture.away_team === team) &&
+      panel._lmsFixtureTimestamp(fixture) >= roundStarted - 86400 &&
+      isFinished(fixture)
+    );
+
+    const everyPickedTeamFinished = pickedTeams.size > 0 && [...pickedTeams].every((team) => Boolean(matchingFinishedFixture(team)));
+    const hasFinishedUnresolvedPlayer = activePlayers.some((player) => {
+      if (player.results?.[roundKey]) return false;
+      const pick = player.picks?.[roundKey];
+      return Boolean(pick && matchingFinishedFixture(pick));
+    });
+    const hasLockedNoPick = activePlayers.some((player) => !player.picks?.[roundKey] && !player.results?.[roundKey]);
+
+    return { everyPickedTeamFinished, hasFinishedUnresolvedPlayer, hasLockedNoPick };
+  };
+
+  // Settlement now uses the current HA live/results sensors first. The separate
+  // LMS football-data endpoint is only a fallback if HA has not yet supplied the
+  // finished state for a picked match.
   FootballHubPanel.prototype._maybeAutoSettleLmsRound = async function () {
     const competition = this._lmsCompetition;
     if (!competition || competition.completed || this._lmsAutoCheckBusy || !this._lmsDeadlineState().locked) return;
@@ -155,36 +185,20 @@ if (FootballHubPanel && !FootballHubPanel.prototype.__lmsLiveSharePatched) {
     this._lmsAutoCheckBusy = true;
     try {
       await this._pullLmsSharePicks(true);
-      await this._refreshLmsRoundFixtures();
 
-      const roundKey = String(competition.round);
-      const roundStarted = Number(competition.roundStarted || 0);
-      const fixtures = this._lmsRoundFixtureGroups().flatMap((league) => league.roundFixtures || []);
-      if (!fixtures.length) return;
+      // Refresh the LMS cache immediately from the live Home Assistant entities.
+      this._captureLmsLeagueData();
+      let fixtures = this._lmsRoundFixtureGroups().flatMap((league) => league.roundFixtures || []);
+      let state = settlementState(this, competition, fixtures);
 
-      const pickedTeams = new Set(
-        (competition.players || [])
-          .filter((player) => player.alive)
-          .map((player) => player.picks?.[roundKey])
-          .filter(Boolean)
-      );
+      // If HA has not yet exposed the FT result, try the server feed as fallback.
+      if (!state.everyPickedTeamFinished && !state.hasFinishedUnresolvedPlayer) {
+        await this._refreshLmsRoundFixtures();
+        fixtures = this._lmsRoundFixtureGroups().flatMap((league) => league.roundFixtures || []);
+        state = settlementState(this, competition, fixtures);
+      }
 
-      const everyPickedTeamFinished = pickedTeams.size > 0 && [...pickedTeams].every((team) =>
-        fixtures.some((fixture) =>
-          (fixture.home_team === team || fixture.away_team === team) &&
-          this._lmsFixtureTimestamp(fixture) >= roundStarted - 86400 &&
-          isFinished(fixture)
-        )
-      );
-
-      const hasUnresolvedPlayers = (competition.players || []).some((player) =>
-        player.alive && !player.results?.[roundKey]
-      );
-
-      // Re-run settlement once all teams that were actually picked have played.
-      // This also repairs a round that already has player results but previously
-      // failed to advance because a later, unpicked fixture was still outstanding.
-      if (everyPickedTeamFinished || hasUnresolvedPlayers) {
+      if (state.hasFinishedUnresolvedPlayer || state.hasLockedNoPick || state.everyPickedTeamFinished) {
         await this._settleLmsRound(true);
       }
     } finally {
