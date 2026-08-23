@@ -1,4 +1,4 @@
-import "/football_hub/football-hub-panel.js?v=0.20.22-acca-score-refresh";
+import "/football_hub/football-hub-panel.js?v=0.20.22-lms-end-round-beta1";
 
 const FootballHubPanel = customElements.get("football-hub-panel");
 
