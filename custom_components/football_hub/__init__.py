@@ -14,7 +14,7 @@ from .const import DOMAIN
 PLATFORMS = ["sensor"]
 PANEL_URL = "football-hub"
 PANEL_NAME = "football-hub-panel"
-PANEL_VERSION = "0.6.29-beta.1-lms-end-round"
+PANEL_VERSION = "0.6.29-beta.2-lms-auto-round"
 PANEL_STATIC_URL = "/football_hub/football-hub-panel.js"
 PANEL_ENTRY_URL = "/football_hub/football-hub-panel-entry.js"
 PANEL_MODULE_URL = f"{PANEL_ENTRY_URL}?v={PANEL_VERSION}"
@@ -140,3 +140,4 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     if unload_ok:
         hass.data[DOMAIN].pop(entry.entry_id, None)
     return unload_ok
+

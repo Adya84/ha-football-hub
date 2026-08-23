@@ -1,4 +1,4 @@
-import "/football_hub/football-hub-panel.js?v=0.20.22-lms-end-round-beta1";
+import "/football_hub/football-hub-panel.js?v=0.20.23-lms-auto-round-beta2";
 
 const FootballHubPanel = customElements.get("football-hub-panel");
 
@@ -134,3 +134,4 @@ if (FootballHubPanel && !FootballHubPanel.prototype.__lmsLiveSharePatched) {
 
   FootballHubPanel.prototype.__lmsLiveSharePatched = true;
 }
+
