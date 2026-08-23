@@ -21,6 +21,8 @@ if (FootballHubPanel && !FootballHubPanel.prototype.__lmsLiveSharePatched) {
     return kickoff > Math.floor(Date.now() / 1000);
   };
 
+  const isFinished = (fixture) => ["FT", "AET", "PEN", "AWD", "WO"].includes(statusCode(fixture));
+
   const matchEvents = (fixture) => {
     const candidates = [fixture?.events, fixture?.timeline, fixture?.incidents, fixture?.match_events];
     for (const value of candidates) {
@@ -125,11 +127,108 @@ if (FootballHubPanel && !FootballHubPanel.prototype.__lmsLiveSharePatched) {
     this._ensureLmsDeadline();
     queueMicrotask(() => this._maybeAutoSettleLmsRound());
 
-    // Push score, status, minute and event changes into the existing public competition.
-    // The same shareId is always reused, so existing public/player URLs never change.
     if (competition.shareId && previousSignature !== nextSignature) {
       this._queueLmsShareSync();
     }
+  };
+
+  // Public player links can change picks while the organiser is viewing another
+  // Football Hub tab. The 0.6.24 implementation only pulled those changes when
+  // the LMS tab itself was open, which left automatic settlement using stale picks.
+  const originalPullLmsSharePicks = FootballHubPanel.prototype._pullLmsSharePicks;
+  FootballHubPanel.prototype._pullLmsSharePicks = async function (force = false) {
+    const previousTab = this._activeTab;
+    try {
+      this._activeTab = "last-man-standing";
+      return await originalPullLmsSharePicks.call(this, force);
+    } finally {
+      this._activeTab = previousTab;
+    }
+  };
+
+  // Keep 0.6.24 settlement rules, but always refresh public player-link data and
+  // current fixture results before deciding whether the round can move on.
+  FootballHubPanel.prototype._maybeAutoSettleLmsRound = async function () {
+    const competition = this._lmsCompetition;
+    if (!competition || competition.completed || this._lmsAutoCheckBusy || !this._lmsDeadlineState().locked) return;
+
+    this._lmsAutoCheckBusy = true;
+    try {
+      await this._pullLmsSharePicks(true);
+      await this._refreshLmsRoundFixtures();
+
+      const roundKey = String(competition.round);
+      const roundStarted = Number(competition.roundStarted || 0);
+      const fixtures = this._lmsRoundFixtureGroups().flatMap((league) => league.roundFixtures || []);
+      if (!fixtures.length) return;
+
+      const pickedTeams = new Set(
+        (competition.players || [])
+          .filter((player) => player.alive)
+          .map((player) => player.picks?.[roundKey])
+          .filter(Boolean)
+      );
+
+      const everyPickedTeamFinished = pickedTeams.size > 0 && [...pickedTeams].every((team) =>
+        fixtures.some((fixture) =>
+          (fixture.home_team === team || fixture.away_team === team) &&
+          this._lmsFixtureTimestamp(fixture) >= roundStarted - 86400 &&
+          isFinished(fixture)
+        )
+      );
+
+      const hasUnresolvedPlayers = (competition.players || []).some((player) =>
+        player.alive && !player.results?.[roundKey]
+      );
+
+      // Re-run settlement once all teams that were actually picked have played.
+      // This also repairs a round that already has player results but previously
+      // failed to advance because a later, unpicked fixture was still outstanding.
+      if (everyPickedTeamFinished || hasUnresolvedPlayers) {
+        await this._settleLmsRound(true);
+      }
+    } finally {
+      this._lmsAutoCheckBusy = false;
+    }
+  };
+
+  // 0.6.24 advanced the round but based the next round start on the final fixture
+  // in the whole matchweek. Use only fixtures involving a picked team so an
+  // unpicked Sunday/Monday match cannot hold the LMS on the previous round.
+  const originalSettleLmsRound = FootballHubPanel.prototype._settleLmsRound;
+  FootballHubPanel.prototype._settleLmsRound = async function (automatic = false) {
+    const competition = this._lmsCompetition;
+    const previousRound = Number(competition?.round || 0);
+    const roundKey = String(previousRound);
+    const pickedTeams = new Set(
+      (competition?.players || []).map((player) => player.picks?.[roundKey]).filter(Boolean)
+    );
+    const roundStarted = Number(competition?.roundStarted || 0);
+    const pickedFixtures = this._lmsRoundFixtureGroups()
+      .flatMap((league) => league.roundFixtures || [])
+      .filter((fixture) =>
+        (pickedTeams.has(fixture.home_team) || pickedTeams.has(fixture.away_team)) &&
+        this._lmsFixtureTimestamp(fixture) >= roundStarted - 86400
+      );
+
+    const result = await originalSettleLmsRound.call(this, automatic);
+
+    if (competition && Number(competition.round || 0) > previousRound) {
+      const pickedTimes = pickedFixtures
+        .filter(isFinished)
+        .map((fixture) => Number(this._lmsFixtureTimestamp(fixture) || 0))
+        .filter(Boolean);
+      const now = Math.floor(Date.now() / 1000);
+      const nextStart = pickedTimes.length ? Math.min(now, Math.max(...pickedTimes) + 300) : now;
+      if (Number(competition.roundStarted || 0) !== nextStart) {
+        competition.roundStarted = nextStart;
+        this._ensureLmsDeadline();
+        this._saveLms();
+        if (competition.shareId) this._queueLmsShareSync();
+      }
+    }
+
+    return result;
   };
 
   FootballHubPanel.prototype.__lmsLiveSharePatched = true;
