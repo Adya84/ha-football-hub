@@ -1,4 +1,4 @@
-name: Build manual Football Hub changed-files ZIP
+name: Build Football Hub 0.6.25b4 LMS beta
 
 on:
   push:
@@ -10,7 +10,122 @@ permissions:
   contents: write
 
 jobs:
-  build-zip:
+  build-beta:
     runs-on: ubuntu-latest
     steps:
-      - run: echo "Trigger check $(date -u)"
+      - uses: actions/checkout@v4
+        with:
+          ref: 0.6.24
+          fetch-depth: 0
+
+      - name: Patch LMS frontend only
+        shell: python
+        run: |
+          from pathlib import Path
+
+          path = Path('custom_components/football_hub/frontend/football-hub-panel.js')
+          text = path.read_text(encoding='utf-8')
+
+          text = text.replace(
+              'if (this._activeTab !== "last-man-standing" || !competition?.shareId || !LMS_SHARE_SERVICE || this._lmsShareBusy || this._lmsShareSyncPending) return;',
+              'if (!competition?.shareId || !LMS_SHARE_SERVICE || this._lmsShareBusy || this._lmsShareSyncPending) return;',
+              1,
+          )
+
+          start = text.index('  async _maybeAutoSettleLmsRound() {')
+          end = text.index('  async _settleLmsRound(automatic = false) {', start)
+          replacement = '''  async _maybeAutoSettleLmsRound() {
+    const competition = this._lmsCompetition;
+    if (!competition || competition.completed || this._lmsAutoCheckBusy || !this._lmsDeadlineState().locked) return;
+    this._lmsAutoCheckBusy = true;
+    try {
+      await this._pullLmsSharePicks(true);
+      await this._refreshLmsRoundFixtures();
+      await this._settleLmsRound(true);
+    } finally {
+      this._lmsAutoCheckBusy = false;
+    }
+  }
+
+'''
+          text = text[:start] + replacement + text[end:]
+
+          text = text.replace(
+              'const finished = ["FT", "AET", "PEN"].includes(String(match?.status_short || match?.status || "").toUpperCase());',
+              'const finished = ["FT", "AET", "PEN", "AWD", "WO"].includes(String(match?.status_short || match?.status || "").toUpperCase());',
+              1,
+          )
+
+          old = '''    const unresolved = competition.players.some((player) => player.alive && player.picks?.[roundKey] && !player.results?.[roundKey]);
+    const pickedTeams = new Set(competition.players.map((player) => player.picks?.[roundKey]).filter(Boolean));
+    const pickedFixtures = fixtures.filter((fixture) => pickedTeams.has(fixture.home_team) || pickedTeams.has(fixture.away_team));
+    const pickedMatchesFinished = pickedFixtures.length > 0 && pickedFixtures.every((fixture) => ["FT", "AET", "PEN"].includes(String(fixture.status_short || fixture.status || "").toUpperCase()));
+    if (pickedMatchesFinished && !waiting && !unresolved) {
+      const survivors = competition.players.filter((player) => player.alive);
+      const completedRoundEnds = fixtures.map((fixture) => this._lmsFixtureTimestamp(fixture)).filter(Boolean);
+      const nextRoundStartsAfter = completedRoundEnds.length ? Math.max(...completedRoundEnds) + 300 : Math.floor(Date.now() / 1000);'''
+          new = '''    const unresolved = competition.players.some((player) => player.alive && player.picks?.[roundKey] && !player.results?.[roundKey]);
+    const pickedTeams = new Set(competition.players.map((player) => player.picks?.[roundKey]).filter(Boolean));
+    const roundStartedForCheck = Number(competition.roundStarted || 0);
+    const selectedPickedFixtures = [...pickedTeams].map((team) => fixtures
+      .filter((fixture) => (fixture.home_team === team || fixture.away_team === team) && this._lmsFixtureTimestamp(fixture) >= roundStartedForCheck - 86400)
+      .sort((a, b) => this._lmsFixtureTimestamp(a) - this._lmsFixtureTimestamp(b))[0]
+    ).filter(Boolean);
+    const pickedMatchesFinished = pickedTeams.size > 0 && selectedPickedFixtures.length === pickedTeams.size && selectedPickedFixtures.every((fixture) =>
+      ["FT", "AET", "PEN", "AWD", "WO"].includes(String(fixture.status_short || fixture.status || "").toUpperCase())
+    );
+    if (pickedMatchesFinished && !waiting && !unresolved) {
+      const survivors = competition.players.filter((player) => player.alive);
+      const completedRoundEnds = selectedPickedFixtures.map((fixture) => this._lmsFixtureTimestamp(fixture)).filter(Boolean);
+      const nextRoundStartsAfter = completedRoundEnds.length ? Math.max(...completedRoundEnds) + 300 : Math.floor(Date.now() / 1000);'''
+          if old not in text:
+              raise SystemExit('Expected 0.6.24 settlement block not found')
+          text = text.replace(old, new, 1)
+
+          text = text.replace(
+              '<button id="lms-settle">Check round results</button>',
+              '<button id="lms-settle">Update Results</button><button id="lms-next-round">Move to Next Round</button>',
+              1,
+          )
+
+          text = text.replace(
+              'this.shadowRoot.querySelector("#lms-settle")?.addEventListener("click", () => this._settleLmsRound());',
+              '''this.shadowRoot.querySelector("#lms-settle")?.addEventListener("click", async () => { await this._pullLmsSharePicks(true); await this._refreshLmsRoundFixtures(); await this._settleLmsRound(); });
+    this.shadowRoot.querySelector("#lms-next-round")?.addEventListener("click", async () => {
+      if (!this._isLmsAdmin()) return;
+      const beforeRound = Number(this._lmsCompetition?.round || 0);
+      await this._pullLmsSharePicks(true);
+      await this._refreshLmsRoundFixtures();
+      await this._settleLmsRound();
+      if (Number(this._lmsCompetition?.round || 0) === beforeRound && !this._lmsCompetition?.completed) {
+        window.alert("Cannot move to the next round yet. At least one picked team's result is still missing or not final.");
+      }
+    });''',
+              1,
+          )
+
+          if '\x00' in text or text.startswith('\ufeff'):
+              raise SystemExit('Invalid hidden character in frontend')
+          path.write_text(text, encoding='utf-8', newline='\n')
+
+      - name: Verify frontend syntax
+        run: |
+          node --check custom_components/football_hub/frontend/football-hub-panel.js
+          git diff --check
+
+      - name: Commit beta from 0.6.24
+        run: |
+          git config user.name "Ady"
+          git config user.email "94404576+Adya84@users.noreply.github.com"
+          git add custom_components/football_hub/frontend/football-hub-panel.js
+          git commit -m "Fix LMS Round 1 settlement and manual next round"
+          git tag -f 0.6.25b4
+          git push -f origin HEAD:refs/heads/lms-0.6.25b4
+          git push -f origin 0.6.25b4
+
+      - name: Create prerelease
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release delete 0.6.25b4 --yes || true
+          gh release create 0.6.25b4 --repo "$GITHUB_REPOSITORY" --title "Football Hub 0.6.25b4 - LMS Round Settlement Beta" --prerelease --notes $'Built from the proven 0.6.24 frontend.\n\n- Fixes LMS Round 1 settlement when all picked teams have finished.\n- Update Results now refreshes picks and latest results before settlement.\n- Adds a manual Move to Next Round button for admins.\n- Only the actual picked teams are used to decide whether the round is complete.\n- Supports FT, AET, PEN, AWD and WO final states.\n- Keeps the 0.6.24 frontend loader unchanged.'
