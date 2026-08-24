@@ -1,0 +1,194 @@
+name: Build guarded 0.6.25b3
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - .github/workflows/build-0625b3.yml
+
+permissions:
+  contents: write
+
+jobs:
+  patch-release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Apply byte-safe patches
+        shell: python
+        run: |
+          from pathlib import Path
+
+          root = Path('custom_components/football_hub')
+          panel_path = root / 'frontend' / 'football-hub-panel.js'
+          entry_path = root / 'frontend' / 'football-hub-panel-entry.js'
+          sensor_path = root / 'sensors' / 'sensor.py'
+          init_path = root / '__init__.py'
+          manifest_path = root / 'manifest.json'
+
+          original_entry = entry_path.read_bytes()
+          panel = panel_path.read_bytes()
+          nl = b'\r\n' if b'\r\n' in panel else b'\n'
+
+          old_guard = b'if (this._activeTab !== "last-man-standing" || !competition?.shareId || !LMS_SHARE_SERVICE || this._lmsShareBusy || this._lmsShareSyncPending) return;'
+          new_guard = b'if (!competition?.shareId || !LMS_SHARE_SERVICE || this._lmsShareBusy || this._lmsShareSyncPending) return;'
+          if panel.count(old_guard) != 1:
+              raise SystemExit('Expected 0.6.24 share-pick guard not found exactly once')
+          panel = panel.replace(old_guard, new_guard, 1)
+
+          start = panel.find(b'  async _maybeAutoSettleLmsRound() {')
+          end = panel.find(b'  async _settleLmsRound(automatic = false) {', start)
+          if start < 0 or end < 0:
+              raise SystemExit('Could not locate 0.6.24 auto-settle boundaries')
+
+          auto_lines = [
+            '  async _maybeAutoSettleLmsRound() {',
+            '    const competition = this._lmsCompetition;',
+            '    if (!competition || competition.completed || this._lmsAutoCheckBusy || !this._lmsDeadlineState().locked) return;',
+            '    this._lmsAutoCheckBusy = true;',
+            '    try {',
+            '      await this._pullLmsSharePicks(true);',
+            '',
+            '      const finished = new Set(["FT", "AET", "PEN", "AWD", "WO"]);',
+            '      const roundKey = String(competition.round);',
+            '      const roundStarted = Number(competition.roundStarted || 0);',
+            '      const activePlayers = (competition.players || []).filter((player) => player.alive);',
+            '',
+            '      const evaluate = () => {',
+            '        const fixtures = this._lmsRoundFixtureGroups().flatMap((league) => league.roundFixtures || []);',
+            '        const matchForPick = (pick) => fixtures',
+            '          .filter((fixture) =>',
+            '            (fixture.home_team === pick || fixture.away_team === pick) &&',
+            '            this._lmsFixtureTimestamp(fixture) >= roundStarted - 86400',
+            '          )',
+            '          .sort((a, b) => this._lmsFixtureTimestamp(a) - this._lmsFixtureTimestamp(b))[0];',
+            '',
+            '        const allPickedTeamsFinished = activePlayers.length > 0 && activePlayers.every((player) => {',
+            '          const pick = player.picks?.[roundKey];',
+            '          if (!pick) return true;',
+            '          const match = matchForPick(pick);',
+            '          return Boolean(match && finished.has(String(match.status_short || match.status || "").toUpperCase()));',
+            '        });',
+            '',
+            '        const hasFinishedUnresolved = activePlayers.some((player) => {',
+            '          if (player.results?.[roundKey]) return false;',
+            '          const pick = player.picks?.[roundKey];',
+            '          if (!pick) return true;',
+            '          const match = matchForPick(pick);',
+            '          return Boolean(match && finished.has(String(match.status_short || match.status || "").toUpperCase()));',
+            '        });',
+            '',
+            '        return { allPickedTeamsFinished, hasFinishedUnresolved };',
+            '      };',
+            '',
+            '      // Use the cache already fed by Home Assistant live/results data first.',
+            '      let state = evaluate();',
+            '',
+            '      // Only use the LMS fixture endpoint as a fallback if HA is not final yet.',
+            '      if (!state.allPickedTeamsFinished && !state.hasFinishedUnresolved) {',
+            '        await this._refreshLmsRoundFixtures();',
+            '        state = evaluate();',
+            '      }',
+            '',
+            '      if (state.hasFinishedUnresolved || state.allPickedTeamsFinished) {',
+            '        await this._settleLmsRound(true);',
+            '      }',
+            '    } finally {',
+            '      this._lmsAutoCheckBusy = false;',
+            '    }',
+            '  }',
+            '',
+          ]
+          panel = panel[:start] + nl.join(x.encode() for x in auto_lines) + panel[end:]
+
+          old_finished = b'const finished = ["FT", "AET", "PEN"].includes(String(match?.status_short || match?.status || "").toUpperCase());'
+          new_finished = b'const finished = ["FT", "AET", "PEN", "AWD", "WO"].includes(String(match?.status_short || match?.status || "").toUpperCase());'
+          if panel.count(old_finished) != 1:
+              raise SystemExit('Expected 0.6.24 per-player finished check not found exactly once')
+          panel = panel.replace(old_finished, new_finished, 1)
+
+          block_start = panel.find(b'    const unresolved = competition.players.some((player) => player.alive && player.picks?.[roundKey] && !player.results?.[roundKey]);')
+          block_end = panel.find(b'      if (!competition.resultsEmailSent?.[roundKey]) {', block_start)
+          if block_start < 0 or block_end < 0:
+              raise SystemExit('Could not locate 0.6.24 picked-fixture completion block')
+
+          picked_lines = [
+            '    const unresolved = competition.players.some((player) => player.alive && player.picks?.[roundKey] && !player.results?.[roundKey]);',
+            '    const pickedTeams = new Set(competition.players.map((player) => player.picks?.[roundKey]).filter(Boolean));',
+            '    const roundStartedForCheck = Number(competition.roundStarted || 0);',
+            '    const selectedPickedFixtures = [...pickedTeams].map((team) => fixtures',
+            '      .filter((fixture) =>',
+            '        (fixture.home_team === team || fixture.away_team === team) &&',
+            '        this._lmsFixtureTimestamp(fixture) >= roundStartedForCheck - 86400',
+            '      )',
+            '      .sort((a, b) => this._lmsFixtureTimestamp(a) - this._lmsFixtureTimestamp(b))[0]',
+            '    ).filter(Boolean);',
+            '    const pickedMatchesFinished = pickedTeams.size > 0 && selectedPickedFixtures.length === pickedTeams.size && selectedPickedFixtures.every((fixture) =>',
+            '      ["FT", "AET", "PEN", "AWD", "WO"].includes(String(fixture.status_short || fixture.status || "").toUpperCase())',
+            '    );',
+            '    if (pickedMatchesFinished && !waiting && !unresolved) {',
+            '      const survivors = competition.players.filter((player) => player.alive);',
+            '      const completedRoundEnds = selectedPickedFixtures.map((fixture) => this._lmsFixtureTimestamp(fixture)).filter(Boolean);',
+            '      const nextRoundStartsAfter = completedRoundEnds.length ? Math.max(...completedRoundEnds) + 300 : Math.floor(Date.now() / 1000);',
+          ]
+          panel = panel[:block_start] + nl.join(x.encode() for x in picked_lines) + nl + panel[block_end:]
+          panel_path.write_bytes(panel)
+
+          if entry_path.read_bytes() != original_entry:
+              raise SystemExit('Entry loader changed unexpectedly')
+
+          sensor = sensor_path.read_bytes()
+          snl = b'\r\n' if b'\r\n' in sensor else b'\n'
+          marker = b'class FootballHubMatchesTodaySensor(FootballHubBaseSensor):' + snl
+          if sensor.count(marker) != 1:
+              raise SystemExit('Matches Today sensor marker not found exactly once')
+          sensor = sensor.replace(marker, marker + b'    _unrecorded_attributes = frozenset({"matches"})' + snl, 1)
+          sensor_path.write_bytes(sensor)
+
+          init = init_path.read_bytes()
+          old_ver = b'PANEL_VERSION = "0.6.24-acca-score-refresh"'
+          if init.count(old_ver) != 1:
+              raise SystemExit('0.6.24 panel version marker missing')
+          init_path.write_bytes(init.replace(old_ver, b'PANEL_VERSION = "0.6.25b3-lms-live-settlement"', 1))
+
+          manifest = manifest_path.read_bytes()
+          old_manifest = b'"version": "0.6.24"'
+          if manifest.count(old_manifest) != 1:
+              raise SystemExit('0.6.24 manifest marker missing')
+          manifest_path.write_bytes(manifest.replace(old_manifest, b'"version": "0.6.25b3"', 1))
+
+          for path in (panel_path, entry_path):
+              data = path.read_bytes()
+              if data.startswith(b'\xef\xbb\xbf'):
+                  raise SystemExit(f'BOM detected in {path}')
+              if b'\x00' in data:
+                  raise SystemExit(f'NUL byte detected in {path}')
+
+      - name: Verify syntax and unchanged loader
+        run: |
+          node --check custom_components/football_hub/frontend/football-hub-panel.js
+          node --check custom_components/football_hub/frontend/football-hub-panel-entry.js
+          python -m py_compile custom_components/football_hub/__init__.py custom_components/football_hub/sensors/sensor.py
+          git show 0.6.24:custom_components/football_hub/frontend/football-hub-panel-entry.js > /tmp/entry-0624.js
+          cmp /tmp/entry-0624.js custom_components/football_hub/frontend/football-hub-panel-entry.js
+          git diff --check
+
+      - name: Commit safe beta
+        run: |
+          git config user.name "Ady"
+          git config user.email "94404576+Adya84@users.noreply.github.com"
+          git add custom_components/football_hub/frontend/football-hub-panel.js custom_components/football_hub/sensors/sensor.py custom_components/football_hub/__init__.py custom_components/football_hub/manifest.json
+          git commit -m "Fix LMS live settlement safely for 0.6.25b3"
+          git push origin HEAD:main
+
+      - name: Tag and publish prerelease
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          git tag -a 0.6.25b3 -m "Football Hub 0.6.25b3"
+          git push origin 0.6.25b3
+          gh release create 0.6.25b3 --title "Football Hub 0.6.25b3 - LMS live settlement beta" --prerelease --notes "LMS now reads the Home Assistant live/results-fed cache first, refreshes public player picks before settlement, advances when all actually-picked teams have finished, and ignores unrelated later fixtures when starting the next round. Also prevents the Matches Today payload from being written to Recorder. Built directly from 0.6.24 with the 0.6.24 entry loader unchanged and JavaScript syntax/hidden-byte checks enforced."
