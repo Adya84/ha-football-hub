@@ -129,3 +129,5 @@ jobs:
         run: |
           gh release delete 0.6.25b4 --yes || true
           gh release create 0.6.25b4 --repo "$GITHUB_REPOSITORY" --title "Football Hub 0.6.25b4 - LMS Round Settlement Beta" --prerelease --notes $'Built from the proven 0.6.24 frontend.\n\n- Fixes LMS Round 1 settlement when all picked teams have finished.\n- Update Results now refreshes picks and latest results before settlement.\n- Adds a manual Move to Next Round button for admins.\n- Only the actual picked teams are used to decide whether the round is complete.\n- Supports FT, AET, PEN, AWD and WO final states.\n- Keeps the 0.6.24 frontend loader unchanged.'
+
+# retrigger
