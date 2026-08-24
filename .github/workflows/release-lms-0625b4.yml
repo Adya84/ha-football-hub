@@ -1,0 +1,187 @@
+name: Release clean LMS 0.6.25b4 beta
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - .github/workflows/release-lms-0625b4.yml
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out proven 0.6.24 base
+        uses: actions/checkout@v4
+        with:
+          ref: 0.6.24
+          fetch-depth: 0
+
+      - name: Apply fresh LMS round settlement fix
+        shell: python
+        run: |
+          from pathlib import Path
+
+          root = Path("custom_components/football_hub")
+          panel_path = root / "frontend" / "football-hub-panel.js"
+          manifest_path = root / "manifest.json"
+          init_path = root / "__init__.py"
+
+          panel = panel_path.read_text(encoding="utf-8")
+
+          # Identify the beta in diagnostics without touching the entry loader.
+          panel = panel.replace(
+              'const PANEL_VERSION = "0.20.21-lms-settlement-email-fix";',
+              'const PANEL_VERSION = "0.20.22-lms-round2-fix";',
+              1,
+          )
+
+          # Auto settlement: pull player-link picks, capture current HA data, then
+          # refresh the fallback fixture feed. Never call capture from settle again.
+          start = panel.index("  async _maybeAutoSettleLmsRound() {")
+          end = panel.index("  async _settleLmsRound(automatic = false) {", start)
+          new_auto = '''  async _maybeAutoSettleLmsRound() {
+    const competition = this._lmsCompetition;
+    if (!competition || competition.completed || this._lmsAutoCheckBusy || !this._lmsDeadlineState().locked) return;
+    this._lmsAutoCheckBusy = true;
+    try {
+      await this._pullLmsSharePicks(true);
+      this._captureLmsLeagueData();
+      await this._refreshLmsRoundFixtures();
+      await this._settleLmsRound(true);
+    } finally {
+      this._lmsAutoCheckBusy = false;
+    }
+  }
+
+'''
+          panel = panel[:start] + new_auto + panel[end:]
+
+          # Manual update must really refresh player picks and result sources.
+          old = '    if (!automatic) await this._refreshLmsRoundFixtures();\n'
+          new = '''    if (!automatic) {
+      await this._pullLmsSharePicks(true);
+      this._captureLmsLeagueData();
+      await this._refreshLmsRoundFixtures();
+    }
+'''
+          if panel.count(old) != 1:
+              raise SystemExit("Could not find the 0.6.24 manual refresh line")
+          panel = panel.replace(old, new, 1)
+
+          # Accept all final result states used by Football Hub.
+          old = 'const finished = ["FT", "AET", "PEN"].includes(String(match?.status_short || match?.status || "").toUpperCase());'
+          new = 'const finished = ["FT", "AET", "PEN", "AWD", "WO"].includes(String(match?.status_short || match?.status || "").toUpperCase());'
+          if panel.count(old) != 1:
+              raise SystemExit("Could not find the 0.6.24 per-player finished check")
+          panel = panel.replace(old, new, 1)
+
+          # Replace the broken 'all fixtures involving picked teams' completion test.
+          # Each picked team is matched to its actual current-round fixture only.
+          block_start = panel.index('    const unresolved = competition.players.some((player) => player.alive && player.picks?.[roundKey] && !player.results?.[roundKey]);')
+          block_end = panel.index('      if (!competition.resultsEmailSent?.[roundKey]) {', block_start)
+          new_completion = '''    const unresolved = competition.players.some((player) => player.alive && player.picks?.[roundKey] && !player.results?.[roundKey]);
+    const pickedTeams = new Set(competition.players.map((player) => player.picks?.[roundKey]).filter(Boolean));
+    const roundStartedForCheck = Number(competition.roundStarted || 0);
+    const selectedPickedFixtures = [...pickedTeams].map((team) => fixtures
+      .filter((fixture) => (fixture.home_team === team || fixture.away_team === team) && this._lmsFixtureTimestamp(fixture) >= roundStartedForCheck - 86400)
+      .sort((a, b) => this._lmsFixtureTimestamp(a) - this._lmsFixtureTimestamp(b))[0]
+    ).filter(Boolean);
+    const pickedMatchesFinished = pickedTeams.size > 0 && selectedPickedFixtures.length === pickedTeams.size && selectedPickedFixtures.every((fixture) =>
+      ["FT", "AET", "PEN", "AWD", "WO"].includes(String(fixture.status_short || fixture.status || "").toUpperCase())
+    );
+    if (pickedMatchesFinished && !waiting && !unresolved) {
+      const survivors = competition.players.filter((player) => player.alive);
+      const completedRoundEnds = selectedPickedFixtures.map((fixture) => this._lmsFixtureTimestamp(fixture)).filter(Boolean);
+      const nextRoundStartsAfter = completedRoundEnds.length ? Math.max(...completedRoundEnds) + 300 : Math.floor(Date.now() / 1000);
+'''
+          panel = panel[:block_start] + new_completion + panel[block_end:]
+
+          # Fresh manual fallback. It runs the real settlement path and reports
+          # whether the round advanced instead of blindly incrementing a number.
+          marker = "  async _sendLmsRoundResultEmail(player, roundKey, summary) {"
+          pos = panel.index(marker)
+          manual_fn = '''  async _manualAdvanceLmsRound() {
+    const competition = this._lmsCompetition;
+    if (!competition || competition.completed || !this._isLmsAdmin()) return;
+    const beforeRound = Number(competition.round || 1);
+    await this._settleLmsRound(false);
+    if (this._lmsCompetition?.completed) {
+      window.alert(`Round ${beforeRound} settled. The competition is complete.`);
+      return;
+    }
+    if (Number(this._lmsCompetition?.round || beforeRound) > beforeRound) {
+      window.alert(`Round ${beforeRound} settled successfully. Round ${this._lmsCompetition.round} is now open.`);
+      return;
+    }
+    const roundKey = String(beforeRound);
+    const fixtures = this._lmsRoundFixtureGroups().flatMap((league) => league.roundFixtures || []);
+    const finalStates = new Set(["FT", "AET", "PEN", "AWD", "WO"]);
+    const roundStarted = Number(competition.roundStarted || 0);
+    const waitingTeams = [...new Set((competition.players || []).filter((player) => player.alive).map((player) => player.picks?.[roundKey]).filter(Boolean))].filter((team) => {
+      const match = fixtures
+        .filter((fixture) => (fixture.home_team === team || fixture.away_team === team) && this._lmsFixtureTimestamp(fixture) >= roundStarted - 86400)
+        .sort((a, b) => this._lmsFixtureTimestamp(a) - this._lmsFixtureTimestamp(b))[0];
+      return !match || !finalStates.has(String(match.status_short || match.status || "").toUpperCase());
+    });
+    window.alert(waitingTeams.length
+      ? `Round ${beforeRound} cannot move yet. Waiting for: ${waitingTeams.join(", ")}.`
+      : `Round ${beforeRound} results were checked but one or more player results are still unresolved.`);
+  }
+
+'''
+          panel = panel[:pos] + manual_fn + panel[pos:]
+
+          # Add the manual Round 2 fallback beside the existing admin result button.
+          old = '<button id="lms-add-player">Add player</button><button id="lms-settle">Check round results</button>'
+          new = '<button id="lms-add-player">Add player</button><button id="lms-settle">Update results</button><button id="lms-next-round">Move to Next Round</button>'
+          if panel.count(old) != 1:
+              raise SystemExit("Could not find private LMS admin result buttons")
+          panel = panel.replace(old, new, 1)
+
+          old = '    this.shadowRoot.querySelector("#lms-settle")?.addEventListener("click", () => this._settleLmsRound());\n'
+          new = old + '    this.shadowRoot.querySelector("#lms-next-round")?.addEventListener("click", () => this._manualAdvanceLmsRound());\n'
+          if panel.count(old) != 1:
+              raise SystemExit("Could not find LMS settle click handler")
+          panel = panel.replace(old, new, 1)
+
+          panel_path.write_text(panel, encoding="utf-8", newline="\n")
+
+          # Version/cache metadata only: required so HACS/HA serves this new JS.
+          manifest = manifest_path.read_text(encoding="utf-8")
+          if '"version": "0.6.24"' not in manifest:
+              raise SystemExit("0.6.24 manifest base not found")
+          manifest_path.write_text(manifest.replace('"version": "0.6.24"', '"version": "0.6.25b4"', 1), encoding="utf-8", newline="\n")
+
+          init = init_path.read_text(encoding="utf-8")
+          if 'PANEL_VERSION = "0.6.24-acca-score-refresh"' not in init:
+              raise SystemExit("0.6.24 frontend cache version not found")
+          init_path.write_text(init.replace('PANEL_VERSION = "0.6.24-acca-score-refresh"', 'PANEL_VERSION = "0.6.25b4-lms-round2-fix"', 1), encoding="utf-8", newline="\n")
+
+      - name: Verify beta before release
+        run: |
+          node --check custom_components/football_hub/frontend/football-hub-panel.js
+          python -m py_compile custom_components/football_hub/__init__.py
+          git diff --check
+          test "$(git diff --name-only | sort)" = "$(printf '%s\n' custom_components/football_hub/__init__.py custom_components/football_hub/frontend/football-hub-panel.js custom_components/football_hub/manifest.json | sort)"
+
+      - name: Commit clean beta
+        run: |
+          git config user.name "Ady"
+          git config user.email "94404576+Adya84@users.noreply.github.com"
+          git add custom_components/football_hub/frontend/football-hub-panel.js custom_components/football_hub/__init__.py custom_components/football_hub/manifest.json
+          git commit -m "Fix LMS round settlement and manual Round 2 advance"
+          git tag 0.6.25b4
+          git push origin 0.6.25b4
+
+      - name: Publish GitHub prerelease
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create 0.6.25b4 \
+            --repo "${{ github.repository }}" \
+            --prerelease \
+            --title "Football Hub 0.6.25b4 - LMS Round Settlement Beta" \
+            --notes $'### LMS Round Settlement Beta\n\n- Built directly from proven 0.6.24.\n- Fixes LMS competitions getting stuck on an old round after picked teams have finished.\n- Update Results now refreshes shared player picks and latest result data before settlement.\n- Round completion checks only the actual current-round fixture for each picked team.\n- Supports FT, AET, PEN, AWD and WO as final states.\n- Adds a manual Move to Next Round fallback for administrators.\n- Manual advance refuses to move while a picked team is genuinely unfinished and tells you which team is holding the round.\n- Keeps player picks/results history when Round 2 opens.\n- Frontend entry loader is unchanged.'
