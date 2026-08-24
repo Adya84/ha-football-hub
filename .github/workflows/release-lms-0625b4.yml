@@ -31,15 +31,12 @@ jobs:
 
           panel = panel_path.read_text(encoding="utf-8")
 
-          # Identify the beta in diagnostics without touching the entry loader.
           panel = panel.replace(
               'const PANEL_VERSION = "0.20.21-lms-settlement-email-fix";',
               'const PANEL_VERSION = "0.20.22-lms-round2-fix";',
               1,
           )
 
-          # Auto settlement: pull player-link picks, capture current HA data, then
-          # refresh the fallback fixture feed. Never call capture from settle again.
           start = panel.index("  async _maybeAutoSettleLmsRound() {")
           end = panel.index("  async _settleLmsRound(automatic = false) {", start)
           new_auto = '''  async _maybeAutoSettleLmsRound() {
@@ -59,7 +56,6 @@ jobs:
 '''
           panel = panel[:start] + new_auto + panel[end:]
 
-          # Manual update must really refresh player picks and result sources.
           old = '    if (!automatic) await this._refreshLmsRoundFixtures();\n'
           new = '''    if (!automatic) {
       await this._pullLmsSharePicks(true);
@@ -71,15 +67,12 @@ jobs:
               raise SystemExit("Could not find the 0.6.24 manual refresh line")
           panel = panel.replace(old, new, 1)
 
-          # Accept all final result states used by Football Hub.
           old = 'const finished = ["FT", "AET", "PEN"].includes(String(match?.status_short || match?.status || "").toUpperCase());'
           new = 'const finished = ["FT", "AET", "PEN", "AWD", "WO"].includes(String(match?.status_short || match?.status || "").toUpperCase());'
           if panel.count(old) != 1:
               raise SystemExit("Could not find the 0.6.24 per-player finished check")
           panel = panel.replace(old, new, 1)
 
-          # Replace the broken 'all fixtures involving picked teams' completion test.
-          # Each picked team is matched to its actual current-round fixture only.
           block_start = panel.index('    const unresolved = competition.players.some((player) => player.alive && player.picks?.[roundKey] && !player.results?.[roundKey]);')
           block_end = panel.index('      if (!competition.resultsEmailSent?.[roundKey]) {', block_start)
           new_completion = '''    const unresolved = competition.players.some((player) => player.alive && player.picks?.[roundKey] && !player.results?.[roundKey]);
@@ -99,8 +92,6 @@ jobs:
 '''
           panel = panel[:block_start] + new_completion + panel[block_end:]
 
-          # Fresh manual fallback. It runs the real settlement path and reports
-          # whether the round advanced instead of blindly incrementing a number.
           marker = "  async _sendLmsRoundResultEmail(player, roundKey, summary) {"
           pos = panel.index(marker)
           manual_fn = '''  async _manualAdvanceLmsRound() {
@@ -134,7 +125,6 @@ jobs:
 '''
           panel = panel[:pos] + manual_fn + panel[pos:]
 
-          # Add the manual Round 2 fallback beside the existing admin result button.
           old = '<button id="lms-add-player">Add player</button><button id="lms-settle">Check round results</button>'
           new = '<button id="lms-add-player">Add player</button><button id="lms-settle">Update results</button><button id="lms-next-round">Move to Next Round</button>'
           if panel.count(old) != 1:
@@ -149,7 +139,6 @@ jobs:
 
           panel_path.write_text(panel, encoding="utf-8", newline="\n")
 
-          # Version/cache metadata only: required so HACS/HA serves this new JS.
           manifest = manifest_path.read_text(encoding="utf-8")
           if '"version": "0.6.24"' not in manifest:
               raise SystemExit("0.6.24 manifest base not found")
@@ -185,3 +174,5 @@ jobs:
             --prerelease \
             --title "Football Hub 0.6.25b4 - LMS Round Settlement Beta" \
             --notes $'### LMS Round Settlement Beta\n\n- Built directly from proven 0.6.24.\n- Fixes LMS competitions getting stuck on an old round after picked teams have finished.\n- Update Results now refreshes shared player picks and latest result data before settlement.\n- Round completion checks only the actual current-round fixture for each picked team.\n- Supports FT, AET, PEN, AWD and WO as final states.\n- Adds a manual Move to Next Round fallback for administrators.\n- Manual advance refuses to move while a picked team is genuinely unfinished and tells you which team is holding the round.\n- Keeps player picks/results history when Round 2 opens.\n- Frontend entry loader is unchanged.'
+
+# trigger 2
