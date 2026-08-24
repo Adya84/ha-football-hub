@@ -667,7 +667,7 @@ class FootballHubPanel extends HTMLElement {
 
   async _pullLmsSharePicks(force = false) {
     const competition = this._lmsCompetition;
-    if (this._activeTab !== "last-man-standing" || !competition?.shareId || !LMS_SHARE_SERVICE || this._lmsShareBusy || this._lmsShareSyncPending) return;
+    if (!competition?.shareId || !LMS_SHARE_SERVICE || this._lmsShareBusy || this._lmsShareSyncPending) return;
     if (!force && Date.now() - this._lmsShareLastPull < 1500) return;
     this._lmsShareLastPull = Date.now();
     this._lmsShareBusy = true;
@@ -1247,25 +1247,56 @@ class FootballHubPanel extends HTMLElement {
     if (!competition || competition.completed || this._lmsAutoCheckBusy || !this._lmsDeadlineState().locked) return;
     this._lmsAutoCheckBusy = true;
     try {
-      await this._refreshLmsRoundFixtures();
-      const fixtures = this._lmsRoundFixtureGroups().flatMap((league) => league.roundFixtures || []);
-      const finished = new Set(["FT", "AET", "PEN"]);
-      if (!fixtures.length) return;
+      await this._pullLmsSharePicks(true);
+
+      const finished = new Set(["FT", "AET", "PEN", "AWD", "WO"]);
       const roundKey = String(competition.round);
-      const hasNewResult = competition.players.some((player) => {
-        if (!player.alive || player.results?.[roundKey]) return false;
-        const pick = player.picks?.[roundKey];
-        if (!pick) return true;
-        const match = fixtures.find((fixture) => fixture.home_team === pick || fixture.away_team === pick);
-        return Boolean(match && finished.has(String(match.status_short || match.status || "").toUpperCase()));
-      });
-      if (!hasNewResult) return;
-      this._settleLmsRound(true);
+      const roundStarted = Number(competition.roundStarted || 0);
+      const activePlayers = (competition.players || []).filter((player) => player.alive);
+
+      const evaluate = () => {
+        const fixtures = this._lmsRoundFixtureGroups().flatMap((league) => league.roundFixtures || []);
+        const matchForPick = (pick) => fixtures
+          .filter((fixture) =>
+            (fixture.home_team === pick || fixture.away_team === pick) &&
+            this._lmsFixtureTimestamp(fixture) >= roundStarted - 86400
+          )
+          .sort((a, b) => this._lmsFixtureTimestamp(a) - this._lmsFixtureTimestamp(b))[0];
+
+        const allPickedTeamsFinished = activePlayers.length > 0 && activePlayers.every((player) => {
+          const pick = player.picks?.[roundKey];
+          if (!pick) return true;
+          const match = matchForPick(pick);
+          return Boolean(match && finished.has(String(match.status_short || match.status || "").toUpperCase()));
+        });
+
+        const hasFinishedUnresolved = activePlayers.some((player) => {
+          if (player.results?.[roundKey]) return false;
+          const pick = player.picks?.[roundKey];
+          if (!pick) return true;
+          const match = matchForPick(pick);
+          return Boolean(match && finished.has(String(match.status_short || match.status || "").toUpperCase()));
+        });
+
+        return { allPickedTeamsFinished, hasFinishedUnresolved };
+      };
+
+      // Use the cache already fed by Home Assistant live/results data first.
+      let state = evaluate();
+
+      // Only use the LMS fixture endpoint as a fallback if HA is not final yet.
+      if (!state.allPickedTeamsFinished && !state.hasFinishedUnresolved) {
+        await this._refreshLmsRoundFixtures();
+        state = evaluate();
+      }
+
+      if (state.hasFinishedUnresolved || state.allPickedTeamsFinished) {
+        await this._settleLmsRound(true);
+      }
     } finally {
       this._lmsAutoCheckBusy = false;
     }
   }
-
   async _settleLmsRound(automatic = false) {
     const competition = this._lmsCompetition;
     if (!competition || competition.completed || (!automatic && !this._isLmsAdmin())) return;
@@ -1295,7 +1326,7 @@ class FootballHubPanel extends HTMLElement {
         .filter((item) => (item.home_team === pick || item.away_team === pick) && this._lmsFixtureTimestamp(item) >= roundStarted - 86400)
         .sort((a, b) => this._lmsFixtureTimestamp(a) - this._lmsFixtureTimestamp(b));
       const match = candidates[0];
-      const finished = ["FT", "AET", "PEN"].includes(String(match?.status_short || match?.status || "").toUpperCase());
+      const finished = ["FT", "AET", "PEN", "AWD", "WO"].includes(String(match?.status_short || match?.status || "").toUpperCase());
       if (!match || !finished) {
         waiting = true;
         continue;
@@ -1319,11 +1350,20 @@ class FootballHubPanel extends HTMLElement {
     }
     const unresolved = competition.players.some((player) => player.alive && player.picks?.[roundKey] && !player.results?.[roundKey]);
     const pickedTeams = new Set(competition.players.map((player) => player.picks?.[roundKey]).filter(Boolean));
-    const pickedFixtures = fixtures.filter((fixture) => pickedTeams.has(fixture.home_team) || pickedTeams.has(fixture.away_team));
-    const pickedMatchesFinished = pickedFixtures.length > 0 && pickedFixtures.every((fixture) => ["FT", "AET", "PEN"].includes(String(fixture.status_short || fixture.status || "").toUpperCase()));
+    const roundStartedForCheck = Number(competition.roundStarted || 0);
+    const selectedPickedFixtures = [...pickedTeams].map((team) => fixtures
+      .filter((fixture) =>
+        (fixture.home_team === team || fixture.away_team === team) &&
+        this._lmsFixtureTimestamp(fixture) >= roundStartedForCheck - 86400
+      )
+      .sort((a, b) => this._lmsFixtureTimestamp(a) - this._lmsFixtureTimestamp(b))[0]
+    ).filter(Boolean);
+    const pickedMatchesFinished = pickedTeams.size > 0 && selectedPickedFixtures.length === pickedTeams.size && selectedPickedFixtures.every((fixture) =>
+      ["FT", "AET", "PEN", "AWD", "WO"].includes(String(fixture.status_short || fixture.status || "").toUpperCase())
+    );
     if (pickedMatchesFinished && !waiting && !unresolved) {
       const survivors = competition.players.filter((player) => player.alive);
-      const completedRoundEnds = fixtures.map((fixture) => this._lmsFixtureTimestamp(fixture)).filter(Boolean);
+      const completedRoundEnds = selectedPickedFixtures.map((fixture) => this._lmsFixtureTimestamp(fixture)).filter(Boolean);
       const nextRoundStartsAfter = completedRoundEnds.length ? Math.max(...completedRoundEnds) + 300 : Math.floor(Date.now() / 1000);
       if (!competition.resultsEmailSent?.[roundKey]) {
         competition.resultsEmailSent = competition.resultsEmailSent || {};

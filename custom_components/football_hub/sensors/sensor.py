@@ -442,6 +442,7 @@ class FootballHubNextFixtureSensor(FootballHubBaseSensor):
 
 
 class FootballHubMatchesTodaySensor(FootballHubBaseSensor):
+    _unrecorded_attributes = frozenset({"matches"})
     def __init__(self, coordinator, entry):
         super().__init__(coordinator, entry, "matches_today", "Matches Today")
 
