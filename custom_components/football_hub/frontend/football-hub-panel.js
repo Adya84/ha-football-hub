@@ -1,4 +1,4 @@
-const PANEL_VERSION = "0.20.21-lms-settlement-email-fix";
+const PANEL_VERSION = "0.20.24-lms-result-check-beta3";
 const LMS_SHARE_SERVICE = "https://football-hub-lms.zesty-flame-5295.chatgpt.site";
 const FULL_COMPETITION_CATALOGUE = {
   England: ["Premier League", "Championship", "League One", "League Two", "National League", "FA Cup", "EFL Cup", "Community Shield"],
@@ -667,7 +667,7 @@ class FootballHubPanel extends HTMLElement {
 
   async _pullLmsSharePicks(force = false) {
     const competition = this._lmsCompetition;
-    if (!competition?.shareId || !LMS_SHARE_SERVICE || this._lmsShareBusy || this._lmsShareSyncPending) return;
+    if (this._activeTab !== "last-man-standing" || !competition?.shareId || !LMS_SHARE_SERVICE || (!force && (this._lmsShareBusy || this._lmsShareSyncPending))) return false;
     if (!force && Date.now() - this._lmsShareLastPull < 1500) return;
     this._lmsShareLastPull = Date.now();
     this._lmsShareBusy = true;
@@ -683,22 +683,30 @@ class FootballHubPanel extends HTMLElement {
       if (!response.ok) return;
       const result = await response.json();
       const remote = result.competition;
-      if (competition.mode === "private" && Object.prototype.hasOwnProperty.call(result, "playerLinks")) {
+      if (this._lmsMode === "private" && competition.mode !== "global" && remote) {
         const localAccess = {
           shareId: competition.shareId,
           shareUrl: competition.shareUrl,
           shareEditToken: competition.shareEditToken,
           adminPasswordHash: competition.adminPasswordHash,
         };
-        Object.assign(competition, remote, localAccess);
+        const localPlayers = new Map((competition.players || []).map((player) => [String(player.id), player]));
+        const before = JSON.stringify({ round: competition.round, completed: competition.completed, players: (competition.players || []).map((player) => ({ id: player.id, alive: player.alive, picks: player.picks, results: player.results })) });
+        const mergedPlayers = (remote.players || []).map((remotePlayer) => {
+          const localPlayer = localPlayers.get(String(remotePlayer.id)) || {};
+          return { ...localPlayer, ...remotePlayer, email: remotePlayer.email || localPlayer.email || "", pickUrl: remotePlayer.pickUrl || localPlayer.pickUrl || "" };
+        });
+        Object.assign(competition, remote, localAccess, { mode: "private", players: mergedPlayers });
         this._applyLmsPlayerLinks(result.playerLinks || []);
         if (!(competition.leagues || []).some((league) => league.key === this._lmsActiveLeague)) {
           this._lmsActiveLeague = competition.leagues?.[0]?.key || "";
           localStorage.setItem("football_hub_lms_active_league", this._lmsActiveLeague);
         }
+        const after = JSON.stringify({ round: competition.round, completed: competition.completed, players: competition.players.map((player) => ({ id: player.id, alive: player.alive, picks: player.picks, results: player.results })) });
+        const changed = before !== after;
         localStorage.setItem("football_hub_lms_private", JSON.stringify(competition));
-        this._render();
-        return;
+        if (changed) this._render();
+        return changed;
       }
       const remotePlayers = new Map((remote?.players || []).map((player) => [String(player.id), player]));
       let changed = false;
@@ -724,11 +732,13 @@ class FootballHubPanel extends HTMLElement {
         localStorage.setItem(this._lmsMode === "global" ? "football_hub_lms_global" : "football_hub_lms_private", JSON.stringify(competition));
         this._render();
       }
+      return changed;
     } catch (error) {
       console.warn("Football Hub LMS player picks refresh failed", error);
     } finally {
       this._lmsShareBusy = false;
     }
+    return false;
   }
 
   async _lmsPasswordHash(password) {
@@ -804,6 +814,7 @@ class FootballHubPanel extends HTMLElement {
       if (!response.ok) throw new Error(result.error || "Competition could not be opened");
       const competition = result.competition || {};
       if (competition.mode && competition.mode !== "private") throw new Error("This is not a private LMS competition.");
+      competition.mode = "private";
       competition.shareId = shareId;
       competition.shareUrl = `${LMS_SHARE_SERVICE}/lms/${encodeURIComponent(shareId)}`;
       competition.adminPasswordHash = await this._lmsPasswordHash(adminPassword);
@@ -837,12 +848,14 @@ class FootballHubPanel extends HTMLElement {
     if (!competition) return 0;
     const roundKey = String(competition.round || 1);
     competition.deadlines = competition.deadlines || {};
-    if (Number(competition.deadlines[roundKey]) > 0) return Number(competition.deadlines[roundKey]);
     const roundStarted = Number(competition.roundStarted || 0);
+    const savedDeadline = Number(competition.deadlines[roundKey] || 0);
+    if (savedDeadline >= roundStarted) return savedDeadline;
+    if (savedDeadline > 0) delete competition.deadlines[roundKey];
     const fixtures = this._lmsTeamGroups().flatMap((league) => league.fixtures || []);
     const timestamps = fixtures
       .map((fixture) => this._lmsFixtureTimestamp(fixture))
-      .filter((timestamp) => timestamp >= roundStarted - 300)
+      .filter((timestamp) => timestamp >= roundStarted)
       .sort((a, b) => a - b);
     if (!timestamps.length) return 0;
     competition.deadlines[roundKey] = timestamps[0];
@@ -873,7 +886,7 @@ class FootballHubPanel extends HTMLElement {
     countdown.textContent = state.timestamp ? this._formatLmsCountdown(state.remaining) : "Waiting for fixture times";
     const warning = countdown.closest(".lms-deadline");
     warning?.classList.toggle("locked", state.locked);
-    this.shadowRoot.querySelectorAll(".lms-pick").forEach((select) => {
+    this.shadowRoot.querySelectorAll(".lms-pick:not(.lms-admin-recovery-select)").forEach((select) => {
       if (state.locked) select.disabled = true;
     });
   }
@@ -952,7 +965,11 @@ class FootballHubPanel extends HTMLElement {
     const fixtures = this._attrs("fixtures").fixtures || [];
     if (!teams.length) return;
     this._lmsLeagueCache[status.competition_key] = { teams, fixtures, updated: Date.now() };
-    localStorage.setItem("football_hub_lms_league_cache", JSON.stringify(this._lmsLeagueCache));
+    try {
+      localStorage.setItem("football_hub_lms_league_cache", JSON.stringify(this._lmsLeagueCache));
+    } catch (error) {
+      console.warn("Football Hub LMS fixture cache could not be stored; result checking will continue.", error);
+    }
     this._ensureLmsDeadline();
     queueMicrotask(() => this._maybeAutoSettleLmsRound());
   }
@@ -975,7 +992,9 @@ class FootballHubPanel extends HTMLElement {
       const candidates = (league.fixtures || [])
         .filter((fixture) => {
           const timestamp = this._lmsFixtureTimestamp(fixture);
-          return timestamp >= roundStarted - 300;
+          // Provider schedules can contain cup/friendly matches for clubs in a
+          // league. LMS league rounds must only use that league's fixtures.
+          return timestamp >= roundStarted && this._doublePickFixtureMatchesCompetition(fixture, league);
         })
         .sort((a, b) => this._lmsFixtureTimestamp(a) - this._lmsFixtureTimestamp(b));
       const first = candidates[0];
@@ -1061,12 +1080,19 @@ class FootballHubPanel extends HTMLElement {
   _setLmsPick(playerId, team) {
     const competition = this._lmsCompetition;
     if (!this._isLmsAdmin()) return;
-    if (this._lmsDeadlineState().locked) return;
     const player = competition?.players?.find((item) => item.id === playerId);
-    if (!player || !player.alive) return;
+    if (!player) return;
     const roundKey = String(competition.round);
+    const adminRecovery = player.results?.[roundKey] === "eliminated-no-pick";
+    if (this._lmsDeadlineState().locked && !adminRecovery) return;
+    if (!player.alive && !adminRecovery) return;
     const used = Object.entries(player.picks || {}).some(([round, picked]) => round !== roundKey && picked === team);
     if (used) return;
+    if (adminRecovery && team) {
+      player.alive = true;
+      delete player.results[roundKey];
+    }
+    player.picks = player.picks || {};
     player.picks[roundKey] = team;
     this._saveLms();
     this._render();
@@ -1245,61 +1271,33 @@ class FootballHubPanel extends HTMLElement {
   async _maybeAutoSettleLmsRound() {
     const competition = this._lmsCompetition;
     if (!competition || competition.completed || this._lmsAutoCheckBusy || !this._lmsDeadlineState().locked) return;
+    if (Number(competition.manualRoundHold || 0) === Number(competition.round || 0)) return;
     this._lmsAutoCheckBusy = true;
     try {
-      await this._pullLmsSharePicks(true);
-
-      const finished = new Set(["FT", "AET", "PEN", "AWD", "WO"]);
+      await this._refreshLmsRoundFixtures();
+      const fixtures = this._lmsRoundFixtureGroups().flatMap((league) => league.roundFixtures || []);
+      const finished = new Set(["FT", "AET", "PEN"]);
+      if (!fixtures.length) return;
       const roundKey = String(competition.round);
-      const roundStarted = Number(competition.roundStarted || 0);
-      const activePlayers = (competition.players || []).filter((player) => player.alive);
-
-      const evaluate = () => {
-        const fixtures = this._lmsRoundFixtureGroups().flatMap((league) => league.roundFixtures || []);
-        const matchForPick = (pick) => fixtures
-          .filter((fixture) =>
-            (fixture.home_team === pick || fixture.away_team === pick) &&
-            this._lmsFixtureTimestamp(fixture) >= roundStarted - 86400
-          )
-          .sort((a, b) => this._lmsFixtureTimestamp(a) - this._lmsFixtureTimestamp(b))[0];
-
-        const allPickedTeamsFinished = activePlayers.length > 0 && activePlayers.every((player) => {
-          const pick = player.picks?.[roundKey];
-          if (!pick) return true;
-          const match = matchForPick(pick);
-          return Boolean(match && finished.has(String(match.status_short || match.status || "").toUpperCase()));
-        });
-
-        const hasFinishedUnresolved = activePlayers.some((player) => {
-          if (player.results?.[roundKey]) return false;
-          const pick = player.picks?.[roundKey];
-          if (!pick) return true;
-          const match = matchForPick(pick);
-          return Boolean(match && finished.has(String(match.status_short || match.status || "").toUpperCase()));
-        });
-
-        return { allPickedTeamsFinished, hasFinishedUnresolved };
-      };
-
-      // Use the cache already fed by Home Assistant live/results data first.
-      let state = evaluate();
-
-      // Only use the LMS fixture endpoint as a fallback if HA is not final yet.
-      if (!state.allPickedTeamsFinished && !state.hasFinishedUnresolved) {
-        await this._refreshLmsRoundFixtures();
-        state = evaluate();
-      }
-
-      if (state.hasFinishedUnresolved || state.allPickedTeamsFinished) {
-        await this._settleLmsRound(true);
-      }
+      const hasNewResult = competition.players.some((player) => {
+        if (!player.alive || player.results?.[roundKey]) return false;
+        const pick = player.picks?.[roundKey];
+        if (!pick) return true;
+        const match = fixtures.find((fixture) => fixture.home_team === pick || fixture.away_team === pick);
+        return Boolean(match && finished.has(String(match.status_short || match.status || "").toUpperCase()));
+      });
+      if (!hasNewResult) return;
+      this._settleLmsRound(true);
     } finally {
       this._lmsAutoCheckBusy = false;
     }
   }
+
   async _settleLmsRound(automatic = false) {
     const competition = this._lmsCompetition;
     if (!competition || competition.completed || (!automatic && !this._isLmsAdmin())) return;
+    if (automatic && Number(competition.manualRoundHold || 0) === Number(competition.round || 0)) return;
+    if (!automatic) delete competition.manualRoundHold;
     if (competition.mode === "global") {
       this._settleGlobalLmsRound();
       return;
@@ -1307,7 +1305,13 @@ class FootballHubPanel extends HTMLElement {
     if (!automatic) await this._refreshLmsRoundFixtures();
     const roundKey = String(competition.round);
     const fixtures = this._lmsRoundFixtureGroups().flatMap((league) => league.roundFixtures || []);
+    if (!fixtures.length) {
+      if (!automatic) window.alert(`No fixtures were found for Round ${roundKey}. Load the selected leagues, then try again.`);
+      return;
+    }
     let waiting = false;
+    let resolvedCount = 0;
+    const waitingPlayers = [];
     for (const player of competition.players) {
       if (!player.alive) continue;
       const pick = player.picks?.[roundKey];
@@ -1323,12 +1327,18 @@ class FootballHubPanel extends HTMLElement {
       }
       const roundStarted = Number(competition.roundStarted || 0);
       const candidates = fixtures
-        .filter((item) => (item.home_team === pick || item.away_team === pick) && this._lmsFixtureTimestamp(item) >= roundStarted - 86400)
+        .filter((item) => (item.home_team === pick || item.away_team === pick) && this._lmsFixtureTimestamp(item) >= roundStarted)
         .sort((a, b) => this._lmsFixtureTimestamp(a) - this._lmsFixtureTimestamp(b));
       const match = candidates[0];
-      const finished = ["FT", "AET", "PEN", "AWD", "WO"].includes(String(match?.status_short || match?.status || "").toUpperCase());
-      if (!match || !finished) {
+      const finished = ["FT", "AET", "PEN"].includes(String(match?.status_short || match?.status || "").toUpperCase());
+      const hasFinalScore = Number.isFinite(Number(match?.home_goals)) && Number.isFinite(Number(match?.away_goals))
+        && match?.home_goals !== null && match?.away_goals !== null;
+      if (!match || !finished || !hasFinalScore) {
+        // Correct a result that may have been assigned from an older cached
+        // fixture. A player is only through once this round's match is final.
+        if (player.results?.[roundKey] === "survived") delete player.results[roundKey];
         waiting = true;
+        waitingPlayers.push(player.name);
         continue;
       }
       const home = Number(match.home_goals);
@@ -1336,6 +1346,7 @@ class FootballHubPanel extends HTMLElement {
       const won = (match.home_team === pick && home > away) || (match.away_team === pick && away > home);
       player.results = player.results || {};
       player.results[roundKey] = won ? "survived" : "eliminated";
+      resolvedCount += 1;
       if (!won) player.alive = false;
       const emailKey = `${roundKey}:${player.id}`;
       if (player.email && !competition.matchResultEmails?.[emailKey]) {
@@ -1349,21 +1360,9 @@ class FootballHubPanel extends HTMLElement {
       }
     }
     const unresolved = competition.players.some((player) => player.alive && player.picks?.[roundKey] && !player.results?.[roundKey]);
-    const pickedTeams = new Set(competition.players.map((player) => player.picks?.[roundKey]).filter(Boolean));
-    const roundStartedForCheck = Number(competition.roundStarted || 0);
-    const selectedPickedFixtures = [...pickedTeams].map((team) => fixtures
-      .filter((fixture) =>
-        (fixture.home_team === team || fixture.away_team === team) &&
-        this._lmsFixtureTimestamp(fixture) >= roundStartedForCheck - 86400
-      )
-      .sort((a, b) => this._lmsFixtureTimestamp(a) - this._lmsFixtureTimestamp(b))[0]
-    ).filter(Boolean);
-    const pickedMatchesFinished = pickedTeams.size > 0 && selectedPickedFixtures.length === pickedTeams.size && selectedPickedFixtures.every((fixture) =>
-      ["FT", "AET", "PEN", "AWD", "WO"].includes(String(fixture.status_short || fixture.status || "").toUpperCase())
-    );
-    if (pickedMatchesFinished && !waiting && !unresolved) {
+    if (!waiting && !unresolved) {
       const survivors = competition.players.filter((player) => player.alive);
-      const completedRoundEnds = selectedPickedFixtures.map((fixture) => this._lmsFixtureTimestamp(fixture)).filter(Boolean);
+      const completedRoundEnds = fixtures.map((fixture) => this._lmsFixtureTimestamp(fixture)).filter(Boolean);
       const nextRoundStartsAfter = completedRoundEnds.length ? Math.max(...completedRoundEnds) + 300 : Math.floor(Date.now() / 1000);
       if (!competition.resultsEmailSent?.[roundKey]) {
         competition.resultsEmailSent = competition.resultsEmailSent || {};
@@ -1386,6 +1385,85 @@ class FootballHubPanel extends HTMLElement {
         };
       }
     }
+    this._saveLms();
+    this._render();
+  }
+
+  _endLmsRoundNow() {
+    const competition = this._lmsCompetition;
+    if (!competition || competition.completed || competition.mode === "global" || !this._isLmsAdmin()) return;
+    const roundKey = String(competition.round);
+    const undoSnapshot = {
+      round: Number(competition.round || 1),
+      roundStarted: competition.roundStarted,
+      completed: Boolean(competition.completed),
+      winnerId: competition.winnerId || "",
+      players: (competition.players || []).map((player) => ({ id: player.id, alive: Boolean(player.alive), result: player.results?.[roundKey] })),
+    };
+    for (const player of competition.players || []) {
+      if (!player.alive) continue;
+      player.results = player.results || {};
+      if (!player.picks?.[roundKey]) {
+        player.results[roundKey] = "eliminated-no-pick";
+        player.alive = false;
+      }
+    }
+    const unresolved = (competition.players || []).filter((player) => player.alive && !player.results?.[roundKey]);
+    if (unresolved.length) {
+      window.alert(`Set the Round ${roundKey} result for ${unresolved.map((player) => player.name).join(", ")} before ending the round.`);
+      this._saveLms();
+      this._render();
+      return;
+    }
+    if (!window.confirm(`Start the next round now? Round ${roundKey} results will be locked.`)) return;
+    competition.lastManualEndSnapshot = undoSnapshot;
+    const survivors = (competition.players || []).filter((player) => player.alive);
+    const fixtures = this._lmsRoundFixtureGroups().flatMap((league) => league.roundFixtures || []);
+    const fixtureTimes = fixtures.map((fixture) => this._lmsFixtureTimestamp(fixture)).filter(Boolean);
+    if (survivors.length <= 1 && competition.players.length > 0) {
+      competition.completed = true;
+      competition.winnerId = survivors[0]?.id || "";
+    } else {
+      competition.round = Number(competition.round || 1) + 1;
+      competition.roundStarted = (fixtureTimes.length ? Math.max(...fixtureTimes) : Math.floor(Date.now() / 1000)) + 300;
+    }
+    this._saveLms();
+    this._render();
+  }
+
+  _undoLmsManualEnd() {
+    const competition = this._lmsCompetition;
+    if (!competition || competition.mode === "global" || !this._isLmsAdmin()) return;
+    const snapshot = competition.lastManualEndSnapshot;
+    const currentRound = Number(competition.round || 1);
+    const currentRoundKey = String(currentRound);
+    const accidentalCurrentEliminations = !snapshot
+      ? (competition.players || []).filter((player) => player.results?.[currentRoundKey] === "eliminated-no-pick")
+      : [];
+    const previousRound = snapshot?.round || (accidentalCurrentEliminations.length ? currentRound : Math.max(1, currentRound - 1));
+    const prompt = accidentalCurrentEliminations.length
+      ? `Restore ${accidentalCurrentEliminations.length} players and keep Round ${currentRound} open?`
+      : `Reopen Round ${previousRound} and undo the manual round end?`;
+    if (!window.confirm(prompt)) return;
+    competition.round = previousRound;
+    competition.manualRoundHold = previousRound;
+    competition.completed = snapshot ? Boolean(snapshot.completed) : false;
+    competition.winnerId = snapshot?.winnerId || "";
+    if (snapshot?.roundStarted !== undefined) competition.roundStarted = snapshot.roundStarted;
+    const roundKey = String(previousRound);
+    for (const player of competition.players || []) {
+      const savedPlayer = snapshot?.players?.find((item) => item.id === player.id);
+      if (savedPlayer) {
+        player.alive = savedPlayer.alive;
+        player.results = player.results || {};
+        if (savedPlayer.result === undefined) delete player.results[roundKey];
+        else player.results[roundKey] = savedPlayer.result;
+      } else if (player.results?.[roundKey] === "eliminated-no-pick") {
+        delete player.results[roundKey];
+        player.alive = true;
+      }
+    }
+    delete competition.lastManualEndSnapshot;
     this._saveLms();
     this._render();
   }
@@ -1533,7 +1611,11 @@ class FootballHubPanel extends HTMLElement {
       } else {
         const fixtureData = this._attrs("fixtures");
         const resultData = this._attrs("results");
-        ready = this._statusInfo().competition_key === competition.key && fixtureData.competition_key === competition.key && resultData.competition_key === competition.key;
+        // Fixtures and Results sensors do not expose competition_key. The
+        // Status sensor is the authoritative marker that the coordinator has
+        // switched competitions, and all three sensors update from that same
+        // coordinator payload.
+        ready = this._statusInfo().competition_key === competition.key;
         if (ready) {
           // Fixtures and results are scoped to the competition currently loaded in
           // Football Hub. The live feed is global and must not populate this cache,
@@ -1541,13 +1623,18 @@ class FootballHubPanel extends HTMLElement {
           // The fixtures entity contains the selected competition's complete
           // schedule, including completed matches. Do not merge latest_5 here:
           // that feed may contain results from a different competition.
-          fixtures = [...(fixtureData.fixtures || []), ...(resultData.results || [])];
+          fixtures = [...(fixtureData.fixtures || []), ...(resultData.results || []), ...(resultData.latest_5 || [])];
           teams = [...(this._attrs("standings").table || [])].map((row) => row.team || row.team_name);
         }
       }
       if (!ready) continue;
       fixtures = fixtures.filter((fixture) => this._doublePickFixtureMatchesCompetition(fixture, competition));
-      const uniqueFixtures = [...new Map(fixtures.map((fixture, index) => [String(fixture.fixture_id ?? fixture.id ?? `${fixture.home_team}-${fixture.away_team}-${fixture.timestamp || index}`), fixture])).values()];
+      const normalizedFixtures = fixtures.map((fixture) => ({
+        ...fixture,
+        home_goals: fixture.home_goals ?? fixture.score_fulltime_home ?? fixture.fulltime_home ?? fixture.home_score ?? fixture.goals?.home ?? null,
+        away_goals: fixture.away_goals ?? fixture.score_fulltime_away ?? fixture.fulltime_away ?? fixture.away_score ?? fixture.goals?.away ?? null,
+      }));
+      const uniqueFixtures = [...new Map(normalizedFixtures.map((fixture, index) => [String(fixture.fixture_id ?? fixture.id ?? `${fixture.home_team}-${fixture.away_team}-${fixture.timestamp || index}`), fixture])).values()];
       teams.push(...uniqueFixtures.flatMap((fixture) => [fixture.home_team, fixture.away_team]));
       this._doublePickCache[competition.key] = { competitionKey: competition.key, teams: [...new Set(teams.filter(Boolean))].sort((a, b) => a.localeCompare(b)), fixtures: uniqueFixtures, updated: Date.now() };
       localStorage.setItem("football_hub_double_pick_cache", JSON.stringify(this._doublePickCache));
@@ -1555,7 +1642,23 @@ class FootballHubPanel extends HTMLElement {
   }
 
   _doublePickFixtureMatchesCompetition(fixture, competition) {
-    const rawLabel = fixture.competition || fixture.competition_name || fixture.league_name || fixture.league?.name || "";
+    // FotMob's numeric competition ID is more reliable than its optional
+    // display label. In particular, club schedules may include EFL Cup games
+    // with a missing/mislabelled league name.
+    const providerLeagueIds = {
+      premier_league: 47,
+      championship: 48,
+      league_one: 108,
+      league_two: 109,
+      national_league: 117,
+      fa_cup: 132,
+      efl_cup: 133,
+      community_shield: 247,
+    };
+    const expectedLeagueId = providerLeagueIds[String(competition?.key || "")];
+    const fixtureLeagueId = Number(fixture?.league_id ?? fixture?.league?.id);
+    if (expectedLeagueId && Number.isFinite(fixtureLeagueId)) return fixtureLeagueId === expectedLeagueId;
+    const rawLabel = fixture.competition || fixture.competition_name || fixture.league_name || fixture.league?.name || (typeof fixture.league === "string" ? fixture.league : "");
     const clean = (value) => String(value || "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
     const label = clean(rawLabel), target = clean(competition?.name);
     if (label.includes("friendly") || label.includes("friendlies")) return target.includes("friendly");
@@ -1574,14 +1677,162 @@ class FootballHubPanel extends HTMLElement {
     if (!competition) return;
     this._doublePickActiveCompetition = key;
     localStorage.setItem("football_hub_double_pick_active_competition", key);
+    const alreadyLoaded = competition.type === "cup"
+      ? this._attrs("cup_centre").competition_key === key
+      : this._statusInfo().competition_key === key;
+    if (alreadyLoaded) {
+      this._captureDoublePickData();
+      queueMicrotask(() => this._advanceDoublePickLoadQueue());
+      return;
+    }
     if (competition.type === "cup") this._setCup(key);
     else this._setLeague(key);
   }
 
-  _loadAllDoublePickCompetitions() {
+  _advanceDoublePickLoadQueue() {
+    const next = this._doublePickLoadQueue?.shift();
+    if (next) {
+      this._loadDoublePickCompetition(next);
+      return;
+    }
+    if (this._doublePickSettleAfterLoad) {
+      this._doublePickSettleAfterLoad = false;
+      void this._settleDoublePickAfterFullRefresh();
+      return;
+    }
+    this._render();
+  }
+
+  async _settleDoublePickAfterFullRefresh() {
+    await this._refreshDoublePickFullResults();
+    this._settleAllDoublePickRounds();
+  }
+
+  _settleAllDoublePickRounds() {
+    const round = this._doublePickRound();
+    if (!round) return;
+    const summary = this._settleDoublePickRound(round, true) || {};
+    const updated = Number(summary.updated || 0);
+    const waitingFor = [...new Set(summary.waitingFor || [])];
+    window.alert(waitingFor.length
+      ? `${updated} result${updated === 1 ? "" : "s"} loaded for Round ${round.number}. Still waiting for: ${waitingFor.join(", ")}.`
+      : `All ${updated} Acca League results loaded for Round ${round.number}.`);
+  }
+
+  _repairDoublePickRoundDates(rounds = []) {
+    const fixtures = Object.values(this._doublePickCache || {}).flatMap((cache) => cache.fixtures || []);
+    const finished = new Set(["FT", "AET", "PEN", "AWD", "WO", "FINISHED", "FULL TIME", "FULL-TIME", "FULLTIME"]);
+    const dateKey = (fixture) => {
+      const timestamp = this._lmsFixtureTimestamp(fixture);
+      if (!timestamp) return "";
+      const date = new Date(timestamp * 1000);
+      return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
+    };
+    const historicalRounds = rounds.slice(0, -1);
+    const candidatesByRound = historicalRounds.map((round) => {
+      const teams = [...new Set(Object.values(round.picks || {}).flat().map((value) => String(value || "").split("|||").slice(1).join("|||")).filter(Boolean))];
+      if (!teams.length) return [];
+      const byDate = new Map();
+      for (const fixture of fixtures) {
+        const status = String(fixture.status_short || fixture.status || "").toUpperCase();
+        if (!finished.has(status) && fixture.finished !== true && fixture.status?.finished !== true) continue;
+        const playedTeams = teams.filter((team) => fixture.home_team === team || fixture.away_team === team);
+        if (!playedTeams.length) continue;
+        const date = dateKey(fixture);
+        if (!date) continue;
+        if (!byDate.has(date)) byDate.set(date, new Set());
+        playedTeams.forEach((team) => byDate.get(date).add(team));
+      }
+      return [...byDate.entries()]
+        .filter(([, matchedTeams]) => matchedTeams.size === teams.length)
+        .map(([date]) => date)
+        .sort();
+    });
+    let bestDates = null;
+    let bestCost = Number.POSITIVE_INFINITY;
+    const search = (index, previousDate, chosen, cost) => {
+      if (cost >= bestCost) return;
+      if (index >= historicalRounds.length) {
+        bestDates = [...chosen];
+        bestCost = cost;
+        return;
+      }
+      const round = historicalRounds[index];
+      const reference = new Date(`${round.startDate || round.endDate}T00:00:00`).getTime();
+      for (const date of candidatesByRound[index]) {
+        if (previousDate && date <= previousDate) continue;
+        const distance = Math.abs(new Date(`${date}T00:00:00`).getTime() - reference);
+        search(index + 1, date, [...chosen, date], cost + distance);
+      }
+    };
+    search(0, "", [], 0);
+    if (bestDates) {
+      historicalRounds.forEach((round, index) => {
+        round.startDate = bestDates[index];
+        round.endDate = bestDates[index];
+      });
+    }
+  }
+
+  async _refreshDoublePickFullResults() {
+    if (!LMS_SHARE_SERVICE) return;
+    this._doublePickFreshResultFixtures = [];
+    const resultCompetitions = [...new Map([
+      ...this._doublePickRoundCompetitions(),
+      { key: "premier_league", name: "Premier League", country: "England" },
+      { key: "championship", name: "Championship", country: "England" },
+      { key: "league_one", name: "League One", country: "England" },
+      { key: "league_two", name: "League Two", country: "England" },
+    ].map((competition) => [competition.key, competition])).values()];
+    // Fetch sequentially. FotMob throttles simultaneous league refreshes and
+    // previously returned only one of the four English result sets.
+    for (const competition of resultCompetitions) {
+      try {
+        const response = await fetch(`${LMS_SHARE_SERVICE}/api/football-data?league=${encodeURIComponent(competition.key)}&fresh=1`, { cache: "no-store" });
+        if (!response.ok) continue;
+        const data = await response.json();
+        if (!Array.isArray(data.fixtures) || !data.fixtures.length) continue;
+        this._doublePickFreshResultFixtures.push(...data.fixtures.map((fixture) => ({
+          ...fixture,
+          competitionKey: competition.key,
+          competitionName: competition.name || competition.key,
+        })));
+        const existing = this._doublePickCache?.[competition.key] || { competitionKey: competition.key, teams: [], fixtures: [] };
+        const combined = [...(existing.fixtures || []), ...data.fixtures];
+        const fixtures = [...new Map(combined.map((fixture, index) => [
+          String(fixture.fixture_id ?? fixture.id ?? `${fixture.home_team}-${fixture.away_team}-${fixture.timestamp || index}`),
+          fixture,
+        ])).values()];
+        this._doublePickCache[competition.key] = {
+          ...existing,
+          competitionKey: competition.key,
+          teams: [...new Set([...(existing.teams || []), ...(data.teams || [])].filter(Boolean))].sort((a, b) => a.localeCompare(b)),
+          fixtures,
+          updated: Date.now(),
+        };
+      } catch (error) {
+        console.warn(`Football Hub Acca full-result refresh failed for ${competition.key}`, error);
+      }
+    }
+    try {
+      localStorage.setItem("football_hub_double_pick_cache", JSON.stringify(this._doublePickCache));
+    } catch (error) {
+      console.warn("Football Hub Acca result cache could not be stored", error);
+    }
+  }
+
+  _loadAllDoublePickCompetitions(settleAfterLoad = false) {
+    this._doublePickSettleAfterLoad = settleAfterLoad;
     this._doublePickLoadQueue = [...new Set(this._doublePickRoundCompetitions().map((item) => item.key))];
-    const next = this._doublePickLoadQueue.shift();
-    if (next) this._loadDoublePickCompetition(next);
+    this._advanceDoublePickLoadQueue();
+  }
+
+  _loadDoublePickEnglishResults() {
+    const wanted = /premier league|championship|league one|league two/i;
+    const competitions = this._doublePickRoundCompetitions().filter((competition) => wanted.test(String(competition.name || "")));
+    this._doublePickSettleAfterLoad = true;
+    this._doublePickLoadQueue = [...new Set(competitions.map((competition) => competition.key))];
+    this._advanceDoublePickLoadQueue();
   }
 
   _scheduleDoublePickCapture(key, type) {
@@ -1593,12 +1844,11 @@ class FootballHubPanel extends HTMLElement {
       const fixtures = this._attrs("fixtures"), results = this._attrs("results");
       const ready = type === "cup"
         ? this._attrs("cup_centre").competition_key === key
-        : this._statusInfo().competition_key === key && fixtures.competition_key === key && results.competition_key === key;
+        : this._statusInfo().competition_key === key;
       if (!ready && attempts < 12) { setTimeout(finish, 500); return; }
       if (ready && this._activeTab === "double-pick-league") this._captureDoublePickData();
       this._doublePickFinalizing = false;
-      const next = this._doublePickLoadQueue?.shift();
-      if (next) this._loadDoublePickCompetition(next); else this._render();
+      this._advanceDoublePickLoadQueue();
     };
     setTimeout(finish, 500);
   }
@@ -1646,13 +1896,28 @@ class FootballHubPanel extends HTMLElement {
     this._render();
   }
 
-  _settleDoublePickRound() {
+  _settleDoublePickRound(round = this._doublePickRound(), quiet = false) {
     const game = this._doublePickGame;
-    const round = this._doublePickRound();
     if (!game || !round) return;
     const fixtures = this._doublePickRoundFixtures(round);
-    const finishedStatuses = new Set(["FT", "AET", "PEN", "AWD", "WO"]);
+    const roundNumber = Number(round.number || 0);
+    const nextRound = Object.values(game.rounds || {}).find((item) => Number(item?.number || 0) === roundNumber + 1);
+    const isHistoricalRound = Boolean(nextRound && roundNumber < Number(game.round || 1));
+    const start = isHistoricalRound ? 0 : new Date(`${round.startDate}T00:00:00`).getTime() / 1000;
+    const end = isHistoricalRound
+      ? (new Date(`${nextRound.startDate || nextRound.endDate}T00:00:00`).getTime() / 1000) - 1
+      : new Date(`${round.endDate}T23:59:59`).getTime() / 1000;
+    const recoveryFixtures = Object.entries(this._doublePickCache || {}).flatMap(([key, cache]) =>
+      (cache.fixtures || [])
+        .filter((fixture) => { const timestamp = this._lmsFixtureTimestamp(fixture); return isHistoricalRound || (timestamp >= start && timestamp <= end); })
+        .map((fixture) => ({ ...fixture, competitionKey: key, competitionName: this._doublePickGame?.competitions?.find((item) => item.key === key)?.name || key }))
+    );
+    const freshResultFixtures = (this._doublePickFreshResultFixtures || [])
+      .filter((fixture) => { const timestamp = this._lmsFixtureTimestamp(fixture); return isHistoricalRound || (timestamp >= start && timestamp <= end); });
+    const finishedStatuses = new Set(["FT", "AET", "PEN", "AWD", "WO", "FINISHED", "FULL TIME", "FULL-TIME", "FULLTIME"]);
     let waiting = false;
+    let updated = 0;
+    const waitingFor = [];
     for (const player of game.players || []) {
       const picks = round.picks?.[player.id] || [];
       const previousResults = round.results[player.id] || {};
@@ -1662,11 +1927,30 @@ class FootballHubPanel extends HTMLElement {
         if (!value) { waiting = true; continue; }
         const [competitionKey, ...teamParts] = value.split("|||");
         const team = teamParts.join("|||");
-        const match = fixtures.find((fixture) => fixture.competitionKey === competitionKey && (fixture.home_team === team || fixture.away_team === team));
+        const teamMatches = (fixture) => fixture.home_team === team || fixture.away_team === team;
+        const isCompletedFixture = (fixture) => {
+          const status = String(fixture?.status_short || fixture?.status || "").toUpperCase();
+          return Boolean(fixture && (finishedStatuses.has(status) || fixture.finished === true || fixture.status?.finished === true)
+            && fixture.home_goals !== null && fixture.home_goals !== undefined
+            && fixture.away_goals !== null && fixture.away_goals !== undefined);
+        };
+        const match = [...fixtures, ...recoveryFixtures, ...freshResultFixtures]
+          .filter((fixture) => teamMatches(fixture))
+          .sort((a, b) => {
+            const aTime = this._lmsFixtureTimestamp(a), bTime = this._lmsFixtureTimestamp(b);
+            const aDistance = aTime < start ? start - aTime : aTime > end ? aTime - end : 0;
+            const bDistance = bTime < start ? start - bTime : bTime > end ? bTime - end : 0;
+            if (aDistance !== bDistance) return aDistance - bDistance;
+            if (aTime !== bTime) return bTime - aTime;
+            const aExact = a.competitionKey === competitionKey ? 0 : 1;
+            const bExact = b.competitionKey === competitionKey ? 0 : 1;
+            return aExact - bExact;
+          })[0];
         const status = String(match?.status_short || match?.status || "").toUpperCase();
-        if (!match || !finishedStatuses.has(status)) {
+        const isFinished = Boolean(match && (finishedStatuses.has(status) || match.finished === true || match.status?.finished === true));
+        if (!match || !isFinished) {
           waiting = true;
-          if (previousResults[slot]) refreshedResults[slot] = previousResults[slot];
+          waitingFor.push(`${player.name}: ${team || "Pick not selected"}`);
           continue;
         }
         const home = Number(match.home_goals), away = Number(match.away_goals);
@@ -1675,16 +1959,43 @@ class FootballHubPanel extends HTMLElement {
         const points = won ? 3 : drawn ? 1 : 0;
         const opponent = match.home_team === team ? match.away_team : match.home_team;
         refreshedResults[slot] = { team, competitionKey, competitionName: match.competitionName, kickoff: this._lmsFixtureTimestamp(match), points, outcome: won ? "Win" : drawn ? "Draw" : "Loss", score: `${home}-${away}`, opponent, fixtureId: match.fixture_id ?? match.id };
+        updated += 1;
       }
       round.results[player.id] = refreshedResults;
     }
+    const resultPoints = (result) => {
+      if (typeof result === "number") return Number.isFinite(result) ? result : 0;
+      if (typeof result === "string") {
+        const numeric = Number(result);
+        return Number.isFinite(numeric) ? numeric : /^(win|won)$/i.test(result) ? 3 : /^(draw|drawn)$/i.test(result) ? 1 : 0;
+      }
+      if (!result || typeof result !== "object") return 0;
+      const numeric = Number(result.points ?? result.earned ?? result.scorePoints);
+      return Number.isFinite(numeric) ? numeric : /^(win|won)$/i.test(result.outcome || result.result || "") ? 3 : /^(draw|drawn)$/i.test(result.outcome || result.result || "") ? 1 : 0;
+    };
+    const scoringRounds = [...new Map(Object.values(game.rounds || {})
+      .map((savedRound) => [Number(savedRound?.number || 0), savedRound])).values()];
     for (const player of game.players || []) {
-      player.points = Object.values(game.rounds || {}).reduce((total, savedRound) =>
-        total + Object.values(savedRound.results?.[player.id] || {}).reduce((roundTotal, result) => roundTotal + Number(result?.points || 0), 0), 0);
+      const calculated = scoringRounds.reduce((total, savedRound) => {
+        const savedRoundNumber = Number(savedRound?.number || 0);
+        if (savedRoundNumber < 1 || savedRoundNumber > Number(game.round || 1)) return total;
+        const savedResults = savedRound?.results?.[player.id];
+        const savedPicks = savedRound?.picks?.[player.id];
+        if (!Array.isArray(savedPicks) || !savedPicks.some(Boolean) || savedResults === undefined || savedResults === null) return total;
+        return total + savedPicks.slice(0, Number(game.pickCount || 2)).reduce((roundTotal, pick, slot) =>
+          roundTotal + (pick ? resultPoints(savedResults?.[slot]) : 0), 0);
+      }, 0);
+      player.points = calculated;
+      delete player.pointsCarry;
+      delete player.pointsCarryThroughRound;
     }
     round.settled = !waiting && (game.players || []).every((player) => Object.keys(round.results?.[player.id] || {}).length === Number(game.pickCount || 2));
     this._saveDoublePickGame();
     this._render();
+    if (!quiet) window.alert(waitingFor.length
+      ? `${updated} result${updated === 1 ? "" : "s"} loaded. Still waiting for: ${waitingFor.join(", ")}.`
+      : `All ${updated} Acca League results loaded.`);
+    return { updated, waitingFor, settled: round.settled };
   }
 
   _nextDoublePickRound() {
@@ -1692,8 +2003,12 @@ class FootballHubPanel extends HTMLElement {
     const current = this._doublePickRound();
     if (!game || !current) return;
     const nextNumber = Number(game.round || 1) + 1;
-    const currentPayerIndex = Math.max(0, (game.players || []).findIndex((player) => player.id === current.payerId));
-    const nextPayer = game.players?.[(currentPayerIndex + 1) % game.players.length];
+    const players = game.players || [];
+    const lastPaidRound = Object.values(game.rounds || {})
+      .filter((round) => Number(round?.number || 0) <= Number(current.number || game.round || 1) && players.some((player) => player.id === round?.payerId))
+      .sort((a, b) => Number(b.number || 0) - Number(a.number || 0))[0];
+    const lastPayerIndex = players.findIndex((player) => player.id === lastPaidRound?.payerId);
+    const nextPayer = players.length ? players[(Math.max(-1, lastPayerIndex) + 1) % players.length] : null;
     const nextStart = new Date(`${current.endDate}T00:00:00`).getTime() + 86400000;
     game.round = nextNumber;
     game.rounds[String(nextNumber)] = { number: nextNumber, ...this._doublePickDefaultDates(nextStart), competitionKeys: [...(current.competitionKeys || (game.competitions || []).map((item) => item.key))], payerId: nextPayer?.id || "", stake: 0, returnAmount: 0, picks: {}, results: {}, settled: false };
@@ -1822,6 +2137,19 @@ class FootballHubPanel extends HTMLElement {
     } catch (error) { console.warn("Acca League public update failed", error); }
   }
 
+  _recalculateDoublePickTotals() {
+    const game = this._doublePickGame;
+    if (!game) return;
+    for (const player of game.players || []) {
+      player.points = Object.values(game.rounds || {}).reduce((total, round) => {
+        const picks = round.picks?.[player.id] || [];
+        const results = round.results?.[player.id] || {};
+        return total + picks.slice(0, Number(game.pickCount || 2)).reduce((roundTotal, pick, slot) =>
+          roundTotal + (pick ? Math.max(0, Number(results?.[slot]?.points ?? results?.[slot] ?? 0) || 0) : 0), 0);
+      }, 0);
+    }
+  }
+
   _doublePickLeaguePage() {
     const game = this._doublePickGame;
     const catalogue = (this._statusInfo().available_competitions || []).slice().sort((a, b) => String(a.country).localeCompare(String(b.country)) || String(a.name).localeCompare(String(b.name)));
@@ -1832,6 +2160,17 @@ class FootballHubPanel extends HTMLElement {
     }
     this._captureDoublePickData();
     const round = this._doublePickRound();
+    const previousPaidRound = Object.values(game.rounds || {})
+      .filter((item) => Number(item?.number || 0) < Number(round?.number || 0) && game.players.some((player) => player.id === item?.payerId))
+      .sort((a, b) => Number(b.number || 0) - Number(a.number || 0))[0];
+    if (previousPaidRound && game.players.length > 1) {
+      const previousPayerIndex = game.players.findIndex((player) => player.id === previousPaidRound.payerId);
+      const expectedPayer = game.players[(previousPayerIndex + 1) % game.players.length];
+      if (expectedPayer && round.payerId !== expectedPayer.id) {
+        round.payerId = expectedPayer.id;
+        this._saveDoublePickGame();
+      }
+    }
     const fixtures = this._doublePickRoundFixtures(round);
     const alphabetical = new Intl.Collator(undefined, { sensitivity: "base", numeric: true });
     const optionGroups = this._doublePickRoundCompetitions(round).sort((a, b) => alphabetical.compare(`${a.country} ${a.name}`, `${b.country} ${b.name}`)).map((competition) => {
@@ -1845,8 +2184,34 @@ class FootballHubPanel extends HTMLElement {
     const lastPaid = previousRounds.map((item) => game.players.find((player) => player.id === item.payerId)?.name).find(Boolean) || "No previous round";
     const table = [...game.players].sort((a, b) => Number(b.points || 0) - Number(a.points || 0) || a.name.localeCompare(b.name));
     const playerRows = game.players.map((player) => { const picks = round.picks?.[player.id] || Array(Number(game.pickCount || 2)).fill(""); const results = round.results?.[player.id] || {}; return `<article class="page-card dp-player-card"><header><div class="dp-player-identity"><span class="dp-avatar">${this._escape(String(player.name || "P").slice(0,1).toUpperCase())}</span><div><span class="eyebrow">PLAYER</span><h3>${this._escape(player.name)}</h3><span class="dp-email-status ${player.email ? "ready" : "missing"}"><ha-icon icon="mdi:${player.email ? "email-check-outline" : "email-plus-outline"}"></ha-icon>${this._escape(player.email || "No email added")}</span></div></div><div class="dp-player-actions"><strong>${Number(player.points || 0)} pts</strong><button class="dp-edit-email" data-player-id="${this._escape(player.id)}"><ha-icon icon="mdi:email-edit-outline"></ha-icon>${player.email ? "Edit email" : "Add email"}</button></div></header><div class="dp-picks">${Array.from({ length: Number(game.pickCount || 2) }, (_, slot) => `<label><span>Pick ${slot + 1}</span><select class="dp-pick" data-player-id="${this._escape(player.id)}" data-slot="${slot}" ${round.settled ? "disabled" : ""}>${pickOptions(picks[slot])}</select>${results[slot] ? `<span class="dp-pick-result ${results[slot].outcome.toLowerCase()}">${this._escape(`${results[slot].outcome} · ${results[slot].score} vs ${results[slot].opponent} · ${results[slot].points} pts · ${results[slot].kickoff ? new Date(results[slot].kickoff * 1000).toLocaleString() : "Date unavailable"}`)}</span>` : picks[slot] ? `<span class="dp-pick-result waiting">Waiting for result</span>` : ""}</label>`).join("")}</div><div class="dp-player-email-actions"><span>Send only to ${this._escape(player.name)}</span><button class="dp-email-player" data-player-id="${this._escape(player.id)}" data-email-kind="reminder" ${player.email ? "" : "disabled"}>Pick reminder</button><button class="dp-email-player" data-player-id="${this._escape(player.id)}" data-email-kind="confirmation" ${player.email ? "" : "disabled"}>Team picks</button><button class="dp-email-player" data-player-id="${this._escape(player.id)}" data-email-kind="results" ${player.email ? "" : "disabled"}>Results</button></div></article>`; }).join("");
-    const history = Object.values(game.rounds || {}).sort((a, b) => b.number - a.number).map((item) => { const paid = game.players.find((player) => player.id === item.payerId)?.name || "Not recorded"; return `<article class="page-card dp-history-card"><header><strong>Round ${item.number}</strong><span>${this._escape(item.startDate)} to ${this._escape(item.endDate)}</span><b>Paid by ${this._escape(paid)}</b></header>${game.players.map((player) => { const picks = item.picks?.[player.id] || []; const results = item.results?.[player.id] || {}; const earned = Object.values(results).reduce((total, result) => total + Number(result.points || 0), 0); return `<div><strong>${this._escape(player.name)}</strong><span>${picks.map((value, index) => { const team = String(value || "").split("|||").slice(1).join("|||") || "No pick"; const result = results[index]; return `${team}${result ? ` (${result.outcome}, ${result.points} pts)` : ""}`; }).join(" · ")}</span><b>${earned} pts</b></div>`; }).join("")}</article>`; }).join("");
+    const history = Object.values(game.rounds || {}).sort((a, b) => b.number - a.number).map((item) => { const payerOptions = game.players.map((player) => `<option value="${this._escape(player.id)}" ${player.id === item.payerId ? "selected" : ""}>${this._escape(player.name)}</option>`).join(""); return `<article class="page-card dp-history-card"><header><strong>Round ${item.number}</strong><label>Start <input class="dp-history-date" type="date" data-round="${Number(item.number)}" data-field="startDate" value="${this._escape(item.startDate)}"></label><label>End <input class="dp-history-date" type="date" data-round="${Number(item.number)}" data-field="endDate" value="${this._escape(item.endDate)}"></label><label>Paid by <select class="dp-history-payer" data-round="${Number(item.number)}"><option value="">Not recorded</option>${payerOptions}</select></label></header>${game.players.map((player) => { const picks = item.picks?.[player.id] || []; const results = item.results?.[player.id] || {}; const earned = picks.reduce((total, pick, slot) => total + (pick ? Number(results?.[slot]?.points ?? results?.[slot] ?? 0) : 0), 0); return `<div><strong>${this._escape(player.name)}</strong><span>${picks.map((value, index) => { const team = String(value || "").split("|||").slice(1).join("|||") || "No pick"; const result = results[index]; const points = Number(result?.points ?? result ?? 0); return `<label>${this._escape(team)} <select class="dp-history-points" data-round="${Number(item.number)}" data-player-id="${this._escape(player.id)}" data-slot="${index}"><option value="0" ${points === 0 ? "selected" : ""}>0 pts</option><option value="1" ${points === 1 ? "selected" : ""}>1 pt</option><option value="3" ${points === 3 ? "selected" : ""}>3 pts</option></select></label>`; }).join(" · ")}</span><b>${earned} pts</b></div>`; }).join("")}</article>`; }).join("");
     return `<section class="page-heading"><div><span class="eyebrow">TWO PICKS · 3/1/0 SCORING</span><h1>${this._escape(game.name)}</h1><p>Round ${game.round} · ${this._escape(round.startDate)} to ${this._escape(round.endDate)}</p></div><div class="count-badge">${game.players.length} players</div></section><section class="dp-summary-grid"><article class="page-card"><span>Paying this round</span><strong>${this._escape(payer?.name || "Choose payer")}</strong><small>Last paid: ${this._escape(lastPaid)}</small></article><article class="page-card"><span>Round fixtures</span><strong>${fixtures.length}</strong><small>${optionGroups.filter((group) => group.loaded).length}/${game.competitions.length} competitions loaded</small></article><article class="page-card"><span>Scoring</span><strong>3 · 1 · 0</strong><small>Win · Draw · Loss</small></article></section><nav class="lms-page-tabs"><button class="${this._doublePickView === "picks" ? "active" : ""}" data-dp-view="picks">Picks</button><button class="${this._doublePickView === "fixtures" ? "active" : ""}" data-dp-view="fixtures">Fixtures</button><button class="${this._doublePickView === "table" ? "active" : ""}" data-dp-view="table">Table</button><button class="${this._doublePickView === "history" ? "active" : ""}" data-dp-view="history">History</button></nav><section class="page-card dp-round-controls"><label>Round start<input id="dp-round-start" type="date" value="${this._escape(round.startDate)}"></label><label>Round end<input id="dp-round-end" type="date" value="${this._escape(round.endDate)}"></label><label>Who paid?<select id="dp-payer">${game.players.map((player) => `<option value="${this._escape(player.id)}" ${player.id === round.payerId ? "selected" : ""}>${this._escape(player.name)}</option>`).join("")}</select></label><button id="dp-check-results">Check results</button><button id="dp-next-round" ${round.settled ? "" : "disabled"}>Start next round</button></section><section class="page-card dp-load-data"><header><div><span class="eyebrow">SELECTED COMPETITIONS</span><h2>Load fixtures and teams</h2></div><button id="dp-delete" class="danger">Delete game</button></header><div>${optionGroups.map((group) => `<button class="dp-load-competition ${this._doublePickActiveCompetition === group.key ? "active" : ""}" data-competition="${this._escape(group.key)}"><span>${this._escape(group.country)} · ${this._escape(group.name)}</span><b>${group.loaded ? `${group.fixtureCount} round fixtures` : "Load data"}</b></button>`).join("")}</div></section>${this._doublePickView === "picks" ? `<section class="dp-player-grid">${playerRows}</section><section class="page-card dp-add-player"><input id="dp-new-player" placeholder="Add another player"><button id="dp-add-player">Add player</button></section>` : this._doublePickView === "fixtures" ? `<section class="page-card"><h2>Round ${game.round} fixtures</h2><div class="match-list">${fixtures.length ? fixtures.map((fixture) => this._matchCard(fixture, ["FT","AET","PEN"].includes(String(fixture.status_short || "").toUpperCase()) ? "result" : undefined)).join("") : `<div class="empty">Load the selected competitions or adjust the round dates.</div>`}</div></section>` : this._doublePickView === "table" ? `<section class="page-card lms-standings"><div class="lms-standings-table"><div class="lms-standings-row heading"><span>#</span><span>Player</span><span>Points</span><span>Current picks</span><span>Paid rounds</span><span>Status</span></div>${table.map((player, index) => `<div class="lms-standings-row"><span>${index + 1}</span><strong>${this._escape(player.name)}</strong><b>${Number(player.points || 0)}</b><span>${(round.picks?.[player.id] || []).map((value) => String(value).split("|||").slice(1).join("|||")).filter(Boolean).join(" · ") || "Not picked"}</span><span>${Object.values(game.rounds || {}).filter((item) => item.payerId === player.id).length}</span><span>${Object.keys(round.results?.[player.id] || {}).length}/2 results</span></div>`).join("")}</div></section>` : `<section class="dp-history">${history}</section>`}`;
+  }
+
+  _clearInvalidCurrentLmsSurvivors() {
+    const competition = this._lmsCompetition;
+    if (!competition || competition.mode === "global") return false;
+    const roundKey = String(competition.round || 1);
+    const finishedStatuses = new Set(["FT", "AET", "PEN"]);
+    const fixtures = this._lmsRoundFixtureGroups().flatMap((group) => group.roundFixtures || []);
+    if (!fixtures.length) return false;
+    let changed = false;
+    for (const player of competition.players || []) {
+      if (player.results?.[roundKey] !== "survived") continue;
+      const pick = player.picks?.[roundKey];
+      const validResult = fixtures.find((fixture) => {
+        if (fixture.home_team !== pick && fixture.away_team !== pick) return false;
+        const status = String(fixture.status_short || fixture.status || "").toUpperCase();
+        return finishedStatuses.has(status)
+          && fixture.home_goals !== null && fixture.home_goals !== undefined
+          && fixture.away_goals !== null && fixture.away_goals !== undefined;
+      });
+      if (validResult) continue;
+      delete player.results[roundKey];
+      changed = true;
+    }
+    if (changed) this._saveLms();
+    return changed;
   }
 
   _lastManStandingPage() {
@@ -1857,6 +2222,7 @@ class FootballHubPanel extends HTMLElement {
       .sort((a, b) => String(a.country).localeCompare(String(b.country)) || String(a.name).localeCompare(String(b.name)));
     const leagueCountries = [...new Set(leagueCatalogue.map((item) => item.country).filter(Boolean))];
     this._captureLmsLeagueData();
+    this._clearInvalidCurrentLmsSurvivors();
     const teamGroups = this._lmsTeamGroups();
     const teams = [...new Set(teamGroups.flatMap((league) => league.teams || []))];
     const roundKey = String(competition?.round || 1);
@@ -1874,6 +2240,7 @@ class FootballHubPanel extends HTMLElement {
     const adminUnlocked = this._isLmsAdmin();
     const needsAdminPassword = Boolean(competition && !competition.adminPasswordHash);
     const roundFixtureGroups = this._lmsRoundFixtureGroups();
+    const roundStatusFixtures = roundFixtureGroups.flatMap((group) => group.roundFixtures || []);
     const roundFixtureCount = roundFixtureGroups.reduce((total, league) => total + league.roundFixtures.length, 0);
     const emailServices = this._lmsEmailServices();
     const selectedEmailService = String(competition?.emailNotifyService || "__auto__");
@@ -1908,10 +2275,10 @@ class FootballHubPanel extends HTMLElement {
         <section class="page-card lms-deadline ${deadline.locked ? "locked" : ""}"><ha-icon icon="${deadline.locked ? "mdi:lock" : "mdi:timer-alert-outline"}"></ha-icon><div><span class="eyebrow">ROUND ${competition.round} PICK DEADLINE</span><strong>${this._escape(deadlineLocal)} local time</strong><small>All players must choose before the first match kicks off.</small></div><b id="lms-countdown">${deadline.timestamp ? this._formatLmsCountdown(deadline.remaining) : "Waiting for fixture times"}</b></section>
         <section class="page-card lms-rules"><strong>Rules</strong><span>Win = survive</span><span>Draw or loss = eliminated</span><span>No team can be used twice</span><span>All picks remain private until the round deadline</span><span>Players may change a submitted pick once</span><span>Further changes require administrator approval</span><span>Round 1 elimination = one buy-back at the same entry fee</span><span>A buy-back does not restore the losing team</span><span>Buy-back closes at the Round 2 deadline</span><span>Unfinished/postponed picks remain pending</span></section>
         <nav class="lms-page-tabs"><button class="${this._lmsPageView === "picks" ? "active" : ""}" data-lms-view="picks"><ha-icon icon="mdi:account-check-outline"></ha-icon> Players & picks</button><button class="${this._lmsPageView === "fixtures" ? "active" : ""}" data-lms-view="fixtures"><ha-icon icon="mdi:calendar-month-outline"></ha-icon> Round ${competition.round} fixtures <b>${roundFixtureCount}</b></button><button class="${this._lmsPageView === "standings" ? "active" : ""}" data-lms-view="standings"><ha-icon icon="mdi:format-list-numbered"></ha-icon> Standings</button></nav>
-        ${this._lmsPageView === "fixtures" ? `<section class="lms-round-fixtures">${roundFixtureGroups.map((league) => `<article class="page-card lms-round-league"><header><div><span class="eyebrow">${this._escape(league.country || "")}</span><h3>${this._escape(league.name)}</h3></div><b>${league.roundFixtures.length} matches</b></header>${league.roundFixtures.length ? `<div class="lms-round-match-list">${league.roundFixtures.map((fixture) => { const kickoff = this._lmsFixtureTimestamp(fixture); const localKickoff = kickoff ? new Date(kickoff * 1000).toLocaleString([], { weekday: "short", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" }) : "Time TBC"; const status = String(fixture.status_short || fixture.status || "NS").toUpperCase(); const hasScore = fixture.home_goals !== null && fixture.home_goals !== undefined && fixture.away_goals !== null && fixture.away_goals !== undefined && !["NS", "TBD", "PST"].includes(status); const score = hasScore ? `${fixture.home_goals} - ${fixture.away_goals}` : "vs"; const matchState = ["FT", "AET", "PEN"].includes(status) ? `Full time · ${status}` : hasScore ? `${status}${fixture.elapsed ? ` · ${fixture.elapsed}'` : ""}` : localKickoff; return `<div class="lms-round-match ${hasScore ? "has-score" : ""}"><span class="home">${this._escape(fixture.home_team)}${this._logo(fixture.home_logo, fixture.home_team, "30")}</span><strong>${this._escape(score)}</strong><span class="away">${this._logo(fixture.away_logo, fixture.away_team, "30")}${this._escape(fixture.away_team)}</span><time>${this._escape(matchState)}</time></div>`; }).join("")}</div>` : `<div class="empty">Load this league to collect its next round of fixtures.</div>`}</article>`).join("") || `<div class="page-card empty">No round fixtures are available yet.</div>`}</section>` : this._lmsPageView === "standings" ? `<section class="page-card lms-standings"><header><div><span class="eyebrow">COMPETITION STATUS</span><h2>Players through and out</h2></div><b>${alive} still standing</b></header><div class="lms-standings-table"><div class="lms-standings-row heading"><span>#</span><span>Player</span><span>Status</span><span>Current pick</span><span>Teams used</span><span>Entry</span></div>${[...competition.players].sort((a, b) => Number(b.alive) - Number(a.alive) || a.name.localeCompare(b.name)).map((player, index) => { const currentPick = player.picks?.[roundKey] || "Not selected"; const usedTeams = Object.entries(player.picks || {}).sort(([a], [b]) => Number(a) - Number(b)).map(([round, team]) => `R${round}: ${team}`).join(" · ") || "None"; const playerResult = player.results?.[roundKey] || ""; const throughText = !player.alive ? (playerResult === "eliminated-no-pick" ? "Out · No pick" : "Out") : playerResult === "bought-back" ? "Bought back · Through" : playerResult === "survived" ? "Through" : currentPick !== "Not selected" ? (deadline.locked ? "Waiting for result" : "Pick made") : "Awaiting pick"; return `<div class="lms-standings-row ${player.alive ? "through" : "eliminated"}"><span>${index + 1}</span><strong>${this._escape(player.name)}</strong><span><b>${this._escape(throughText)}</b></span><span>${this._escape(currentPick)}</span><span>${this._escape(usedTeams)}</span><span>${player.paid ? (player.buyBacks ? "Paid + buy-back" : "Paid") : "Due"}</span></div>`; }).join("") || `<div class="empty">No players added yet.</div>`}</div></section>` : `
+        ${this._lmsPageView === "fixtures" ? `<section class="lms-round-fixtures">${roundFixtureGroups.map((league) => `<article class="page-card lms-round-league"><header><div><span class="eyebrow">${this._escape(league.country || "")}</span><h3>${this._escape(league.name)}</h3></div><b>${league.roundFixtures.length} matches</b></header>${league.roundFixtures.length ? `<div class="lms-round-match-list">${league.roundFixtures.map((fixture) => { const kickoff = this._lmsFixtureTimestamp(fixture); const localKickoff = kickoff ? new Date(kickoff * 1000).toLocaleString([], { weekday: "short", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" }) : "Time TBC"; const status = String(fixture.status_short || fixture.status || "NS").toUpperCase(); const hasScore = fixture.home_goals !== null && fixture.home_goals !== undefined && fixture.away_goals !== null && fixture.away_goals !== undefined && !["NS", "TBD", "PST"].includes(status); const score = hasScore ? `${fixture.home_goals} - ${fixture.away_goals}` : "vs"; const matchState = ["FT", "AET", "PEN"].includes(status) ? `Full time · ${status}` : hasScore ? `${status}${fixture.elapsed ? ` · ${fixture.elapsed}'` : ""}` : localKickoff; return `<div class="lms-round-match ${hasScore ? "has-score" : ""}"><span class="home">${this._escape(fixture.home_team)}${this._logo(fixture.home_logo, fixture.home_team, "30")}</span><strong>${this._escape(score)}</strong><span class="away">${this._logo(fixture.away_logo, fixture.away_team, "30")}${this._escape(fixture.away_team)}</span><time>${this._escape(matchState)}</time></div>`; }).join("")}</div>` : `<div class="empty">Load this league to collect its next round of fixtures.</div>`}</article>`).join("") || `<div class="page-card empty">No round fixtures are available yet.</div>`}</section>` : this._lmsPageView === "standings" ? `<section class="page-card lms-standings"><header><div><span class="eyebrow">COMPETITION STATUS</span><h2>Players through and out</h2></div><b>${alive} still standing</b></header><div class="lms-standings-table"><div class="lms-standings-row heading"><span>#</span><span>Player</span><span>Status</span><span>Current pick</span><span>Teams used</span><span>Entry</span></div>${[...competition.players].sort((a, b) => Number(b.alive) - Number(a.alive) || a.name.localeCompare(b.name)).map((player, index) => { const currentPick = player.picks?.[roundKey] || "Not selected"; const usedTeams = Object.entries(player.picks || {}).sort(([a], [b]) => Number(a) - Number(b)).map(([round, team]) => `R${round}: ${team}`).join(" · ") || "None"; const playerResult = player.results?.[roundKey] || ""; const throughText = !player.alive ? (playerResult === "eliminated-no-pick" ? "Out · No pick" : "Out") : playerResult === "bought-back" ? "Bought back · Through" : playerResult === "survived" ? "Through" : currentPick !== "Not selected" ? "Not played" : "Awaiting pick"; return `<div class="lms-standings-row ${player.alive ? "through" : "eliminated"}"><span>${index + 1}</span><strong>${this._escape(player.name)}</strong><span><b>${this._escape(throughText)}</b></span><span>${this._escape(currentPick)}</span><span>${this._escape(usedTeams)}</span><span>${player.paid ? (player.buyBacks ? "Paid + buy-back" : "Paid") : "Due"}</span></div>`; }).join("") || `<div class="empty">No players added yet.</div>`}</div></section>` : `
         <section class="page-card lms-league-switch"><label><span>Choose teams from</span><select id="lms-active-league">${(competition.leagues || []).map((league) => `<option value="${this._escape(league.key)}" ${league.key === selectedLmsLeague ? "selected" : ""}>${this._escape(league.country)} · ${this._escape(league.name)}</option>`).join("")}</select></label>${loadedLmsLeague ? `<strong>${this._escape(teams.length)} teams loaded</strong>` : `<strong class="lms-loading">Loading selected league teams…</strong>`}</section>
-        ${adminUnlocked ? `<section class="page-card lms-add-player"><input id="lms-player-name" maxlength="50" placeholder="Player name"><input id="lms-player-email" type="email" maxlength="120" placeholder="Email (for pick link)"><button id="lms-add-player">Add player</button><button id="lms-settle">Check round results</button></section>` : ""}
-        <section class="lms-player-list">${competition.players.length ? [...competition.players].sort((a, b) => Number(a.paid) - Number(b.paid) || String(a.name).localeCompare(String(b.name))).map((player, playerIndex, sortedPlayers) => {
+        ${adminUnlocked ? `<section class="page-card lms-add-player"><input id="lms-player-name" maxlength="50" placeholder="Player name"><input id="lms-player-email" type="email" maxlength="120" placeholder="Email (for pick link)"><button id="lms-add-player">Add player</button><button id="lms-settle" type="button">Check round results</button><button id="lms-end-round" type="button">Start next round (failsafe)</button>${Number(competition.round || 1) > 1 ? `<button id="lms-undo-end-round" type="button">Undo last manual round</button>` : ""}</section>` : ""}
+        <section class="lms-player-list">${competition.players.length ? [...competition.players].sort((a, b) => Number(b.alive) - Number(a.alive) || String(a.name).localeCompare(String(b.name))).map((player, playerIndex, sortedPlayers) => {
           const used = new Set(Object.entries(player.picks || {}).filter(([round]) => round !== roundKey).map(([, team]) => team));
           const pick = player.picks?.[roundKey] || "";
           const result = player.results?.[roundKey] || "";
@@ -1929,8 +2296,9 @@ class FootballHubPanel extends HTMLElement {
           const canBuyBack = this._canLmsBuyBack(player);
           const email = String(player.email || "");
           const maskedEmail = email ? email.replace(/^(.{1,2}).*(@.*)$/, "$1*****$2") : "No email added";
-          const startsPaymentGroup = playerIndex === 0 || Boolean(sortedPlayers[playerIndex - 1]?.paid) !== Boolean(player.paid);
-          const paymentHeading = startsPaymentGroup ? `<div class="lms-payment-group-title ${player.paid ? "paid" : "unpaid"}"><ha-icon icon="${player.paid ? "mdi:cash-check" : "mdi:cash-clock"}"></ha-icon><div><strong>${player.paid ? "Paid players" : "Payment due"}</strong><span>${sortedPlayers.filter((item) => Boolean(item.paid) === Boolean(player.paid)).length} player${sortedPlayers.filter((item) => Boolean(item.paid) === Boolean(player.paid)).length === 1 ? "" : "s"}</span></div></div>` : "";
+          const startsPaymentGroup = playerIndex === 0 || Boolean(sortedPlayers[playerIndex - 1]?.alive) !== Boolean(player.alive);
+          const statusGroupCount = sortedPlayers.filter((item) => Boolean(item.alive) === Boolean(player.alive)).length;
+          const paymentHeading = startsPaymentGroup ? `<div class="lms-payment-group-title ${player.alive ? "paid" : "eliminated"}"><ha-icon icon="${player.alive ? "mdi:shield-check-outline" : "mdi:account-off-outline"}"></ha-icon><div><strong>${player.alive ? "Still in" : "Eliminated players"}</strong><span>${statusGroupCount} player${statusGroupCount === 1 ? "" : "s"}</span></div></div>` : "";
           return `${paymentHeading}<article class="page-card lms-player ${player.alive ? "alive" : "out"} ${statusClass}"><div class="lms-player-name"><ha-icon icon="${player.alive ? "mdi:shield-check-outline" : "mdi:close-octagon-outline"}"></ha-icon><div><strong>${this._escape(player.name)}</strong><span>Round ${competition.round}</span></div><span class="lms-payment-status ${player.paid ? "paid" : "unpaid"}">${player.paid ? `£ Paid${player.buyBacks ? " + buy-back" : ""}` : "Payment due"}</span>${adminUnlocked ? `<button class="lms-toggle-paid" data-player-id="${this._escape(player.id)}">${player.paid ? "Mark unpaid" : "Mark paid"}</button>` : ""}${adminUnlocked && player.pickUrl ? `<button class="lms-copy-player-link" data-player-id="${this._escape(player.id)}"><ha-icon icon="mdi:email-fast-outline"></ha-icon> Copy pick link</button>` : ""}${adminUnlocked && canBuyBack ? `<button class="lms-buy-back" data-player-id="${this._escape(player.id)}"><ha-icon icon="mdi:account-reactivate-outline"></ha-icon> Buy back £${entryFee.toFixed(2)}</button>` : ""}<span class="lms-pick-status ${statusClass}"><ha-icon icon="${statusIcon}"></ha-icon>${statusText}</span></div>${player.alive ? `<label><span>Round ${competition.round} pick</span><select class="lms-pick" data-player-id="${this._escape(player.id)}" ${pickLocked ? "disabled" : ""}><option value="">${deadline.locked ? "Picks locked" : !adminUnlocked ? "Administrator locked" : "Choose a team"}</option>${groupedOptions}</select></label>` : ""}${canPickEarly ? `<label class="lms-early-pick"><span><ha-icon icon="mdi:fast-forward-outline"></ha-icon> Through — choose Round ${Number(competition.round) + 1} early</span><select class="lms-next-pick" data-player-id="${this._escape(player.id)}" ${!adminUnlocked ? "disabled" : ""}><option value="">${!adminUnlocked ? "Administrator locked" : "Choose next-round team"}</option>${earlyOptions}</select></label>` : ""}<div class="lms-history">${Object.entries(player.picks || {}).map(([round, team]) => `<span>R${this._escape(round)} · ${this._escape(team)} · ${this._escape(player.results?.[round] || (round === nextRoundKey ? "early pick" : "pending"))}</span>`).join("") || `<span>No picks yet</span>`}</div><div class="lms-player-email"><ha-icon icon="mdi:email-lock-outline"></ha-icon><span>${this._escape(adminUnlocked ? (email || "No email added") : maskedEmail)}</span>${adminUnlocked ? `<div class="lms-player-admin-actions"><button class="lms-edit-player-email" data-player-id="${this._escape(player.id)}"><ha-icon icon="mdi:email-edit-outline"></ha-icon>${email ? "Edit email" : "Add email"}</button><button class="lms-remove-player" data-player-id="${this._escape(player.id)}"><ha-icon icon="mdi:account-remove-outline"></ha-icon>Remove player</button></div>` : `<small>Hidden until administrator unlocks</small>`}</div></article>`;
         }).join("") : `<div class="page-card empty">Add the players taking part in this competition.</div>`}</section>`}
       `}
@@ -1956,7 +2324,8 @@ class FootballHubPanel extends HTMLElement {
     const fixtureBoard = `<section class="page-card acca-fixture-board"><header class="acca-section-head"><ha-icon icon="mdi:calendar-month-outline"></ha-icon><div><span class="eyebrow">FIXTURES AVAILABLE TO PICK</span><h2>${this._escape(this._doublePickRound()?.startDate || "")} to ${this._escape(this._doublePickRound()?.endDate || "")}</h2><p>Only the teams shown below appear in the player pick lists.</p></div><strong>${roundFixtures.length} matches</strong></header>${fixtureGroups.length ? `<div class="acca-fixture-groups">${fixtureGroups.map(({ competition, fixtures }) => `<section><div class="acca-fixture-group-title"><strong>${this._escape(competition.country)} · ${this._escape(competition.name)}</strong><span>${fixtures.length} match${fixtures.length === 1 ? "" : "es"}</span></div>${fixtures.map((fixture) => { const status = String(fixture.status_short || fixture.status || "").toUpperCase(); const finished = ["FT","AET","PEN","AWD","WO"].includes(status); const kickoff = this._lmsFixtureTimestamp(fixture); return `<article class="acca-fixture-row ${finished ? "finished" : "upcoming"}"><time>${kickoff ? new Date(kickoff * 1000).toLocaleString([], { weekday:"short", day:"numeric", month:"short", hour:"2-digit", minute:"2-digit" }) : "Time TBC"}</time><span class="home">${this._escape(fixture.home_team || "Home TBC")}</span><b>${finished ? `${fixture.home_goals ?? 0} - ${fixture.away_goals ?? 0}` : "v"}</b><span>${this._escape(fixture.away_team || "Away TBC")}</span><em>${finished ? "Finished" : status || "Scheduled"}</em></article>`; }).join("")}</section>`).join("")}</div>` : `<div class="empty"><strong>No fixtures loaded for these dates.</strong><span>Use Load fixtures and teams below for each selected competition.</span></div>`}</section>`;
     const competitionEditor = `<details class="page-card acca-league-editor"><summary><span><span class="eyebrow">ROUND ${game.round} LEAGUES & CUPS</span><strong>${selectedKeys.size} selected</strong><small>Add or remove competitions for this round only. Finished-round history is unchanged.</small></span><ha-icon icon="mdi:chevron-down"></ha-icon></summary><div class="dp-competition-groups">${countries.map((country) => `<fieldset><legend>${this._escape(country)}</legend>${catalogue.filter((item) => item.country === country).map((item) => `<label><input type="checkbox" class="dp-game-competition-check" value="${this._escape(item.key)}" ${selectedKeys.has(item.key) ? "checked" : ""}><span><b>${this._escape(item.name)}</b><small>${item.type === "cup" ? "Cup" : "League"}</small></span></label>`).join("")}</fieldset>`).join("")}</div><button id="dp-save-competitions"><ha-icon icon="mdi:content-save-check-outline"></ha-icon>Save Round ${game.round} competitions</button></details>`;
     const sharePanel = `<section class="page-card lms-share acca-share"><ha-icon icon="mdi:share-variant-outline"></ha-icon><div><span class="eyebrow">EXTERNAL ACCA LEAGUE</span><strong>${game.shareUrl ? "Public results page is live" : "Create a link for players"}</strong><small>Share picks, fixture dates, results and the points table. Player emails remain private in Home Assistant.</small>${game.shareUrl ? `<a href="${this._escape(game.shareUrl)}" target="_blank" rel="noopener noreferrer">${this._escape(game.shareUrl)}</a>` : ""}</div>${game.shareUrl ? `<button id="dp-copy-share"><ha-icon icon="mdi:content-copy"></ha-icon>Copy link</button><button id="dp-sync-share"><ha-icon icon="mdi:sync"></ha-icon>Update now</button>` : `<button id="dp-create-share"><ha-icon icon="mdi:link-plus"></ha-icon>Create external link</button>`}</section>`;
-    html = html.replace("</section><section class=\"dp-summary-grid\">", `</section>${sharePanel}${competitionEditor}<section class="dp-summary-grid">`);
+    const pointsCorrection = `<details class="page-card"><summary><strong>Correct carried totals</strong></summary><p>Use this only to repair totals from completed rounds. Future rounds add automatically.</p>${game.players.map((player) => `<label>${this._escape(player.name)} <input class="dp-carry-points" data-player-id="${this._escape(player.id)}" type="number" min="0" step="1" value="${Number(player.points || 0)}"></label>`).join("")}<button id="dp-save-carried-points">Save totals through Round ${Math.max(0, Number(game.round || 1) - 1)}</button></details>`;
+    html = html.replace("</section><section class=\"dp-summary-grid\">", `</section>${sharePanel}${competitionEditor}${pointsCorrection}<section class="dp-summary-grid">`);
     html = html.replace("TWO PICKS · 3/1/0 SCORING", `${game.pickCount || 2} PICKS · 3/1/0 SCORING`).replaceAll("/2 results", `/${game.pickCount || 2} results`);
     html = html.replace("<button id=\"dp-check-results\">", `<label>Stake £<input id="dp-stake" type="number" min="0" step="0.01" value="${Number(this._doublePickRound()?.stake || 0)}"></label><label>Return £<input id="dp-return" type="number" min="0" step="0.01" value="${Number(this._doublePickRound()?.returnAmount || 0)}"></label><button id="dp-email-reminders">Email pick reminder</button><button id="dp-email-confirmation">Email confirmed picks</button><button id="dp-email-results">Email results</button><button id="dp-check-results">`);
     html = html.replace("<input id=\"dp-new-player\" placeholder=\"Add another player\">", `<input id="dp-new-player" placeholder="Player name"><input id="dp-new-email" type="email" placeholder="Player email">`);
@@ -3651,6 +4020,84 @@ class FootballHubPanel extends HTMLElement {
       </div>
     `;
 
+    // Standings are rendered from saved LMS state, but an in-progress fixture
+    // must override the waiting label immediately.
+    if (this._activeTab === "last-man-standing" && this._lmsCompetition) {
+      const liveStatuses = new Set(["1H", "HT", "2H", "ET", "BT", "P", "LIVE", "INT"]);
+      const fixtures = this._lmsRoundFixtureGroups().flatMap((group) => group.roundFixtures || []);
+      this.shadowRoot.querySelectorAll(".lms-standings-row:not(.heading)").forEach((row) => {
+        const pick = row.children?.[3]?.textContent?.trim();
+        const fixture = fixtures.find((item) => item.home_team === pick || item.away_team === pick);
+        const status = String(fixture?.status_short || fixture?.status || "").toUpperCase();
+        const statusLabel = row.children?.[2]?.querySelector("b");
+        if (statusLabel?.textContent?.trim() === "Not played" && liveStatuses.has(status)) statusLabel.textContent = "Live";
+      });
+    }
+
+    // Let an unlocked administrator correct a missed pick after the deadline.
+    // Assigning a team restores that player as pending and syncs the change.
+    if (this._activeTab === "last-man-standing" && this._isLmsAdmin() && this._lmsCompetition) {
+      const competition = this._lmsCompetition;
+      const roundKey = String(competition.round || 1);
+      const groups = this._lmsTeamGroups();
+      this.shadowRoot.querySelectorAll(".lms-player.out .lms-toggle-paid[data-player-id]").forEach((button) => {
+        const player = competition.players?.find((item) => String(item.id) === String(button.dataset.playerId));
+        if (!player || player.results?.[roundKey] !== "eliminated-no-pick") return;
+        const used = new Set(Object.entries(player.picks || {}).filter(([savedRound]) => savedRound !== roundKey).map(([, team]) => team));
+        const options = groups.map((group) => `<optgroup label="${this._escape(group.name)}">${(group.teams || []).map((team) => `<option value="${this._escape(team)}" ${used.has(team) ? "disabled" : ""}>${this._escape(team)}${used.has(team) ? " · used" : ""}</option>`).join("")}</optgroup>`).join("");
+        const label = document.createElement("label");
+        label.className = "lms-admin-recovery-pick";
+        label.innerHTML = `<span>Admin: assign missed Round ${this._escape(roundKey)} pick</span><select class="lms-pick lms-admin-recovery-select" data-player-id="${this._escape(player.id)}"><option value="">Choose a team</option>${options}</select>`;
+        label.querySelector("select")?.addEventListener("change", (event) => {
+          const selectedTeam = event.currentTarget.value;
+          if (selectedTeam) this._setLmsPick(player.id, selectedTeam);
+        });
+        button.closest(".lms-player")?.querySelector(".lms-history")?.before(label);
+      });
+    }
+
+    if (this._activeTab === "double-pick-league") {
+      const nextRoundButton = this.shadowRoot.querySelector("#dp-next-round");
+      if (nextRoundButton && !this._doublePickRound()?.settled) {
+        nextRoundButton.disabled = false;
+        nextRoundButton.textContent = "Start next round (manual)";
+      }
+    }
+
+    // Wire the critical LMS controls first so unrelated page setup cannot leave
+    // these visible buttons without click handlers.
+    const lmsSettleButton = this.shadowRoot.querySelector("#lms-settle");
+    lmsSettleButton?.addEventListener("click", async () => {
+      lmsSettleButton.disabled = true;
+      lmsSettleButton.textContent = "Checking results…";
+      try {
+        const sharedResultsChanged = await this._pullLmsSharePicks(true);
+        if (sharedResultsChanged) {
+          const remaining = this._lmsCompetition?.players?.filter((player) => player.alive).length || 0;
+          console.info(`Football Hub LMS shared state loaded; revalidating ${remaining} remaining players locally.`);
+        }
+        await this._settleLmsRound();
+      } catch (error) {
+        console.error("Football Hub LMS result check failed", error);
+        window.alert(error?.message || "Round results could not be checked. Please try again.");
+      } finally {
+        if (lmsSettleButton.isConnected) {
+          lmsSettleButton.disabled = false;
+          lmsSettleButton.textContent = "Check round results";
+        }
+      }
+    });
+    this.shadowRoot.querySelector("#lms-end-round")?.addEventListener("click", () => this._endLmsRoundNow());
+    this.shadowRoot.querySelector("#lms-undo-end-round")?.addEventListener("click", () => this._undoLmsManualEnd());
+
+    const accaResultsButton = this.shadowRoot.querySelector("#dp-check-results");
+    accaResultsButton?.addEventListener("click", () => {
+      if (this._doublePickFinalizing || this._doublePickSettleAfterLoad) return;
+      accaResultsButton.disabled = true;
+      accaResultsButton.textContent = "Loading all results…";
+      this._loadDoublePickEnglishResults();
+    });
+
     this._translateRenderedPage();
 
     for (const [id, draft] of Object.entries(this._formDraft)) {
@@ -3824,6 +4271,47 @@ class FootballHubPanel extends HTMLElement {
     this.shadowRoot.querySelector("#dp-load-all")?.addEventListener("click", () => this._loadAllDoublePickCompetitions());
     this.shadowRoot.querySelector("#dp-save-competitions")?.addEventListener("click", () => this._updateDoublePickCompetitions([...this.shadowRoot.querySelectorAll(".dp-game-competition-check:checked")].map((input) => input.value)));
     this.shadowRoot.querySelectorAll(".dp-pick").forEach((select) => select.addEventListener("change", () => this._setDoublePick(select.dataset.playerId, select.dataset.slot, select.value)));
+    this.shadowRoot.querySelectorAll(".dp-history-payer").forEach((select) => select.addEventListener("change", () => {
+      const savedRound = this._doublePickGame?.rounds?.[String(select.dataset.round)];
+      if (!savedRound) return;
+      savedRound.payerId = select.value;
+      this._saveDoublePickGame();
+      this._render();
+    }));
+    this.shadowRoot.querySelectorAll(".dp-history-date").forEach((input) => input.addEventListener("change", () => {
+      const savedRound = this._doublePickGame?.rounds?.[String(input.dataset.round)];
+      if (!savedRound || !["startDate", "endDate"].includes(input.dataset.field) || !input.value) return;
+      savedRound[input.dataset.field] = input.value;
+      this._saveDoublePickGame();
+      this._render();
+    }));
+    this.shadowRoot.querySelectorAll(".dp-history-points").forEach((select) => select.addEventListener("change", () => {
+      const savedRound = this._doublePickGame?.rounds?.[String(select.dataset.round)];
+      const playerId = select.dataset.playerId;
+      const slot = Number(select.dataset.slot);
+      if (!savedRound || !playerId || !Number.isInteger(slot)) return;
+      savedRound.results = savedRound.results || {};
+      savedRound.results[playerId] = savedRound.results[playerId] || {};
+      const existing = savedRound.results[playerId][slot];
+      savedRound.results[playerId][slot] = typeof existing === "object" && existing !== null
+        ? { ...existing, points: Number(select.value), manualPoints: true }
+        : { points: Number(select.value), outcome: "Manual", manualPoints: true };
+      this._recalculateDoublePickTotals();
+      this._saveDoublePickGame();
+      this._render();
+    }));
+    this.shadowRoot.querySelector("#dp-save-carried-points")?.addEventListener("click", () => {
+      const throughRound = Math.max(0, Number(this._doublePickGame?.round || 1) - 1);
+      this.shadowRoot.querySelectorAll(".dp-carry-points").forEach((input) => {
+        const player = this._doublePickGame?.players?.find((item) => item.id === input.dataset.playerId);
+        if (!player) return;
+        player.pointsCarry = Math.max(0, Number(input.value) || 0);
+        player.pointsCarryThroughRound = throughRound;
+        player.points = player.pointsCarry;
+      });
+      this._saveDoublePickGame();
+      this._render();
+    });
     this.shadowRoot.querySelectorAll(".dp-edit-email").forEach((button) => button.addEventListener("click", () => {
       const player = this._doublePickGame?.players?.find((item) => item.id === button.dataset.playerId);
       if (!player) return;
@@ -3839,8 +4327,16 @@ class FootballHubPanel extends HTMLElement {
     this.shadowRoot.querySelector("#dp-email-service")?.addEventListener("change", (event) => { this._doublePickGame.emailNotifyService = event.target.value; this._doublePickGame.emailServiceInherited = true; this._saveDoublePickGame(); });
     [["#dp-round-start", "startDate"], ["#dp-round-end", "endDate"], ["#dp-payer", "payerId"]].forEach(([selector, field]) => this.shadowRoot.querySelector(selector)?.addEventListener("change", (event) => { const round = this._doublePickRound(); round[field] = event.target.value; this._saveDoublePickGame(); this._render(); }));
     [["#dp-stake", "stake"], ["#dp-return", "returnAmount"]].forEach(([selector, field]) => this.shadowRoot.querySelector(selector)?.addEventListener("change", (event) => { this._doublePickRound()[field] = Math.max(0, Number(event.target.value) || 0); this._saveDoublePickGame(); this._render(); }));
-    this.shadowRoot.querySelector("#dp-check-results")?.addEventListener("click", () => this._settleDoublePickRound());
-    this.shadowRoot.querySelector("#dp-next-round")?.addEventListener("click", () => this._nextDoublePickRound());
+    this.shadowRoot.querySelector("#dp-next-round")?.addEventListener("click", () => {
+      const round = this._doublePickRound();
+      if (!round) return;
+      if (!round.settled) {
+        if (!window.confirm("Results are still pending. Start the next Acca League round manually anyway?")) return;
+        round.settled = true;
+        round.manualOverride = true;
+      }
+      this._nextDoublePickRound();
+    });
     this.shadowRoot.querySelector("#dp-add-player")?.addEventListener("click", () => { const name = String(this.shadowRoot.querySelector("#dp-new-player")?.value || "").trim(); if (!name) return; this._doublePickGame.players.push({ id: `dp-${Date.now()}`, name, email: String(this.shadowRoot.querySelector("#dp-new-email")?.value || "").trim(), points: 0 }); this._saveDoublePickGame(); this._render(); });
     this.shadowRoot.querySelector("#dp-delete")?.addEventListener("click", () => { if (!confirm("Delete this Acca League game from Home Assistant?")) return; this._doublePickGame = null; this._saveDoublePickGame(); this._render(); });
     this.shadowRoot.querySelector("#dp-create-share")?.addEventListener("click", () => this._createDoublePickShare());
@@ -3989,7 +4485,6 @@ class FootballHubPanel extends HTMLElement {
       localStorage.setItem("football_hub_lms_active_league", this._lmsActiveLeague);
       this._setLeague(this._lmsActiveLeague);
     });
-    this.shadowRoot.querySelector("#lms-settle")?.addEventListener("click", () => this._settleLmsRound());
     this.shadowRoot.querySelector("#lms-delete")?.addEventListener("click", () => {
       if (!this._isLmsAdmin()) return;
       if (!window.confirm("Delete this Last Man Standing competition?")) return;
@@ -3997,7 +4492,7 @@ class FootballHubPanel extends HTMLElement {
       this._saveLms();
       this._render();
     });
-    this.shadowRoot.querySelectorAll(".lms-pick").forEach((select) => {
+    this.shadowRoot.querySelectorAll(".lms-pick:not(.lms-admin-recovery-select)").forEach((select) => {
       select.addEventListener("change", () => this._setLmsPick(select.dataset.playerId, select.value));
     });
     this.shadowRoot.querySelectorAll(".lms-next-pick").forEach((select) => {
@@ -4141,6 +4636,7 @@ class FootballHubPanel extends HTMLElement {
       .lms-payment-group-title > div { display:flex; align-items:baseline; justify-content:space-between; gap:12px; width:100%; }
       .lms-payment-group-title.unpaid { color:#ffc85c; border-color:rgba(255,196,72,.45); background:rgba(255,164,35,.1); }
       .lms-payment-group-title.paid { color:#62ffa8; border-color:rgba(63,242,142,.45); background:rgba(31,203,108,.1); }
+      .lms-payment-group-title.eliminated { color:#ff858c; border-color:rgba(255,77,77,.45); background:rgba(255,55,65,.1); }
       .lms-player { display:grid; gap:14px; }
       .lms-player.out { opacity:.62; border-color:rgba(255,77,77,.35); }
       .lms-player-name { display:flex; align-items:center; gap:10px; flex-wrap:wrap; }
