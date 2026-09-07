@@ -380,7 +380,7 @@ class FootballHubCoordinator(DataUpdateCoordinator):
         await self.async_request_refresh()
 
     async def async_set_selected_live_match(self, fixture_id: str) -> None:
-        """Load detailed data for the live match selected in the panel."""
+        """Load detailed data for the match selected in the panel."""
         self.selected_live_fixture = str(fixture_id or "").strip()
         await self.async_request_refresh()
 
@@ -622,6 +622,14 @@ class FootballHubCoordinator(DataUpdateCoordinator):
             (fixture_id for fixture_id in live_fixture_ids if str(fixture_id) == self.selected_live_fixture),
             None,
         )
+        selected_raw_match: dict[str, Any] | None = None
+        if self.selected_live_fixture:
+            for source in (raw_live, self._cache.get("fixtures", []) or [], self._cache.get("cup_fixtures", []) or []):
+                candidate = next((item for item in source if isinstance(item, dict) and str(((item.get("fixture") or {}).get("id") or "")) == self.selected_live_fixture), None)
+                if candidate:
+                    selected_raw_match = candidate
+                    selected_fixture_id = ((candidate.get("fixture") or {}).get("id"))
+                    break
         favourite_names = {
             str(item.get("team") or "").casefold()
             for item in self.favourite_clubs if item.get("team")
@@ -637,14 +645,16 @@ class FootballHubCoordinator(DataUpdateCoordinator):
             if fixture_id and names & favourite_names:
                 favourite_fixture_ids.append(fixture_id)
         detail_fixture_ids = []
+        if selected_fixture_id:
+            detail_fixture_ids.append(selected_fixture_id)
         if live_fixture_ids:
             detail_fixture_ids.append(selected_fixture_id or supported_fixture_id or live_fixture_ids[0])
             detail_fixture_ids.extend(favourite_fixture_ids)
-            detail_fixture_ids = list(dict.fromkeys(detail_fixture_ids))
+        detail_fixture_ids = list(dict.fromkeys(detail_fixture_ids))
 
         # World Cup-style per-fixture live caches. This allows the frontend to
         # select any live match while the remaining games stay score-only.
-        if live_fixture_ids and monotonic() >= self._live_rate_limited_until:
+        if detail_fixture_ids and monotonic() >= self._live_rate_limited_until:
             detail_requests: list[tuple[str, int, str, Awaitable[Any]]] = []
             for fixture_id in detail_fixture_ids:
                 event_key = f"live_events:{fixture_id}"
@@ -773,6 +783,7 @@ class FootballHubCoordinator(DataUpdateCoordinator):
             "live_statistics": live_details.get(str(primary_fixture_id), {}).get("statistics", []),
             "live_lineups": live_details.get(str(primary_fixture_id), {}).get("lineups", []),
             "live_details": live_details,
+            "selected_match": selected_raw_match or {},
             "my_club": self.my_club,
             "my_club_team_id": team_id,
             "favourite_clubs": self.favourite_clubs,

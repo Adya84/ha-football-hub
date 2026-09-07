@@ -381,16 +381,25 @@ class FootballHubLiveSensor(FootballHubBaseSensor):
 
 
 class FootballHubLiveMatchSensor(FootballHubBaseSensor):
-    """Expose the primary live match as a dedicated entity."""
+    """Expose detailed data for the match selected in the panel."""
 
     _unrecorded_attributes = frozenset({"events", "statistics", "lineups"})
 
     def __init__(self, coordinator, entry):
         super().__init__(coordinator, entry, "live_match", "Live Match")
 
+    def _selected_match(self):
+        data = self.coordinator.data or {}
+        selected = data.get("selected_match") or {}
+        if not isinstance(selected, dict) or not selected:
+            return self.engine.live.primary() or {}
+        fixture_id = str(((selected.get("fixture") or {}).get("id") or ""))
+        details = (data.get("live_details") or {}).get(fixture_id, {}) or {}
+        return {**clean_fixture(selected), **details}
+
     @property
     def native_value(self):
-        match = self.engine.live.primary()
+        match = self._selected_match()
         if not match:
             return "No live match"
 
@@ -402,15 +411,16 @@ class FootballHubLiveMatchSensor(FootballHubBaseSensor):
 
     @property
     def extra_state_attributes(self):
-        match = self.engine.live.primary()
+        match = self._selected_match()
         if not match:
             return {"is_live": False}
 
-        events = self.engine.live.events()
-        statistics = self.engine.live.statistics()
-        lineups = self.engine.live.lineups()
+        events = match.get("events") or self.engine.live.events()
+        statistics = match.get("statistics") or self.engine.live.statistics()
+        lineups = match.get("lineups") or self.engine.live.lineups()
+        live_statuses = {"1H", "HT", "2H", "ET", "BT", "P", "SUSP", "INT", "LIVE"}
         return {
-            "is_live": True,
+            "is_live": str(match.get("status_short") or "").upper() in live_statuses,
             **match,
             "scoreline": (
                 f"{match.get('home_team')} {match.get('home_goals')}-"

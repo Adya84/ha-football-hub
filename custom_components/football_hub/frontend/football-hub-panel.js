@@ -1,4 +1,4 @@
-const PANEL_VERSION = "0.7.3";
+const PANEL_VERSION = "0.7.4";
 const LMS_SHARE_SERVICE = "https://football-hub-lms.zesty-flame-5295.chatgpt.site";
 const FULL_COMPETITION_CATALOGUE = {
   England: ["Premier League", "Championship", "League One", "League Two", "National League", "FA Cup", "EFL Cup", "Community Shield"],
@@ -58,6 +58,7 @@ class FootballHubPanel extends HTMLElement {
     this._selectedFixtureTeam = localStorage.getItem("football_hub_fixture_team") || "__all__";
     this._fixturePage = 0;
     this._selectedLiveMatch = "";
+    this._selectedMatchDetailsId = "";
     this._selectedLiveTeam = localStorage.getItem("football_hub_live_team") || "";
     try {
       this._hiddenLiveCompetitions = new Set(JSON.parse(localStorage.getItem("football_hub_hidden_live_competitions") || "[]"));
@@ -81,8 +82,9 @@ class FootballHubPanel extends HTMLElement {
     this._liveFiltersOpen = localStorage.getItem("football_hub_live_filters_open") !== "false";
     try { this._favouriteLiveCompetitions = new Set(JSON.parse(localStorage.getItem("football_hub_favourite_live_competitions") || "[]")); }
     catch (_error) { this._favouriteLiveCompetitions = new Set(); }
-    try { this._liveNotifications = { kickoff: false, goals: false, halftime: false, fulltime: false, selectedClubOnly: false, ...JSON.parse(localStorage.getItem("football_hub_live_notifications") || "{}") }; }
-    catch (_error) { this._liveNotifications = { kickoff: false, goals: false, halftime: false, fulltime: false, selectedClubOnly: false }; }
+    try { this._liveNotifications = { kickoff: false, goals: false, yellowCards: false, redCards: false, halftime: false, fulltime: false, sounds: false, selectedClubOnly: false, ...JSON.parse(localStorage.getItem("football_hub_live_notifications") || "{}") }; }
+    catch (_error) { this._liveNotifications = { kickoff: false, goals: false, yellowCards: false, redCards: false, halftime: false, fulltime: false, sounds: false, selectedClubOnly: false }; }
+    this._alertAudioContext = null;
     try { this._mutedLiveAlerts = new Set(JSON.parse(localStorage.getItem("football_hub_muted_live_alerts") || "[]")); }
     catch (_error) { this._mutedLiveAlerts = new Set(); }
     this._prefsHydrated = false;
@@ -2444,44 +2446,79 @@ class FootballHubPanel extends HTMLElement {
   _processLiveNotifications() {
     const enabled = this._liveNotifications || {};
     const matches = this._attrs("matches_today").matches || [];
+    const liveById = new Map((this._attrs("live_matches").matches || []).map((match) => [String(match.fixture_id || match.id || ""), match]));
     let previous = {};
     try { previous = JSON.parse(localStorage.getItem("football_hub_notification_match_states") || "{}"); } catch (_error) {}
     const next = {};
     matches.forEach((match) => {
       const id = String(match.fixture_id || `${match.home_team}-${match.away_team}`);
-      const state = { status: match.status_short, home: match.home_goals, away: match.away_goals };
+      const detail = liveById.get(id) || match;
+      const cards = (detail.events || []).filter((event) => /card/i.test(String(event.type || ""))).map((event) => `${event.time?.elapsed || event.elapsed || ""}|${event.team?.name || ""}|${event.player?.name || ""}|${event.detail || ""}`).sort();
+      const state = { status: match.status_short, home: match.home_goals, away: match.away_goals, cards };
       next[id] = state;
       const old = previous[id];
       if (!old) return;
       if (this._mutedLiveAlerts.has(id)) return;
       if (enabled.selectedClubOnly && this._selectedClub && ![match.home_team, match.away_team].includes(this._selectedClub)) return;
-      let title = "", body = `${match.home_team} ${this._score(match.home_goals)}–${this._score(match.away_goals)} ${match.away_team}`;
-      if (enabled.goals && (old.home !== state.home || old.away !== state.away)) title = "Goal update";
-      else if (enabled.halftime && old.status !== "HT" && state.status === "HT") title = "Half-time";
-      else if (enabled.fulltime && !["FT", "AET", "PEN"].includes(old.status) && ["FT", "AET", "PEN"].includes(state.status)) title = "Full-time";
-      else if (enabled.kickoff && ["NS", "TBD"].includes(old.status) && !["NS", "TBD"].includes(state.status)) title = "Kickoff";
-      if (title) this._showLiveAlert(title, body);
+      let title = "", tone = "", body = `${match.home_team} ${this._score(match.home_goals)}–${this._score(match.away_goals)} ${match.away_team}`;
+      const newCards = cards.filter((card) => !(old.cards || []).includes(card));
+      const newRed = newCards.find((card) => /red/i.test(card));
+      const newYellow = newCards.find((card) => /yellow/i.test(card));
+      if (enabled.goals && (old.home !== state.home || old.away !== state.away)) { title = "Goal update"; tone = "goal"; }
+      else if (enabled.redCards && newRed) { title = "Red card"; tone = "red-card"; }
+      else if (enabled.yellowCards && newYellow) { title = "Yellow card"; tone = "yellow-card"; }
+      else if (enabled.halftime && old.status !== "HT" && state.status === "HT") { title = "Half-time"; tone = "half-time"; }
+      else if (enabled.fulltime && !["FT", "AET", "PEN"].includes(old.status) && ["FT", "AET", "PEN"].includes(state.status)) { title = "Full-time"; tone = "full-time"; }
+      else if (enabled.kickoff && ["NS", "TBD"].includes(old.status) && !["NS", "TBD"].includes(state.status)) { title = "Kickoff"; tone = "kickoff"; }
+      if (title) this._showLiveAlert(title, body, tone);
     });
     localStorage.setItem("football_hub_notification_match_states", JSON.stringify(next));
   }
 
-  _showLiveAlert(title, body) {
+  _showLiveAlert(title, body, tone = "") {
     // Always show an alert inside Football Hub. Native browser notifications
     // are an optional extra because Chrome blocks them on ordinary HTTP pages.
-    this._pendingLiveAlerts.push({ title, body });
+    this._pendingLiveAlerts.push({ title, body, tone });
     queueMicrotask(() => this._flushLiveAlerts());
+    this._playAlertSound(tone);
     if ("Notification" in window && Notification.permission === "granted") {
       try { new Notification(title, { body }); } catch (_error) {}
     }
+  }
+
+  _enableAlertSounds() {
+    const AudioContext = window.AudioContext || window.webkitAudioContext;
+    if (!AudioContext) return false;
+    this._alertAudioContext ||= new AudioContext();
+    this._alertAudioContext.resume?.().catch(() => {});
+    return true;
+  }
+
+  _playAlertSound(tone) {
+    if (!this._liveNotifications?.sounds || !["kickoff", "goal", "red-card", "full-time"].includes(tone)) return;
+    const context = this._alertAudioContext;
+    if (!context || context.state !== "running") return;
+    const now = context.currentTime;
+    const note = (frequency, start, duration, type = "sine", volume = .08) => {
+      const oscillator = context.createOscillator(); const gain = context.createGain();
+      oscillator.type = type; oscillator.frequency.setValueAtTime(frequency, start);
+      gain.gain.setValueAtTime(.0001, start); gain.gain.exponentialRampToValueAtTime(volume, start + .02); gain.gain.exponentialRampToValueAtTime(.0001, start + duration);
+      oscillator.connect(gain).connect(context.destination); oscillator.start(start); oscillator.stop(start + duration + .03);
+    };
+    if (tone === "kickoff") { note(2080, now, .16, "sine", .07); note(2080, now + .22, .16, "sine", .07); return; }
+    if (tone === "full-time") { [0, .23, .46].forEach((offset) => note(2160, now + offset, .16, "sine", .075)); return; }
+    if (tone === "red-card") { [150, 142, 134].forEach((frequency, index) => note(frequency, now + index * .16, .28, "sawtooth", .065)); return; }
+    [392, 494, 587, 784].forEach((frequency, index) => note(frequency, now + index * .09, .55, "sawtooth", .045));
+    [220, 277, 330].forEach((frequency) => note(frequency, now + .12, .7, "triangle", .035));
   }
 
   _flushLiveAlerts() {
     const host = this.shadowRoot?.querySelector("#football-hub-live-alerts");
     if (!host) return;
     while (this._pendingLiveAlerts.length) {
-      const { title, body } = this._pendingLiveAlerts.shift();
+      const { title, body, tone } = this._pendingLiveAlerts.shift();
       const alert = document.createElement("article");
-      alert.className = "football-hub-live-alert";
+      alert.className = `football-hub-live-alert ${tone ? `alert-${tone}` : ""}`;
       const heading = document.createElement("strong");
       const message = document.createElement("span");
       const close = document.createElement("button");
@@ -2864,6 +2901,14 @@ class FootballHubPanel extends HTMLElement {
     }).format(date);
   }
 
+  _formatTransferDate(value) {
+    if (!value) return "Date to be confirmed";
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return String(value);
+    const locales = { en: "en-GB", es: "es-ES", de: "de-DE", fr: "fr-FR", it: "it-IT", nl: "nl-NL", pt: "pt-PT", tr: "tr-TR" };
+    return new Intl.DateTimeFormat(locales[this._language] || "en-GB", { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit", ...(this._liveTimezone !== "local" ? { timeZone: this._liveTimezone } : {}) }).format(date);
+  }
+
   _displayCountry(country) {
     const name = String(country || "");
     if (this._language === "en") return name;
@@ -2924,6 +2969,8 @@ class FootballHubPanel extends HTMLElement {
       : `<div class="match-time">${this._formatDate(match.kickoff)}</div>`;
     const venueText = match.stadium || (!isResult ? "Venue TBC" : "");
     const matchAlertId = String(match.fixture_id || match.id || `${match.home_team}-${match.away_team}`);
+    const hasDetails = Boolean(match.fixture_id || match.id);
+    const allowSharedDetails = !["last-man-standing", "double-pick-league"].includes(this._activeTab);
     const matchAlertControl = this._activeTab === "live" ? `<label class="match-alert-toggle" title="Turn alerts on or off for this match"><input type="checkbox" data-live-match-alert="${this._escape(matchAlertId)}" ${this._mutedLiveAlerts.has(matchAlertId) ? "" : "checked"}><ha-icon icon="${this._mutedLiveAlerts.has(matchAlertId) ? "mdi:bell-off-outline" : "mdi:bell-ring-outline"}"></ha-icon><span>${this._mutedLiveAlerts.has(matchAlertId) ? "Alerts off" : "Alerts on"}</span></label>` : "";
 
     return `
@@ -2949,8 +2996,19 @@ class FootballHubPanel extends HTMLElement {
           <span>${this._escape(venueText)}</span>
           <span>${this._escape(match.city || "")}</span>
         </div>` : ""}
+        ${allowSharedDetails && hasDetails ? `<div class="match-actions"><button type="button" class="match-details-button" data-match-details="${this._escape(matchAlertId)}"><ha-icon icon="mdi:chart-box-outline"></ha-icon> Match details</button></div>` : ""}
       </article>
     `;
+  }
+
+  _selectedMatchDetailsCard() {
+    if (!this._selectedMatchDetailsId) return "";
+    const selected = this._attrs("live_match");
+    const isLoaded = String(selected.fixture_id || selected.id || "") === this._selectedMatchDetailsId;
+    if (!isLoaded) return `<section class="live-centre-card shared-match-details" id="football-hub-match-details"><button type="button" id="match-details-close" class="live-close-match"><ha-icon icon="mdi:arrow-left"></ha-icon> Back to matches</button><div class="empty">Loading match details…</div></section>`;
+    const competition = this._matchText(selected.league || selected.competition) || "Football";
+    const status = this._matchText(selected.status) || this._matchText(selected.status_short) || "Match details";
+    return `<section class="live-centre-card shared-match-details" id="football-hub-match-details"><button type="button" id="match-details-close" class="live-close-match"><ha-icon icon="mdi:arrow-left"></ha-icon> Back to matches</button><div class="live-banner">${this._escape(competition)} · ${this._escape(status)}</div><div class="live-matchup"><div class="live-team">${this._logo(selected.home_logo, selected.home_team, "76")}<h2>${this._escape(selected.home_team || "Home")}</h2></div><div class="score-board"><strong>${this._score(selected.home_goals)} – ${this._score(selected.away_goals)}</strong><span>${this._escape(this._formatDate(selected.kickoff))}</span></div><div class="live-team">${this._logo(selected.away_logo, selected.away_team, "76")}<h2>${this._escape(selected.away_team || "Away")}</h2></div></div><div class="live-details"><span><ha-icon icon="mdi:stadium"></ha-icon>${this._escape(selected.stadium || "Venue to be confirmed")}</span>${selected.city ? `<span><ha-icon icon="mdi:map-marker-outline"></ha-icon>${this._escape(selected.city)}</span>` : ""}${selected.referee ? `<span><ha-icon icon="mdi:whistle"></ha-icon>${this._escape(selected.referee)}</span>` : ""}</div><div class="live-detail-grid"><article class="page-card"><h2>Match timeline</h2>${this._eventRows(selected.events || [])}</article><article class="page-card"><h2>Statistics</h2>${this._statRows(selected.statistics || [], selected)}</article><article class="page-card lineup-panel"><h2>Starting line-ups</h2>${this._lineupCards(selected.lineups || [])}</article></div></section>`;
   }
 
   _hero() {
@@ -3396,7 +3454,7 @@ class FootballHubPanel extends HTMLElement {
     const selectedCompetitionCount = [...competitionCountries.entries()].reduce((total, [competition, countries]) => total + [...countries].filter((country) => !this._hiddenLiveCountries.has(country) && !this._hiddenLiveCompetitions.has(`${country}|||${competition}`) && !this._hiddenLiveCompetitions.has(competition)).length, 0);
     const liveFilters = `${toolbar}<details id="live-filter-panel" class="page-card live-competition-filter live-filter-panel" ${this._liveFiltersOpen ? "open" : ""}><summary><div><span class="eyebrow">MATCH FILTERS</span><h2>Countries and competitions</h2></div><span class="live-filter-summary-count">${selectedCompetitionCount} selected <ha-icon icon="mdi:chevron-down"></ha-icon></span></summary><div class="live-filter-panel-body"><p>Expand a country to choose its leagues and cups. Favourites are pinned first and settings synchronise through Home Assistant.</p><div class="live-filter-groups"><details open><summary>Men's and women's football ${filterActions("gender")}</summary><div class="live-filter-options">${filterChecks(["Men's", "Women's"], "gender", this._hiddenLiveGenders)}</div></details>${countryCompetitionFilters}</div></div></details>`;
     const statusInfo = this._statusInfo();
-    const notifyChecks = [["kickoff", "Kickoff"], ["goals", "Goals"], ["halftime", "Half-time"], ["fulltime", "Full-time"], ["selectedClubOnly", "Selected club only"]].map(([key, label]) => `<label><input type="checkbox" data-live-notification="${key}" ${this._liveNotifications[key] ? "checked" : ""}><span>${label}</span></label>`).join("");
+    const notifyChecks = [["kickoff", "Kickoff"], ["goals", "Goals"], ["yellowCards", "Yellow cards"], ["redCards", "Red cards"], ["halftime", "Half-time"], ["fulltime", "Full-time"], ["sounds", "Alert sounds"], ["selectedClubOnly", "Selected club only"]].map(([key, label]) => `<label><input type="checkbox" data-live-notification="${key}" ${this._liveNotifications[key] ? "checked" : ""}><span>${label}</span></label>`).join("");
     const liveExtras = `<section class="live-utility-grid compact"><article class="page-card live-alerts-compact"><header><div><span class="eyebrow">MATCH ALERTS</span><strong>Goal and match notifications</strong></div><div class="live-alert-actions"><button id="football-hub-alert-all" type="button">Select all</button><button id="football-hub-alert-none" type="button">Deselect all</button><button id="football-hub-test-alert" type="button">Test alert</button></div></header><small class="live-alert-status">${this._escape(this._browserAlertStatus())}</small><div class="live-alert-options">${notifyChecks}</div></article><article class="page-card live-diagnostics compact"><header><span class="eyebrow">DATA STATUS</span><strong>${this._escape(statusInfo.state)}</strong></header><div><span>Matches</span><strong>${allTodayMatches.length}</strong></div><div><span>Live</span><strong>${allLiveMatches.length}</strong></div><div><span>Competitions</span><strong>${competitionNames.length}</strong></div><div><span>Updated</span><strong>${this._escape(statusInfo.last_updated ? this._formatDate(statusInfo.last_updated) : "Waiting")}</strong></div></article></section>`;
     const grouped = new Map();
     todayMatches.forEach((match) => { const key = `${countryName(match)}|||${competitionName(match)}`; if (!grouped.has(key)) grouped.set(key, []); grouped.get(key).push(match); });
@@ -3986,7 +4044,7 @@ class FootballHubPanel extends HTMLElement {
         ${items.length ? items.map((item) => `
           <article class="page-card market-transfer">
             ${item.player?.photo ? `<img src="${this._escape(item.player.photo)}" alt="" loading="lazy" onerror="this.style.display='none'">` : `<span class="player-fallback">${this._escape((item.player?.name || "?").slice(0, 2).toUpperCase())}</span>`}
-            <div class="market-player"><strong>${this._escape(item.player?.name || "Unknown player")}</strong><span>${this._escape(item.date || item.type || "")}</span></div>
+            <div class="market-player"><strong>${this._escape(item.player?.name || "Unknown player")}</strong><span>${this._escape(item.date ? this._formatTransferDate(item.date) : (item.type || ""))}</span></div>
             <div class="market-route"><span>${this._escape(item.from?.name || "Free agent")}</span><ha-icon icon="mdi:arrow-right"></ha-icon><strong>${this._escape(item.to?.name || "Free agent")}</strong></div>
             <strong class="market-fee">${this._escape(item.fee_display || item.type || "Undisclosed")}</strong>
           </article>`).join("") : `<article class="page-card empty">Transfer data is loading.</article>`}
@@ -4075,7 +4133,7 @@ class FootballHubPanel extends HTMLElement {
       <div class="app-shell view-${this._viewMode}">
         ${this._hero()}
         ${this._nav()}
-        <main>${this._content()}</main>
+        <main>${this._content()}${this._selectedMatchDetailsCard()}</main>
         <footer>Football Hub · Built for Home Assistant</footer>
       </div>
       <aside id="football-hub-live-alerts" class="football-hub-live-alerts" aria-live="polite"></aside>
@@ -4220,6 +4278,15 @@ class FootballHubPanel extends HTMLElement {
       localStorage.removeItem("football_hub_live_match");
       this._render();
     });
+    this.shadowRoot.querySelectorAll("[data-match-details]").forEach((button) => {
+      button.addEventListener("click", async () => {
+        this._selectedMatchDetailsId = button.dataset.matchDetails || "";
+        this._render();
+        requestAnimationFrame(() => this.shadowRoot.querySelector("#football-hub-match-details")?.scrollIntoView({ behavior: "smooth", block: "start" }));
+        await this._hass?.callService("football_hub", "select_live_match", { fixture_id: this._selectedMatchDetailsId }).catch(() => {});
+      });
+    });
+    this.shadowRoot.querySelector("#match-details-close")?.addEventListener("click", () => { this._selectedMatchDetailsId = ""; this._render(); });
 
     this.shadowRoot.querySelector("#my-club-select")?.addEventListener("change", (event) => {
       this._setMyClub(event.target.value);
@@ -4323,7 +4390,7 @@ class FootballHubPanel extends HTMLElement {
     this.shadowRoot.querySelector("#live-display-mode")?.addEventListener("change", (event) => { this._liveDisplayMode = event.target.value; localStorage.setItem("football_hub_live_display_mode", this._liveDisplayMode); this._saveSharedPreferences(); this._render(); });
     this.shadowRoot.querySelector("#live-timezone")?.addEventListener("change", (event) => { this._liveTimezone = event.target.value; localStorage.setItem("football_hub_live_timezone", this._liveTimezone); this._saveSharedPreferences(); this._render(); });
     this.shadowRoot.querySelector("#football-hub-refresh")?.addEventListener("click", async (event) => { event.currentTarget.disabled = true; await this._hass?.callService("football_hub", "refresh", { entry_id: this._statusInfo().config_entry_id || "" }).catch(() => {}); setTimeout(() => this._render(), 800); });
-    this.shadowRoot.querySelector("#football-hub-test-alert")?.addEventListener("click", () => this._showLiveAlert("Football Hub test", "Match alerts are working on this device."));
+    this.shadowRoot.querySelector("#football-hub-test-alert")?.addEventListener("click", () => this._showLiveAlert("Football Hub test", "Match alerts are working on this device.", "kickoff"));
     this.shadowRoot.querySelector("#football-hub-alert-all")?.addEventListener("click", () => {
       this._mutedLiveAlerts.clear();
       localStorage.setItem("football_hub_muted_live_alerts", "[]");
@@ -4345,7 +4412,7 @@ class FootballHubPanel extends HTMLElement {
     }));
     this.shadowRoot.querySelectorAll("[data-live-favourite]").forEach((button) => button.addEventListener("click", (event) => { event.preventDefault(); event.stopPropagation(); const name = button.dataset.liveFavourite; if (this._favouriteLiveCompetitions.has(name)) this._favouriteLiveCompetitions.delete(name); else this._favouriteLiveCompetitions.add(name); localStorage.setItem("football_hub_favourite_live_competitions", JSON.stringify([...this._favouriteLiveCompetitions])); this._saveSharedPreferences(); this._render(); }));
     this.shadowRoot.querySelectorAll("[data-live-filter-action]").forEach((button) => button.addEventListener("click", (event) => { event.preventDefault(); const target = button.dataset.liveFilterTarget; const checked = button.dataset.liveFilterAction === "all"; this.shadowRoot.querySelectorAll(`[data-live-filter-kind="${target}"]`).forEach((input) => { input.checked = checked; const filters = target === "country" ? this._hiddenLiveCountries : target === "gender" ? this._hiddenLiveGenders : this._hiddenLiveCompetitions; if (checked) filters.delete(input.dataset.liveFilterValue); else filters.add(input.dataset.liveFilterValue); }); localStorage.setItem(target === "country" ? "football_hub_hidden_live_countries" : target === "gender" ? "football_hub_hidden_live_genders" : "football_hub_hidden_live_competitions", JSON.stringify([...(target === "country" ? this._hiddenLiveCountries : target === "gender" ? this._hiddenLiveGenders : this._hiddenLiveCompetitions)])); this._saveSharedPreferences(); this._render(); }));
-    this.shadowRoot.querySelectorAll("[data-live-notification]").forEach((input) => input.addEventListener("change", async () => { this._liveNotifications[input.dataset.liveNotification] = input.checked; if (input.checked && "Notification" in window && Notification.permission === "default") await Notification.requestPermission(); localStorage.setItem("football_hub_live_notifications", JSON.stringify(this._liveNotifications)); this._saveSharedPreferences(); }));
+    this.shadowRoot.querySelectorAll("[data-live-notification]").forEach((input) => input.addEventListener("change", async () => { this._liveNotifications[input.dataset.liveNotification] = input.checked; if (input.dataset.liveNotification === "sounds" && input.checked) this._enableAlertSounds(); if (input.checked && "Notification" in window && Notification.permission === "default") await Notification.requestPermission(); localStorage.setItem("football_hub_live_notifications", JSON.stringify(this._liveNotifications)); this._saveSharedPreferences(); }));
 
     this.shadowRoot.querySelectorAll("[data-transfer-view]").forEach((button) => {
       button.addEventListener("click", () => {
@@ -5577,6 +5644,10 @@ class FootballHubPanel extends HTMLElement {
         text-transform: uppercase;
       }
       .match-competition ha-icon { width: 17px; height: 17px; }
+      .match-actions { display:flex; justify-content:flex-end; margin-top:12px; }
+      .match-details-button { display:inline-flex; align-items:center; gap:6px; padding:7px 10px; border:1px solid rgba(0,210,255,.48); border-radius:10px; color:#bdefff; background:rgba(0,174,239,.09); cursor:pointer; font:inherit; font-size:.76rem; font-weight:800; }
+      .match-details-button:hover { background:rgba(0,174,239,.18); }
+      .match-details-button ha-icon { width:17px; height:17px; }
       .match-qualification { display:flex; align-items:center; justify-content:center; gap:7px; margin:10px 0; padding:8px 10px; border-radius:10px; color:#7dff9b; background:rgba(31,190,85,.13); font-size:.82rem; text-align:center; }
       .match-qualification ha-icon { width:18px; height:18px; }
       .live-competition-filter { display: grid; grid-template-columns: minmax(220px, .65fr) 1.35fr; gap: 24px; margin: 20px 0; }
@@ -5633,9 +5704,18 @@ class FootballHubPanel extends HTMLElement {
       .live-alert-actions button { padding:5px 8px; font-size:.7rem; }
       .football-hub-live-alerts { position:fixed; z-index:1000; top:18px; right:18px; width:min(390px,calc(100vw - 36px)); display:grid; gap:9px; pointer-events:none; }
       .football-hub-live-alert { position:relative; display:grid; gap:4px; padding:14px 42px 14px 16px; border:1px solid var(--primary-color); border-radius:13px; color:var(--primary-text-color); background:var(--card-background-color); box-shadow:0 12px 32px rgba(0,0,0,.45); pointer-events:auto; animation:football-hub-alert-in .2s ease-out; }
+      .football-hub-live-alert.alert-goal { border-color:#7dff9b; background:linear-gradient(135deg,rgba(20,130,67,.96),rgba(4,47,25,.98)); animation:football-hub-goal-flash .8s ease-out, football-hub-goal-glow 2.4s ease-in-out .8s infinite; }
+      .football-hub-live-alert.alert-yellow-card { border-color:#ffe45c; color:#1d1a00; background:linear-gradient(135deg,#ffe45c,#c89a06); }
+      .football-hub-live-alert.alert-yellow-card span, .football-hub-live-alert.alert-yellow-card button { color:rgba(29,26,0,.78); }
+      .football-hub-live-alert.alert-red-card { border-color:#ff6b6b; background:linear-gradient(135deg,rgba(180,35,35,.98),rgba(79,8,8,.98)); }
+      .football-hub-live-alert.alert-half-time { border-color:#c8a4ff; background:linear-gradient(135deg,rgba(98,54,160,.96),rgba(37,20,71,.98)); }
+      .football-hub-live-alert.alert-full-time { border-color:#52d7ff; background:linear-gradient(135deg,rgba(0,108,150,.98),rgba(3,37,65,.98)); }
+      .football-hub-live-alert.alert-kickoff { border-color:#75a9ff; background:linear-gradient(135deg,rgba(36,78,176,.98),rgba(9,29,86,.98)); }
       .football-hub-live-alert span { color:var(--secondary-text-color); }
       .football-hub-live-alert button { position:absolute; top:7px; right:8px; padding:2px 8px; border:0; background:transparent; color:var(--secondary-text-color); font-size:1.35rem; }
       @keyframes football-hub-alert-in { from { opacity:0; transform:translateY(-8px); } }
+      @keyframes football-hub-goal-flash { 0% { opacity:0; transform:scale(.94); background:#b7ffc8; box-shadow:0 0 0 0 rgba(125,255,155,1); } 45% { opacity:1; transform:scale(1.025); background:#63ff89; box-shadow:0 0 38px 16px rgba(82,255,120,.95); } 100% { transform:scale(1); background:linear-gradient(135deg,rgba(20,130,67,.96),rgba(4,47,25,.98)); box-shadow:0 0 20px 5px rgba(82,255,120,.56); } }
+      @keyframes football-hub-goal-glow { 0%,100% { box-shadow:0 0 16px 3px rgba(82,255,120,.38); } 50% { box-shadow:0 0 30px 9px rgba(82,255,120,.82); } }
       .live-diagnostics.compact { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:6px 12px; }
       .live-diagnostics.compact header { grid-column:1/-1; margin-bottom:0; }
       .live-diagnostics.compact > div { display:flex; flex-direction:column; gap:2px; padding:4px 0; border:0; font-size:.72rem; }

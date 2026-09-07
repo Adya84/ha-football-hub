@@ -1,7 +1,7 @@
 # ⚽ Home Assistant Football Hub
 
 [![License](https://img.shields.io/badge/license-Personal%20Use-red.svg)](LICENSE)
-![Version](https://img.shields.io/badge/version-v0.7.3-green)
+![Version](https://img.shields.io/badge/version-v0.7.4-green)
 ![Home Assistant](https://img.shields.io/badge/Home%20Assistant-2024.1%2B-blue)
 ![HACS](https://img.shields.io/badge/HACS-Custom-orange)
 ![Cloud Polling](https://img.shields.io/badge/IoT--Class-Cloud%20Polling-blue)
@@ -16,7 +16,17 @@ Football Hub remembers the country, competition, favourite clubs and last-opened
 
 ---
 
-## Latest release — 0.7.3
+## Latest release — 0.7.4
+
+- Added a **Match details** button throughout the main Football Hub: Fixtures, Results, My Club and Cups. It opens the score, timeline, statistics, line-ups and available venue information for that fixture.
+- Transfer dates now use a clear local date and time rather than raw API timestamps.
+- Live alerts are colour-coded: green goal alerts, yellow-card yellow, red-card red, half-time purple, full-time cyan and kick-off blue.
+- Goal alerts flash green before settling into a slow glow so they remain easy to read.
+- Added optional alert sounds: a whistle for kick-off, crowd cheer for goals, boo for red cards and three whistles at full-time. Tick **Alert sounds** once on Live to enable them in the browser.
+- Added individual yellow-card and red-card notification choices.
+- LMS and Acca League scoring and round logic are unchanged.
+
+## Previous release — 0.7.3
 
 - Added an Alerts on/off control to every match on the Live page.
 - Match alerts are enabled by default. Turning one off silences only that fixture and is remembered on that device.
