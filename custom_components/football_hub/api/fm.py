@@ -1164,7 +1164,7 @@ class FMProvider:
         cached = self._cache_get(key, ttl)
         if cached is not None:
             return cached
-        cache_variant = "squad-v3" if tab == "squad" else (tab or "overview")
+        cache_variant = "squad-v4" if tab == "squad" else (tab or "overview-v2")
         persistent_key = f"{team_id}:{cache_variant}"
         persisted = await self._persistent_get("teams", persistent_key, ttl)
         if isinstance(persisted, dict):
@@ -1462,23 +1462,30 @@ class FMProvider:
         output = []
         seen = set()
         title_aliases = {
-            "yellow": ("yellow",),
-            "red": ("red",),
-            "rating": ("rating",),
+            "goals": ("goals", "top scorer", "top scorers"),
+            "assists": ("assists", "goal_assist"),
+            "yellow": ("yellow", "yellow_card", "yellow cards"),
+            "red": ("red", "red_card", "red cards"),
+            "rating": ("rating", "fotmob rating"),
             "appearances": ("appearance", "matches played", "games played"),
-            "minutes": ("minutes",),
+            "minutes": ("minutes", "mins_played", "minutes played"),
         }
-        for node in self._walk(data):
+        stats = data.get("stats") or {}
+        nodes = stats.get("players") if isinstance(stats, dict) else None
+        # Restrict modern responses to player statistics, never team rankings.
+        for node in (nodes if isinstance(nodes, list) else self._walk(data)):
             if not isinstance(node, dict):
                 continue
-            title = self._norm(node.get("title") or node.get("name") or "")
+            title = self._norm(node.get("name") or node.get("title") or node.get("header") or "")
             aliases = title_aliases.get(wanted, (wanted,))
-            if not any(alias in title for alias in aliases):
+            if title not in {self._norm(alias) for alias in aliases}:
                 continue
-            players = node.get("players") or node.get("items") or []
+            players = node.get("players") or node.get("items") or node.get("topThree") or []
             if not isinstance(players, list):
                 continue
             for row in players:
+                if not isinstance(row, dict):
+                    continue
                 player = row.get("player") if isinstance(row.get("player"), dict) else row
                 player_id = player.get("id") or row.get("playerId")
                 name = player.get("name") or row.get("name")
@@ -1493,7 +1500,7 @@ class FMProvider:
                     if row.get("statValue") is not None
                     else row.get(wanted, 0)
                 )
-                team = row.get("team") or {}
+                team = row.get("team") or {"id": row.get("teamId"), "name": row.get("teamName")}
                 output.append({
                     "player": {
                         "id": player_id,
@@ -1644,8 +1651,16 @@ class FMProvider:
         }] if players else []
 
     async def get_coach(self, team_id):
-        """Return the latest manager from FM coach history."""
+        """Use the current squad coach; history supplies only matching statistics."""
         data = await self._team_data(team_id)
+        squad = data.get("squad") or {}
+        groups = squad.get("squad", []) if isinstance(squad, dict) else squad
+        current = next((member for group in groups if isinstance(group, dict)
+                        and str(group.get("title", "")).casefold() in {"coach", "manager"}
+                        for member in group.get("members", [])
+                        if isinstance(member, dict) and member.get("name")), None)
+        if current is None:
+            return []
         overview = data.get("overview") or {}
         history_root = data.get("history") or {}
         history = (
@@ -1663,8 +1678,8 @@ class FMProvider:
                 or []
             )
 
-        if not isinstance(history, list) or not history:
-            return []
+        if not isinstance(history, list):
+            history = []
 
         valid = [
             item
@@ -1672,14 +1687,12 @@ class FMProvider:
             if isinstance(item, dict)
             and (item.get("name") or item.get("coachName"))
         ]
-        if not valid:
-            return []
-
-        # FM orders coachHistory from oldest to newest.
-        coach = valid[-1]
-        coach_id = coach.get("id") or coach.get("coachId")
+        coach_id = current.get("id") or current.get("coachId")
 
         same_coach = [item for item in valid if str(item.get("id") or item.get("coachId")) == str(coach_id)]
+        season = (data.get("details") or {}).get("latestSeason")
+        season_record = next((item for item in reversed(same_coach) if item.get("season") == season), {})
+        coach = {**season_record, **current, "season": season}
         career = [{
             "team": {
                 "id": team_id,
@@ -1701,6 +1714,7 @@ class FMProvider:
             "age": coach.get("age"),
             "nationality": (
                 coach.get("country")
+                or coach.get("cname")
                 or coach.get("nationality")
                 or coach.get("countryName")
             ),
