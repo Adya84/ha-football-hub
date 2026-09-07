@@ -1,7 +1,7 @@
 # ⚽ Home Assistant Football Hub
 
 [![License](https://img.shields.io/badge/license-Personal%20Use-red.svg)](LICENSE)
-![Version](https://img.shields.io/badge/version-v0.7.2-green)
+![Version](https://img.shields.io/badge/version-v0.7.3-green)
 ![Home Assistant](https://img.shields.io/badge/Home%20Assistant-2024.1%2B-blue)
 ![HACS](https://img.shields.io/badge/HACS-Custom-orange)
 ![Cloud Polling](https://img.shields.io/badge/IoT--Class-Cloud%20Polling-blue)
@@ -16,7 +16,15 @@ Football Hub remembers the country, competition, favourite clubs and last-opened
 
 ---
 
-## Latest release — 0.7.2
+## Latest release — 0.7.3
+
+- Added an Alerts on/off control to every match on the Live page.
+- Match alerts are enabled by default. Turning one off silences only that fixture and is remembered on that device.
+- Added Select all and Deselect all controls for today's match alerts.
+- The existing alert-type and selected-club filters continue to apply.
+- Includes all fixes from 0.7.2.
+
+## Previous release — 0.7.2
 
 - Fixed Live competition grouping so identically named leagues are kept under their real country. For example, Egyptian, Russian and Canadian Premier League matches no longer appear under England.
 - Added reliable on-page alerts for kick-off, goals, half-time and full-time. These work when Home Assistant is opened over ordinary local HTTP, where Chrome blocks native browser notifications.
