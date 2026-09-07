@@ -22,6 +22,7 @@ Football Hub remembers the country, competition, favourite clubs and last-opened
 - Match alerts are enabled by default. Turning one off silences only that fixture and is remembered on that device.
 - Added Select all and Deselect all controls for today's match alerts.
 - The existing alert-type and selected-club filters continue to apply.
+- Fixed the Overview top-scorer card for the provider's flattened player format, matching the working Players page.
 - Includes all fixes from 0.7.2.
 
 ## Previous release — 0.7.2

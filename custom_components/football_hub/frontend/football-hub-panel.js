@@ -3097,7 +3097,10 @@ class FootballHubPanel extends HTMLElement {
     const results = this._attrs("results").latest_5 || [];
     const news = this._attrs("news").items || [];
     const topScorer = scorers[0] || {};
+    const topScorerPlayer = topScorer.player || topScorer;
     const topScorerStats = topScorer.statistics?.[0] || {};
+    const topScorerTeam = topScorerStats.team?.name || (typeof topScorer.team === "string" ? topScorer.team : topScorer.team?.name) || "";
+    const topScorerGoals = topScorerStats.goals?.total ?? topScorer.goals ?? 0;
     const form = results.slice(0, 5).map((match) => {
       const club = this._selectedClub;
       if (!club) return "D";
@@ -3166,7 +3169,7 @@ class FootballHubPanel extends HTMLElement {
 
         <article class="stat-card mock-scorer">
           <div class="card-heading"><span><ha-icon icon="mdi:soccer"></ha-icon> Top scorer</span></div>
-          <div class="top-scorer-compact">${this._logo(topScorer.player?.photo, topScorer.player?.name, "64")}<span><strong>${this._escape(topScorer.player?.name || "Not available")}</strong><small>${this._escape(topScorerStats.team?.name || "")}</small><b>${this._escape(topScorerStats.goals?.total ?? 0)} goals</b></span></div>
+          <div class="top-scorer-compact">${this._logo(topScorerPlayer.photo, topScorerPlayer.name, "64")}<span><strong>${this._escape(topScorerPlayer.name || "Not available")}</strong><small>${this._escape(topScorerTeam)}</small><b>${this._escape(topScorerGoals)} goals</b></span></div>
           <button class="text-button" data-tab="players">View all players</button>
         </article>
 
