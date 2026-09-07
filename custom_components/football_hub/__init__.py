@@ -14,10 +14,10 @@ from .const import DOMAIN
 PLATFORMS = ["sensor"]
 PANEL_URL = "football-hub"
 PANEL_NAME = "football-hub-panel"
-PANEL_VERSION = "0.6.25b3-lms-live-settlement"
+PANEL_VERSION = "0.6.29-beta.12-lms-player-sections"
 PANEL_STATIC_URL = "/football_hub/football-hub-panel.js"
 PANEL_ENTRY_URL = "/football_hub/football-hub-panel-entry.js"
-PANEL_MODULE_URL = f"{PANEL_ENTRY_URL}?v={PANEL_VERSION}"
+PANEL_MODULE_URL = f"{PANEL_STATIC_URL}?v={PANEL_VERSION}"
 PANEL_SCRIPT_PATH = Path(__file__).parent / "frontend" / "football-hub-panel.js"
 PANEL_ENTRY_PATH = Path(__file__).parent / "frontend" / "football-hub-panel-entry.js"
 PANEL_BACKGROUND_URL = "/football_hub/football-hub-background.png"
@@ -57,7 +57,7 @@ async def async_setup(hass: HomeAssistant, config: dict) -> bool:
 
     async def _coordinators(call: ServiceCall):
         entry_id = str(call.data.get("entry_id") or "").strip()
-        for runtime_entry_id, runtime in hass.data.get(DOMAIN, {}).items():
+        for runtime_entry_id, runtime in list(hass.data.get(DOMAIN, {}).items()):
             if entry_id and runtime_entry_id != entry_id:
                 continue
             if isinstance(runtime, dict) and runtime.get("coordinator") is not None:
