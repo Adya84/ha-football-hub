@@ -153,7 +153,7 @@ class FootballHubClubDataSensor(FootballHubBaseSensor):
     @property
     def extra_state_attributes(self):
         value = self._items()
-        safe_value = limit_items(value, 20) if isinstance(value, list) else value
+        safe_value = value if self.key == "club_players" else (limit_items(value, 20) if isinstance(value, list) else value)
         return {
             "club": self.coordinator.my_club,
             "team_id": (self.coordinator.data or {}).get("my_club_team_id"),

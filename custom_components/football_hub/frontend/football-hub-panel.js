@@ -1,4 +1,4 @@
-const PANEL_VERSION = "0.20.24-lms-result-check-beta3";
+const PANEL_VERSION = "0.7.1";
 const LMS_SHARE_SERVICE = "https://football-hub-lms.zesty-flame-5295.chatgpt.site";
 const FULL_COMPETITION_CATALOGUE = {
   England: ["Premier League", "Championship", "League One", "League Two", "National League", "FA Cup", "EFL Cup", "Community Shield"],
@@ -3744,8 +3744,8 @@ class FootballHubPanel extends HTMLElement {
       const stats = (item.statistics || []).find((entry) => entry.team?.name === club) || item.statistics?.[0] || {};
       return key === "assists" ? (stats.goals?.assists || 0) : (stats.goals?.total || 0);
     };
-    const clubScorers = [...clubPlayerStats].sort((a, b) => playerStatValue(b, "goals") - playerStatValue(a, "goals"));
-    const clubAssists = [...clubPlayerStats].sort((a, b) => playerStatValue(b, "assists") - playerStatValue(a, "assists"));
+    const clubScorers = clubPlayerStats.filter((item) => playerStatValue(item, "goals") > 0).sort((a, b) => playerStatValue(b, "goals") - playerStatValue(a, "goals"));
+    const clubAssists = clubPlayerStats.filter((item) => playerStatValue(item, "assists") > 0).sort((a, b) => playerStatValue(b, "assists") - playerStatValue(a, "assists"));
 
     return `
       <section class="page-heading">
