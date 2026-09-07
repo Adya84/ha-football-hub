@@ -1,7 +1,7 @@
 # ⚽ Home Assistant Football Hub
 
 [![License](https://img.shields.io/badge/license-Personal%20Use-red.svg)](LICENSE)
-![Version](https://img.shields.io/badge/version-v0.7.1-green)
+![Version](https://img.shields.io/badge/version-v0.7.2-green)
 ![Home Assistant](https://img.shields.io/badge/Home%20Assistant-2024.1%2B-blue)
 ![HACS](https://img.shields.io/badge/HACS-Custom-orange)
 ![Cloud Polling](https://img.shields.io/badge/IoT--Class-Cloud%20Polling-blue)
@@ -16,19 +16,25 @@ Football Hub remembers the country, competition, favourite clubs and last-opened
 
 ---
 
-## Latest release — 0.7.1
+## Latest release — 0.7.2
 
-- Fixed My Club top scorers and assists: retain the full squad before ranking, including attackers after position 20. Zero-value entries no longer fill these lists.
-- Fixed recent club scores: select the club's completed matches before taking the latest ten.
-- Added clearly labelled Football Hub statistical predictions for the next scheduled league fixture. Estimates use up to ten recent completed same-competition games per team, require at least three, and are not calibrated probabilities or guarantees.
-- Added restart-safe per-club, per-season caching for My Club datasets and shared league data. Saved data is reused on return; background checks follow existing refresh intervals, and unchanged values are retained. Network checks are still necessary to discover new data.
-- Saved predictions are reused until their input data changes.
-- Uses only `frontend/football-hub-panel.js`; removed the obsolete panel-entry registration.
+- Fixed Live competition grouping so identically named leagues are kept under their real country. For example, Egyptian, Russian and Canadian Premier League matches no longer appear under England.
+- Added reliable on-page alerts for kick-off, goals, half-time and full-time. These work when Home Assistant is opened over ordinary local HTTP, where Chrome blocks native browser notifications.
+- Added an alert status message and Test alert button. Native system notifications continue to work when Home Assistant is opened securely over HTTPS and browser permission is granted.
+- Removed exact duplicate entries from the My Club injuries and suspensions list.
+- Uses only `frontend/football-hub-panel.js`.
 - No changes to LMS or Acca scoring/round logic.
 
 ### Updating
 
-Update through HACS, restart Home Assistant, and hard-refresh your browser (Ctrl+F5). Open My Club and choose your club. Existing saved data is retained; initial cache population can take several background update cycles. Add / reload club requests a refresh without clearing visible cached data.
+Update through HACS, restart Home Assistant, and hard-refresh your browser (Ctrl+F5). On Live, enable the alert types you want and use Test alert to confirm the on-page notification appears.
+
+## Previous release — 0.7.1
+
+- Fixed My Club top scorers, assists and recent club results.
+- Added Football Hub statistical predictions and restart-safe My Club caching.
+- Saved predictions are reused until their input data changes.
+- Removed the obsolete panel-entry registration.
 
 # Previous release — v0.5.1
 
@@ -268,3 +274,4 @@ Created and maintained by Adrian Apel.
 Football Hub is an independent Home Assistant integration. It is not affiliated with, endorsed by, sponsored by or officially connected to Home Assistant, HACS, FIFA, UEFA, any data provider, football association, competition organiser, club, venue or broadcaster.
 
 All trademarks, competition names, club names, team names and logos remain the property of their respective owners.
+

@@ -1,4 +1,4 @@
-const PANEL_VERSION = "0.7.1";
+const PANEL_VERSION = "0.7.2";
 const LMS_SHARE_SERVICE = "https://football-hub-lms.zesty-flame-5295.chatgpt.site";
 const FULL_COMPETITION_CATALOGUE = {
   England: ["Premier League", "Championship", "League One", "League Two", "National League", "FA Cup", "EFL Cup", "Community Shield"],
@@ -137,6 +137,7 @@ class FootballHubPanel extends HTMLElement {
     this._lmsAdminUnlocked = false;
     this._lmsAutoCheckBusy = false;
     this._lmsReminderBusy = false;
+    this._pendingLiveAlerts = [];
   }
 
   _footballStateSignature() {
@@ -2439,9 +2440,7 @@ class FootballHubPanel extends HTMLElement {
   }
 
   _processLiveNotifications() {
-    if (!("Notification" in window) || Notification.permission !== "granted") return;
     const enabled = this._liveNotifications || {};
-    if (!enabled.kickoff && !enabled.goals && !enabled.halftime && !enabled.fulltime) return;
     const matches = this._attrs("matches_today").matches || [];
     let previous = {};
     try { previous = JSON.parse(localStorage.getItem("football_hub_notification_match_states") || "{}"); } catch (_error) {}
@@ -2458,9 +2457,50 @@ class FootballHubPanel extends HTMLElement {
       else if (enabled.halftime && old.status !== "HT" && state.status === "HT") title = "Half-time";
       else if (enabled.fulltime && !["FT", "AET", "PEN"].includes(old.status) && ["FT", "AET", "PEN"].includes(state.status)) title = "Full-time";
       else if (enabled.kickoff && ["NS", "TBD"].includes(old.status) && !["NS", "TBD"].includes(state.status)) title = "Kickoff";
-      if (title) new Notification(title, { body });
+      if (title) this._showLiveAlert(title, body);
     });
     localStorage.setItem("football_hub_notification_match_states", JSON.stringify(next));
+  }
+
+  _showLiveAlert(title, body) {
+    // Always show an alert inside Football Hub. Native browser notifications
+    // are an optional extra because Chrome blocks them on ordinary HTTP pages.
+    this._pendingLiveAlerts.push({ title, body });
+    queueMicrotask(() => this._flushLiveAlerts());
+    if ("Notification" in window && Notification.permission === "granted") {
+      try { new Notification(title, { body }); } catch (_error) {}
+    }
+  }
+
+  _flushLiveAlerts() {
+    const host = this.shadowRoot?.querySelector("#football-hub-live-alerts");
+    if (!host) return;
+    while (this._pendingLiveAlerts.length) {
+      const { title, body } = this._pendingLiveAlerts.shift();
+      const alert = document.createElement("article");
+      alert.className = "football-hub-live-alert";
+      const heading = document.createElement("strong");
+      const message = document.createElement("span");
+      const close = document.createElement("button");
+      heading.textContent = title;
+      message.textContent = body;
+      close.type = "button";
+      close.setAttribute("aria-label", "Dismiss alert");
+      close.textContent = "×";
+      close.addEventListener("click", () => alert.remove());
+      alert.append(heading, message, close);
+      host.prepend(alert);
+      while (host.children.length > 4) host.lastElementChild?.remove();
+      setTimeout(() => alert.remove(), 12000);
+    }
+  }
+
+  _browserAlertStatus() {
+    if (!("Notification" in window)) return "On-page alerts ready · Browser alerts unsupported";
+    if (!window.isSecureContext) return "On-page alerts ready · Browser alerts need HTTPS";
+    if (Notification.permission === "granted") return "On-page and browser alerts ready";
+    if (Notification.permission === "denied") return "On-page alerts ready · Browser alerts blocked";
+    return "On-page alerts ready · Enable an alert to allow browser alerts";
   }
 
   _setCompetition(prefix) {
@@ -3305,13 +3345,13 @@ class FootballHubPanel extends HTMLElement {
       }
     });
     const countryName = (match) => {
-      const raw = this._matchText(match.country || match.country_code).trim();
+      const raw = this._matchText(match.country_code || match.country || match.league?.country_code || match.league?.country).trim();
       if (!raw) return "International";
       const code = raw.toUpperCase();
       if (/^[A-Z]{3,4}$/.test(code)) {
-        const inferred = [...(catalogueCountries.get(competitionName(match)) || [])];
-        if (inferred.length === 1) return inferred[0];
-        return countryCodes[code] || "International";
+        // League names are not globally unique. Never override the feed's
+        // country using a name-only catalogue match (e.g. Premier League).
+        return countryCodes[code] || ({ BLR: "Belarus" })[code] || raw;
       }
       return raw;
     };
@@ -3349,7 +3389,7 @@ class FootballHubPanel extends HTMLElement {
     const liveFilters = `${toolbar}<details id="live-filter-panel" class="page-card live-competition-filter live-filter-panel" ${this._liveFiltersOpen ? "open" : ""}><summary><div><span class="eyebrow">MATCH FILTERS</span><h2>Countries and competitions</h2></div><span class="live-filter-summary-count">${selectedCompetitionCount} selected <ha-icon icon="mdi:chevron-down"></ha-icon></span></summary><div class="live-filter-panel-body"><p>Expand a country to choose its leagues and cups. Favourites are pinned first and settings synchronise through Home Assistant.</p><div class="live-filter-groups"><details open><summary>Men's and women's football ${filterActions("gender")}</summary><div class="live-filter-options">${filterChecks(["Men's", "Women's"], "gender", this._hiddenLiveGenders)}</div></details>${countryCompetitionFilters}</div></div></details>`;
     const statusInfo = this._statusInfo();
     const notifyChecks = [["kickoff", "Kickoff"], ["goals", "Goals"], ["halftime", "Half-time"], ["fulltime", "Full-time"], ["selectedClubOnly", "Selected club only"]].map(([key, label]) => `<label><input type="checkbox" data-live-notification="${key}" ${this._liveNotifications[key] ? "checked" : ""}><span>${label}</span></label>`).join("");
-    const liveExtras = `<section class="live-utility-grid compact"><article class="page-card live-alerts-compact"><header><span class="eyebrow">BROWSER ALERTS</span><strong>Match notifications</strong></header><div class="live-alert-options">${notifyChecks}</div></article><article class="page-card live-diagnostics compact"><header><span class="eyebrow">DATA STATUS</span><strong>${this._escape(statusInfo.state)}</strong></header><div><span>Matches</span><strong>${allTodayMatches.length}</strong></div><div><span>Live</span><strong>${allLiveMatches.length}</strong></div><div><span>Competitions</span><strong>${competitionNames.length}</strong></div><div><span>Updated</span><strong>${this._escape(statusInfo.last_updated ? this._formatDate(statusInfo.last_updated) : "Waiting")}</strong></div></article></section>`;
+    const liveExtras = `<section class="live-utility-grid compact"><article class="page-card live-alerts-compact"><header><div><span class="eyebrow">MATCH ALERTS</span><strong>Goal and match notifications</strong></div><button id="football-hub-test-alert" type="button">Test alert</button></header><small class="live-alert-status">${this._escape(this._browserAlertStatus())}</small><div class="live-alert-options">${notifyChecks}</div></article><article class="page-card live-diagnostics compact"><header><span class="eyebrow">DATA STATUS</span><strong>${this._escape(statusInfo.state)}</strong></header><div><span>Matches</span><strong>${allTodayMatches.length}</strong></div><div><span>Live</span><strong>${allLiveMatches.length}</strong></div><div><span>Competitions</span><strong>${competitionNames.length}</strong></div><div><span>Updated</span><strong>${this._escape(statusInfo.last_updated ? this._formatDate(statusInfo.last_updated) : "Waiting")}</strong></div></article></section>`;
     const grouped = new Map();
     todayMatches.forEach((match) => { const key = `${countryName(match)}|||${competitionName(match)}`; if (!grouped.has(key)) grouped.set(key, []); grouped.get(key).push(match); });
     const groupedMatches = [...grouped.entries()].sort(([a], [b]) => { const ac = a.split("|||")[1], bc = b.split("|||")[1]; return Number(this._favouriteLiveCompetitions.has(bc)) - Number(this._favouriteLiveCompetitions.has(ac)) || a.localeCompare(b); }).map(([key, games]) => { const [country, competition] = key.split("|||"); return `<article class="live-schedule-group"><header><div><span>${this._escape(this._displayCountry(country))}</span><strong>${this._escape(competition)}</strong></div><span>${games.length} match${games.length === 1 ? "" : "es"}</span></header><div class="match-list ${this._liveDisplayMode === "compact" ? "compact" : ""}">${games.map((match) => this._matchCard(match, statusGroup(match) === "completed" ? "result" : undefined)).join("")}</div></article>`; }).join("");
@@ -3686,7 +3726,12 @@ class FootballHubPanel extends HTMLElement {
       const latest = (item) => Math.max(0, ...(item.career || []).map((job) => Date.parse(job.start || 0) || 0));
       return latest(b) - latest(a);
     })[0] || {};
-    const injuries = Array.isArray(dataset("my_club_injuries")) ? dataset("my_club_injuries") : [];
+    const injuryRows = Array.isArray(dataset("my_club_injuries")) ? dataset("my_club_injuries") : [];
+    const injuries = [...new Map(injuryRows.map((item) => {
+      const player = item.player || {};
+      const key = [player.id || "", String(player.name || "").trim().toLowerCase(), String(item.reason || item.type || "").trim().toLowerCase(), item.date || item.fixture?.date || ""].join("|");
+      return [key, item];
+    })).values()];
     const transferPlayers = Array.isArray(dataset("my_club_transfers")) ? dataset("my_club_transfers") : [];
     const transfers = transferPlayers.flatMap((record) => record.transfers
       ? record.transfers.map((movement) => ({
@@ -4025,6 +4070,7 @@ class FootballHubPanel extends HTMLElement {
         <main>${this._content()}</main>
         <footer>Football Hub · Built for Home Assistant</footer>
       </div>
+      <aside id="football-hub-live-alerts" class="football-hub-live-alerts" aria-live="polite"></aside>
     `;
 
     // Standings are rendered from saved LMS state, but an in-progress fixture
@@ -4269,6 +4315,7 @@ class FootballHubPanel extends HTMLElement {
     this.shadowRoot.querySelector("#live-display-mode")?.addEventListener("change", (event) => { this._liveDisplayMode = event.target.value; localStorage.setItem("football_hub_live_display_mode", this._liveDisplayMode); this._saveSharedPreferences(); this._render(); });
     this.shadowRoot.querySelector("#live-timezone")?.addEventListener("change", (event) => { this._liveTimezone = event.target.value; localStorage.setItem("football_hub_live_timezone", this._liveTimezone); this._saveSharedPreferences(); this._render(); });
     this.shadowRoot.querySelector("#football-hub-refresh")?.addEventListener("click", async (event) => { event.currentTarget.disabled = true; await this._hass?.callService("football_hub", "refresh", { entry_id: this._statusInfo().config_entry_id || "" }).catch(() => {}); setTimeout(() => this._render(), 800); });
+    this.shadowRoot.querySelector("#football-hub-test-alert")?.addEventListener("click", () => this._showLiveAlert("Football Hub test", "Match alerts are working on this device."));
     this.shadowRoot.querySelectorAll("[data-live-favourite]").forEach((button) => button.addEventListener("click", (event) => { event.preventDefault(); event.stopPropagation(); const name = button.dataset.liveFavourite; if (this._favouriteLiveCompetitions.has(name)) this._favouriteLiveCompetitions.delete(name); else this._favouriteLiveCompetitions.add(name); localStorage.setItem("football_hub_favourite_live_competitions", JSON.stringify([...this._favouriteLiveCompetitions])); this._saveSharedPreferences(); this._render(); }));
     this.shadowRoot.querySelectorAll("[data-live-filter-action]").forEach((button) => button.addEventListener("click", (event) => { event.preventDefault(); const target = button.dataset.liveFilterTarget; const checked = button.dataset.liveFilterAction === "all"; this.shadowRoot.querySelectorAll(`[data-live-filter-kind="${target}"]`).forEach((input) => { input.checked = checked; const filters = target === "country" ? this._hiddenLiveCountries : target === "gender" ? this._hiddenLiveGenders : this._hiddenLiveCompetitions; if (checked) filters.delete(input.dataset.liveFilterValue); else filters.add(input.dataset.liveFilterValue); }); localStorage.setItem(target === "country" ? "football_hub_hidden_live_countries" : target === "gender" ? "football_hub_hidden_live_genders" : "football_hub_hidden_live_competitions", JSON.stringify([...(target === "country" ? this._hiddenLiveCountries : target === "gender" ? this._hiddenLiveGenders : this._hiddenLiveCompetitions)])); this._saveSharedPreferences(); this._render(); }));
     this.shadowRoot.querySelectorAll("[data-live-notification]").forEach((input) => input.addEventListener("change", async () => { this._liveNotifications[input.dataset.liveNotification] = input.checked; if (input.checked && "Notification" in window && Notification.permission === "default") await Notification.requestPermission(); localStorage.setItem("football_hub_live_notifications", JSON.stringify(this._liveNotifications)); this._saveSharedPreferences(); }));
@@ -5551,6 +5598,12 @@ class FootballHubPanel extends HTMLElement {
       .live-utility-grid.compact header .eyebrow { margin:0; }
       .live-alert-options { display:flex; flex-wrap:wrap; gap:6px 14px; }
       .live-alert-options label { display:flex; align-items:center; gap:5px; font-size:.76rem; }
+      .live-alert-status { display:block; margin:-2px 0 9px; color:var(--secondary-text-color); }
+      .football-hub-live-alerts { position:fixed; z-index:1000; top:18px; right:18px; width:min(390px,calc(100vw - 36px)); display:grid; gap:9px; pointer-events:none; }
+      .football-hub-live-alert { position:relative; display:grid; gap:4px; padding:14px 42px 14px 16px; border:1px solid var(--primary-color); border-radius:13px; color:var(--primary-text-color); background:var(--card-background-color); box-shadow:0 12px 32px rgba(0,0,0,.45); pointer-events:auto; animation:football-hub-alert-in .2s ease-out; }
+      .football-hub-live-alert span { color:var(--secondary-text-color); }
+      .football-hub-live-alert button { position:absolute; top:7px; right:8px; padding:2px 8px; border:0; background:transparent; color:var(--secondary-text-color); font-size:1.35rem; }
+      @keyframes football-hub-alert-in { from { opacity:0; transform:translateY(-8px); } }
       .live-diagnostics.compact { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:6px 12px; }
       .live-diagnostics.compact header { grid-column:1/-1; margin-bottom:0; }
       .live-diagnostics.compact > div { display:flex; flex-direction:column; gap:2px; padding:4px 0; border:0; font-size:.72rem; }
