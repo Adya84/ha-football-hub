@@ -83,7 +83,7 @@ class FootballHubCoordinator(DataUpdateCoordinator):
         self.ui_preferences = dict(entry.options.get("ui_preferences", {}))
         stored_favourites = entry.options.get("favourite_clubs", [])
         self.favourite_clubs = [dict(item) for item in stored_favourites if isinstance(item, dict)]
-        if not self.favourite_clubs:
+        if "favourite_clubs" not in entry.options:
             # Migrate the old one-club-per-league selections without losing them.
             for competition_key, team in self.my_clubs.items():
                 competition = COMPETITIONS.get(competition_key, {})
