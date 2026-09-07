@@ -2772,6 +2772,8 @@ class FootballHubPanel extends HTMLElement {
   }
 
   _setMyClub(team) {
+    team = String(team || "").trim();
+    if (!team) return;
     this._selectedClub = team;
     localStorage.setItem("football_hub_my_club", team);
     const status = this._statusInfo();
@@ -3593,17 +3595,17 @@ class FootballHubPanel extends HTMLElement {
       <div class="player-list">
         ${players
           .map((item, index) => {
-            const player = item.player || {};
+            const player = item.player || item;
             const stats = item.statistics?.[0] || {};
             const goals = stats.goals || {};
             const values = {
-              goals: goals.total,
-              assists: goals.assists,
-              yellow: stats.cards?.yellow,
-              red: stats.cards?.red,
-              rating: stats.rating,
-              appearances: stats.games?.appearences ?? stats.games?.appearances,
-              minutes: stats.minutes,
+              goals: goals.total ?? item.goals,
+              assists: goals.assists ?? item.assists,
+              yellow: stats.cards?.yellow ?? item.yellow_cards,
+              red: stats.cards?.red ?? item.red_cards,
+              rating: stats.rating ?? item.rating,
+              appearances: stats.games?.appearences ?? stats.games?.appearances ?? item.appearances,
+              minutes: stats.minutes ?? item.minutes,
             };
             const value = values[statKey];
             return `
@@ -3611,7 +3613,7 @@ class FootballHubPanel extends HTMLElement {
                 <span class="rank">${index + 1}</span>
                 ${this._logo(player.photo, player.name, "42")}
                 <span class="player-name"><strong>${this._escape(player.name || "Player")}</strong><small>${this._escape(
-              stats.team?.name || ""
+              stats.team?.name || (typeof item.team === "string" ? item.team : "")
             )}</small></span>
                 <strong class="player-stat">${this._escape(value ?? 0)}</strong>
               </div>`;
@@ -3661,7 +3663,11 @@ class FootballHubPanel extends HTMLElement {
     const table = this._attrs("standings").table || [];
     const scorers = this._attrs("top_scorers").top_scorers || [];
     const assists = this._attrs("top_assists").top_assists || [];
-    const dataset = (key) => this._attrs(key).data ?? [];
+    const dataset = (key) => {
+      const attrs = this._attrs(key);
+      if (attrs.club && String(attrs.club).trim().toLowerCase() !== String(club || "").trim().toLowerCase()) return [];
+      return attrs.data ?? [];
+    };
     const profileRows = dataset("my_club_profile");
     const profileRecord = Array.isArray(profileRows) ? (profileRows[0] || {}) : profileRows;
     const clubProfile = profileRecord.team || {};
@@ -3732,7 +3738,7 @@ class FootballHubPanel extends HTMLElement {
     const clubResults = results.filter((match) => match.home_team === club || match.away_team === club);
     const standing = table.find((row) => (row.team || row.team_name) === club);
     const clubPlayers = (items) => items.filter((item) =>
-      item.statistics?.some((stats) => stats.team?.name === club)
+      item.team === club || item.statistics?.some((stats) => stats.team?.name === club)
     );
     const playerStatValue = (item, key) => {
       const stats = (item.statistics || []).find((entry) => entry.team?.name === club) || item.statistics?.[0] || {};
@@ -3751,6 +3757,7 @@ class FootballHubPanel extends HTMLElement {
           <label for="my-club-select">${this._t("chooseClub")}</label>
           <input id="my-club-select" type="search" list="my-club-options" value="${this._escape(club || "")}" placeholder="Search for a club" aria-label="Search for your club">
           <datalist id="my-club-options">${teams.map((team) => `<option value="${this._escape(team)}"></option>`).join("")}</datalist>
+          <button id="my-club-add" class="primary-button" type="button">Add / reload club</button>
         </div>
         <div class="favourite-club-list">
           <strong>My Clubs (${favourites.length}/5)</strong>
@@ -4163,17 +4170,26 @@ class FootballHubPanel extends HTMLElement {
     this.shadowRoot.querySelector("#my-club-select")?.addEventListener("change", (event) => {
       this._setMyClub(event.target.value);
     });
+    this.shadowRoot.querySelector("#my-club-add")?.addEventListener("click", () => {
+      this._setMyClub(this.shadowRoot.querySelector("#my-club-select")?.value);
+    });
     this.shadowRoot.querySelectorAll(".favourite-club-remove").forEach((button) => {
       button.addEventListener("click", () => this._removeFavouriteClub(button.dataset.team, button.dataset.competition));
     });
     this.shadowRoot.querySelectorAll(".favourite-club-open").forEach((button) => {
-      button.addEventListener("click", () => {
-        if (button.dataset.competition && button.dataset.competition !== this._statusInfo().competition_key) {
-          this._setLeague(button.dataset.competition);
+      button.addEventListener("click", async () => {
+        const entry_id = this._statusInfo().config_entry_id || "";
+        try {
+          if (button.dataset.competition && button.dataset.competition !== this._statusInfo().competition_key) {
+            await this._hass.callService("football_hub", "select_competition", { competition: button.dataset.competition, entry_id });
+          }
+          await this._hass.callService("football_hub", "select_my_club", { team: button.dataset.team, entry_id });
+          this._selectedClub = button.dataset.team;
+          localStorage.setItem("football_hub_my_club", this._selectedClub);
+          this._render();
+        } catch (error) {
+          window.alert(`Could not load club: ${error.message || error}`);
         }
-        this._selectedClub = button.dataset.team;
-        localStorage.setItem("football_hub_my_club", this._selectedClub);
-        this._render();
       });
     });
 
