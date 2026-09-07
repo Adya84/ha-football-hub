@@ -2021,11 +2021,75 @@ class FMProvider:
                     matches.append(item)
         return matches[-10:]
 
-    async def get_prediction(self, fixture_id):
-        data = await self._match_details(fixture_id)
-        content = data.get("content") or {}
-        prediction = content.get("prediction") or content.get("betting") or {}
-        return [prediction] if prediction else []
+    async def get_prediction(self, fixture_id, fixtures=None):
+        """Reuse restart-safe estimates until their input results change."""
+        import hashlib
+        import json
+        signature = hashlib.sha256(json.dumps(fixtures or [], sort_keys=True, default=str).encode()).hexdigest()
+        key = str(fixture_id)
+        cached = await self._persistent_get("hub_predictions_v1", key, 365 * 86400)
+        if isinstance(cached, dict) and cached.get("signature") == signature:
+            return cached.get("prediction", [])
+        prediction = await self._estimate_prediction(fixture_id, fixtures)
+        await self._persistent_put("hub_predictions_v1", key, {"signature": signature, "prediction": prediction})
+        return prediction
+
+    async def _estimate_prediction(self, fixture_id, fixtures=None):
+        """Uncalibrated Poisson estimate from recent same-competition results."""
+        import math
+        fixtures = fixtures or []
+        target = next((m for m in fixtures if str((m.get("fixture") or {}).get("id")) == str(fixture_id)), None)
+        if not target:
+            return []
+        fixture = target.get("fixture") or {}
+        kickoff = fixture.get("timestamp")
+        if not kickoff or (fixture.get("status") or {}).get("short") not in {"NS", "TBD"}:
+            return []
+        teams = target.get("teams") or {}
+        league_id = (target.get("league") or {}).get("id") or (target.get("league") or {}).get("name")
+        if league_id is None:
+            return []
+        samples = []
+        for side in ("home", "away"):
+            team_id = (teams.get(side) or {}).get("id")
+            history = []
+            for match in fixtures:
+                f = match.get("fixture") or {}
+                if ((match.get("league") or {}).get("id") or (match.get("league") or {}).get("name")) != league_id:
+                    continue
+                if not f.get("timestamp") or f["timestamp"] >= kickoff or (f.get("status") or {}).get("short") != "FT":
+                    continue
+                sides, goals = match.get("teams") or {}, match.get("goals") or {}
+                position = next((s for s in ("home", "away") if (sides.get(s) or {}).get("id") == team_id), None)
+                if position is None or any(not isinstance(goals.get(s), (int, float)) or goals[s] < 0 for s in ("home", "away")):
+                    continue
+                other = "away" if position == "home" else "home"
+                history.append((f["timestamp"], goals[position], goals[other]))
+            history.sort(reverse=True)
+            samples.append(history[:10])
+        counts = [len(rows) for rows in samples]
+        result = {"fixture_id": fixture_id, "teams": teams, "date": fixture.get("date"), "estimated": True,
+                  "method": "Football Hub estimate: recent league goals with a modest home advantage; not calibrated or guaranteed.",
+                  "sample_matches": counts}
+        if min(counts) < 3:
+            result["predictions"] = {"advice": "Not enough completed league games yet (minimum 3 per team)."}
+            return [result]
+        # Two neutral prior games reduce overconfidence early in the season.
+        rates = [((sum(r[1] for r in rows) + 2.6) / (len(rows) + 2),
+                  (sum(r[2] for r in rows) + 2.6) / (len(rows) + 2)) for rows in samples]
+        home = min(5, max(.2, (rates[0][0] + rates[1][1]) / 2 * 1.1))
+        away = min(5, max(.2, (rates[1][0] + rates[0][1]) / 2 / 1.1))
+        probs = [0., 0., 0.]
+        for h in range(25):
+            for a in range(25):
+                probability = math.exp(-home-away) * home**h * away**a / (math.factorial(h)*math.factorial(a))
+                probs[0 if h > a else 1 if h == a else 2] += probability
+        scaled = [p / sum(probs) * 100 for p in probs]
+        rounded = [int(p) for p in scaled]
+        for index in sorted(range(3), key=lambda i: scaled[i]-rounded[i], reverse=True)[:100-sum(rounded)]:
+            rounded[index] += 1
+        result["predictions"] = {"advice": "Statistical estimate, not a guarantee", "percent": dict(zip(("home", "draw", "away"), (f"{p}%" for p in rounded)))}
+        return [result]
 
     async def get_trophies_for_players(self, player_ids):
         return []
@@ -2035,3 +2099,4 @@ class FMProvider:
 
     async def get_sidelined_players(self, player_ids):
         return []
+

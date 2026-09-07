@@ -3659,7 +3659,7 @@ class FootballHubPanel extends HTMLElement {
       : [];
     const fixtures = this._attrs("fixtures").fixtures || [];
     const resultsAttrs = this._attrs("results");
-    const results = resultsAttrs.latest_5 || [];
+    const results = resultsAttrs.club === club && Array.isArray(resultsAttrs.club_results) ? resultsAttrs.club_results : (resultsAttrs.latest_5 || []);
     const table = this._attrs("standings").table || [];
     const scorers = this._attrs("top_scorers").top_scorers || [];
     const assists = this._attrs("top_assists").top_assists || [];
@@ -3801,7 +3801,7 @@ class FootballHubPanel extends HTMLElement {
           <article class="page-card"><span class="eyebrow">TRANSFER CENTRE</span><h2>Recent transfers</h2><div class="player-list">${transfers.length ? transfers.slice(0, 10).map((item) => { const fee = item.fee_display || money(item.fee_value) || item.fee || (item.on_loan ? "On loan" : item.type) || "Fee undisclosed"; return `<div class="transfer-row">${this._logo(item.player?.photo, item.player?.name, "40")}<span class="player-name"><strong>${this._escape(item.player?.name || "Player")}</strong><small>${this._escape(`${item.teams?.out?.name || "Unknown"} → ${item.teams?.in?.name || "Unknown"}`)}</small></span><span class="transfer-meta"><strong class="transfer-fee">${this._escape(fee)}</strong><time>${this._escape(String(item.date || "").slice(0, 10))}</time></span></div>`; }).join("") : `<div class="empty">No transfer data available.</div>`}</div></article>
         </section>
         <section class="two-column">
-          <article class="page-card"><span class="eyebrow">NEXT MATCH</span><h2>Prediction</h2><div class="settings-list"><div><span>Advice</span><strong>${this._escape(prediction.predictions?.advice || "Not available")}</strong></div><div><span>Home chance</span><strong>${this._escape(prediction.predictions?.percent?.home || "—")}</strong></div><div><span>Draw chance</span><strong>${this._escape(prediction.predictions?.percent?.draw || "—")}</strong></div><div><span>Away chance</span><strong>${this._escape(prediction.predictions?.percent?.away || "—")}</strong></div></div></article>
+          <article class="page-card"><span class="eyebrow">NEXT MATCH</span><h2>Football Hub prediction</h2><p>${this._escape(prediction.teams?.home?.name || "")} ${prediction.teams ? "vs" : ""} ${this._escape(prediction.teams?.away?.name || "")}</p><p>${this._escape(prediction.method || "Waiting for enough completed league results.")}</p><p>${prediction.sample_matches ? `Recent matches used: ${prediction.sample_matches.join(" / ")}` : ""}</p><div class="settings-list"><div><span>Estimate</span><strong>${this._escape(prediction.predictions?.advice || "Not available")}</strong></div><div><span>Home chance</span><strong>${this._escape(prediction.predictions?.percent?.home || "—")}</strong></div><div><span>Draw chance</span><strong>${this._escape(prediction.predictions?.percent?.draw || "—")}</strong></div><div><span>Away chance</span><strong>${this._escape(prediction.predictions?.percent?.away || "—")}</strong></div></div></article>
           <article class="page-card"><span class="eyebrow">CLUB HISTORY</span><h2>Records</h2><div class="settings-list"><div><span>Total trophies</span><strong>${this._escape(totalTrophies)}</strong></div><div><span>Competitions won</span><strong>${this._escape(clubTrophies.filter((item) => Number(Array.isArray(item.won) ? item.won[0] : item.won || 0) > 0).length)}</strong></div><div><span>League seasons recorded</span><strong>${this._escape(leagueHistory.length)}</strong></div><div><span>Head-to-head matches</span><strong>${this._escape(headToHead.length)}</strong></div></div>${clubTrophies.length ? `<div class="trophy-list">${clubTrophies.slice(0, 6).map((item) => { const seasons = String(Array.isArray(item.season_won) ? item.season_won[0] : item.season_won || "").split(",").filter(Boolean); return `<div class="trophy-row"><span><strong>${this._escape(Array.isArray(item.name) ? item.name[0] : item.name || "Competition")}</strong><small>${this._escape(seasons.slice(0, 3).join(", "))}${seasons.length > 3 ? ` +${seasons.length - 3} more` : ""}</small></span><b>${this._escape(Array.isArray(item.won) ? item.won[0] : item.won || 0)}</b></div>`; }).join("")}</div>` : ""}</article>
         </section>
       `}
@@ -6233,3 +6233,4 @@ class FootballHubPanel extends HTMLElement {
 if (!customElements.get("football-hub-panel")) {
   customElements.define("football-hub-panel", FootballHubPanel);
 }
+

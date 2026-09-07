@@ -514,6 +514,7 @@ class FootballHubLastResultSensor(FootballHubBaseSensor):
 
 
 class FootballHubResultsSensor(FootballHubBaseSensor):
+    _unrecorded_attributes = frozenset({"club_results"})
     def __init__(self, coordinator, entry):
         super().__init__(coordinator, entry, "results", "Results")
 
@@ -528,6 +529,12 @@ class FootballHubResultsSensor(FootballHubBaseSensor):
             "total_results": len(results),
             "last_result": self.engine.results.last(),
             "latest_5": self.engine.results.latest(ATTRIBUTE_LIMIT),
+            "club": self.coordinator.my_club,
+            "club_results": sorted(
+                [match for match in results if self.coordinator.my_club.casefold() in {
+                    str(match.get("home_team") or "").casefold(), str(match.get("away_team") or "").casefold()}],
+                key=lambda match: match.get("timestamp") or 0, reverse=True,
+            )[:10],
         }
 
 
@@ -635,3 +642,4 @@ class FootballHubCupCentreSensor(FootballHubBaseSensor):
             "table": engine.standings.table(),
             "top_scorers": limit_items(engine.top_scorers, 10),
         }
+

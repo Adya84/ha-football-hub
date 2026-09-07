@@ -1,7 +1,7 @@
 # ⚽ Home Assistant Football Hub
 
 [![License](https://img.shields.io/badge/license-Personal%20Use-red.svg)](LICENSE)
-![Version](https://img.shields.io/badge/version-v0.5.1-green)
+![Version](https://img.shields.io/badge/version-v0.7.1-green)
 ![Home Assistant](https://img.shields.io/badge/Home%20Assistant-2024.1%2B-blue)
 ![HACS](https://img.shields.io/badge/HACS-Custom-orange)
 ![Cloud Polling](https://img.shields.io/badge/IoT--Class-Cloud%20Polling-blue)
@@ -16,7 +16,21 @@ Football Hub remembers the country, competition, favourite clubs and last-opened
 
 ---
 
-# 🚀 Latest Release — v0.5.1
+## Latest release — 0.7.1
+
+- Fixed My Club top scorers and assists: retain the full squad before ranking, including attackers after position 20. Zero-value entries no longer fill these lists.
+- Fixed recent club scores: select the club's completed matches before taking the latest ten.
+- Added clearly labelled Football Hub statistical predictions for the next scheduled league fixture. Estimates use up to ten recent completed same-competition games per team, require at least three, and are not calibrated probabilities or guarantees.
+- Added restart-safe per-club, per-season caching for My Club datasets and shared league data. Saved data is reused on return; background checks follow existing refresh intervals, and unchanged values are retained. Network checks are still necessary to discover new data.
+- Saved predictions are reused until their input data changes.
+- Uses only `frontend/football-hub-panel.js`; removed the obsolete panel-entry registration.
+- No changes to LMS or Acca scoring/round logic.
+
+### Updating
+
+Update through HACS, restart Home Assistant, and hard-refresh your browser (Ctrl+F5). Open My Club and choose your club. Existing saved data is retained; initial cache population can take several background update cycles. Add / reload club requests a refresh without clearing visible cached data.
+
+# Previous release — v0.5.1
 
 Football Hub 0.5.1 expands the **Last Man Standing (LMS)** system with Global competitions, automatic email reminders and improved private competition controls.
 

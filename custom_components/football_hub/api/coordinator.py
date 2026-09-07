@@ -8,10 +8,11 @@ from datetime import datetime, timezone
 from datetime import timedelta
 import logging
 import random
-from time import monotonic
+from time import monotonic, time
 from typing import Any, Awaitable
 
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
+from homeassistant.helpers.storage import Store
 
 from ..competitions import COMPETITIONS
 from ..engine import FootballHubEngine
@@ -72,6 +73,9 @@ class FootballHubCoordinator(DataUpdateCoordinator):
         self.cup_engine = FootballHubEngine()
         self._cache: dict[str, Any] = {}
         self._updated_at: dict[str, float] = {}
+        self._club_page_store = Store(hass, 1, f"football_hub_club_pages_{entry.entry_id}")
+        self._club_page_saved = None
+        self._club_page_restored = None
         self._random_ttls: dict[str, float] = {}
         self._live_rate_limited_until = 0.0
         self.supported_teams = dict(entry.options.get("supported_teams", {}))
@@ -116,9 +120,34 @@ class FootballHubCoordinator(DataUpdateCoordinator):
 
     def _store(self, key: str, value: Any) -> None:
         """Store a refreshed dataset."""
-        self._cache[key] = value
+        if self._cache.get(key) != value:
+            self._cache[key] = value
+            if key == "fixtures":
+                self._updated_at.pop("club_prediction", None)
+                self._updated_at.pop("club_statistics", None)
         self._updated_at[key] = monotonic()
         self._random_ttls.pop(key, None)
+        if self._club_page_saved is not None and (key.startswith("club_") or key in {"fixtures", "standings", "player_leaderboards", "teams"}):
+            namespace = self._club_page_namespace(key)
+            self._club_page_saved.setdefault(namespace, {})[key] = {"data": value, "checked": time()}
+            self._club_page_store.async_delay_save(lambda: self._club_page_saved, 5)
+
+    def _club_page_namespace(self, key):
+        club = self.my_club.strip().casefold() if key.startswith("club_") else "league"
+        return f"{self.competition_key}:{self.season}:{club}"
+
+    async def _restore_club_page(self):
+        if self._club_page_saved is None:
+            self._club_page_saved = await self._club_page_store.async_load() or {}
+        selection = self._club_page_namespace("club_profile")
+        if self._club_page_restored == selection:
+            return
+        for namespace in (self._club_page_namespace("fixtures"), selection):
+            for key, record in self._club_page_saved.get(namespace, {}).items():
+                if key not in self._cache and isinstance(record, dict) and "data" in record:
+                    self._cache[key] = record["data"]
+                    self._updated_at[key] = monotonic() - max(0, time() - record.get("checked", 0))
+        self._club_page_restored = selection
 
     def _live_feed_refresh_due(self) -> bool:
         """Use hourly discovery, five-minute pre-match and one-minute live polling."""
@@ -292,12 +321,20 @@ class FootballHubCoordinator(DataUpdateCoordinator):
 
     async def async_set_my_club(self, team: str) -> None:
         """Persist the My Club selection and refresh club datasets."""
+        previous_club = self.my_club
         self.my_club = str(team or "").strip()
         self.my_clubs[self.competition_key] = self.my_club
-        for key in list(self._cache):
-            if key.startswith("club_"):
-                self._cache.pop(key, None)
-                self._updated_at.pop(key, None)
+        if previous_club.casefold() != self.my_club.casefold():
+            for key in list(self._cache):
+                if key.startswith("club_"):
+                    self._cache.pop(key, None)
+                    self._updated_at.pop(key, None)
+            self._club_page_restored = None
+        else:
+            # Manual reload checks stale sections without blanking saved data.
+            for key in list(self._updated_at):
+                if key.startswith("club_"):
+                    self._updated_at.pop(key, None)
         if self.my_club and not any(
             item.get("team", "").casefold() == self.my_club.casefold()
             and item.get("competition") == self.competition_key
@@ -350,17 +387,21 @@ class FootballHubCoordinator(DataUpdateCoordinator):
     def _club_context(self) -> tuple[int | None, int | None, int | None]:
         """Return selected team id, next opponent id and fixture id."""
         team_id = opponent_id = fixture_id = None
+        next_time = float("inf")
         for item in self._cache.get("fixtures", []) or []:
             teams = (item or {}).get("teams", {}) or {}
             home = teams.get("home", {}) or {}
             away = teams.get("away", {}) or {}
             if str(home.get("name", "")).casefold() == self.my_club.casefold():
-                team_id, opponent_id = home.get("id"), away.get("id")
+                team_id, candidate_opponent = home.get("id"), away.get("id")
             elif str(away.get("name", "")).casefold() == self.my_club.casefold():
-                team_id, opponent_id = away.get("id"), home.get("id")
-            if team_id:
-                fixture_id = ((item or {}).get("fixture", {}) or {}).get("id")
-                break
+                team_id, candidate_opponent = away.get("id"), home.get("id")
+            else:
+                continue
+            fixture = (item or {}).get("fixture") or {}
+            timestamp = fixture.get("timestamp")
+            if timestamp and timestamp > datetime.now(timezone.utc).timestamp() and timestamp < next_time and (fixture.get("status") or {}).get("short") in {"NS", "TBD"}:
+                fixture_id, opponent_id, next_time = fixture.get("id"), candidate_opponent, timestamp
         return team_id, opponent_id, fixture_id
 
     @staticmethod
@@ -424,6 +465,7 @@ class FootballHubCoordinator(DataUpdateCoordinator):
         )
 
     async def _async_update_data(self):
+        await self._restore_club_page()
         """Refresh only datasets whose cache period has expired."""
         league_id = self.competition["league_id"]
         requests: list[tuple[str, Awaitable[Any]]] = []
@@ -489,7 +531,7 @@ class FootballHubCoordinator(DataUpdateCoordinator):
             if opponent_id:
                 club_requests.append(("club_head_to_head", CLUB_STATS_TTL, lambda: self.api.get_head_to_head(team_id, opponent_id)))
             if next_fixture_id:
-                club_requests.append(("club_prediction", CLUB_STATS_TTL, lambda: self.api.get_prediction(next_fixture_id)))
+                club_requests.append(("club_prediction", CLUB_STATS_TTL, lambda: self.api.get_prediction(next_fixture_id, self._cache.get("fixtures", []))))
             for key, ttl, request_factory in club_requests:
                 if club_request_budget and self._is_stale(key, ttl):
                     requests.append((key, request_factory()))
@@ -765,3 +807,4 @@ class FootballHubCoordinator(DataUpdateCoordinator):
         }
         self.engine.update(data)
         return data
+
