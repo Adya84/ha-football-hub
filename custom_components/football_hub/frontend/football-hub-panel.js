@@ -1,4 +1,4 @@
-const PANEL_VERSION = "0.7.7";
+const PANEL_VERSION = "0.7.8";
 const LMS_SHARE_SERVICE = "https://football-hub-lms.zesty-flame-5295.chatgpt.site";
 const FULL_COMPETITION_CATALOGUE = {
   England: ["Premier League", "Championship", "League One", "League Two", "National League", "FA Cup", "EFL Cup", "Community Shield"],
@@ -2516,27 +2516,30 @@ class FootballHubPanel extends HTMLElement {
   _playAlertSound(tone) {
     if (!this._liveNotifications?.sounds || !this._alertSoundsEnabled) return;
     const sounds = {
-      kickoff: ["kickoff-whistle.wav", .8],
-      goal: ["goal-crowd-cheer.mp3", .9],
-      "yellow-card": ["yellow-card-ding.wav", .7],
-      "red-card": ["red-card-boo.wav", .85],
-      "half-time": ["half-time-whistle.wav", .75],
-      "full-time": ["full-time-whistle.wav", .8],
+      kickoff: ["football-referee-whistle.wav", .85, 1],
+      goal: ["goal-crowd-cheer.mp3", .9, 1, 2000],
+      "yellow-card": ["yellow-card-ding.wav", .7, 1],
+      "red-card": ["red-card-boo.wav", .85, 1],
+      "half-time": ["football-referee-whistle.wav", .85, 2],
+      "full-time": ["football-referee-whistle.wav", .85, 3],
     };
     const selected = sounds[tone];
     if (!selected) return;
     const playRecording = () => {
       const audio = new Audio(`/football_hub/sounds/${selected[0]}?v=${PANEL_VERSION}`);
       audio.volume = selected[1];
+      if (selected[3]) {
+        setTimeout(() => {
+          audio.pause();
+          audio.currentTime = 0;
+        }, selected[3]);
+      }
       audio.play().catch(() => {});
     };
-    if (tone === "full-time") {
-      playRecording();
-      setTimeout(playRecording, 700);
-      setTimeout(playRecording, 1400);
-      return;
+    const blasts = selected[2] || 1;
+    for (let index = 0; index < blasts; index += 1) {
+      setTimeout(playRecording, index * 850);
     }
-    playRecording();
   }
 
   _flushLiveAlerts() {
