@@ -1,7 +1,7 @@
 # ⚽ Home Assistant Football Hub
 
 [![License](https://img.shields.io/badge/license-Personal%20Use-red.svg)](LICENSE)
-![Version](https://img.shields.io/badge/version-v0.7.5-green)
+![Version](https://img.shields.io/badge/version-v0.7.6-green)
 ![Home Assistant](https://img.shields.io/badge/Home%20Assistant-2024.1%2B-blue)
 ![HACS](https://img.shields.io/badge/HACS-Custom-orange)
 ![Cloud Polling](https://img.shields.io/badge/IoT--Class-Cloud%20Polling-blue)
@@ -16,12 +16,26 @@ Football Hub remembers the country, competition, favourite clubs and last-opened
 
 ---
 
-## Latest release — 0.7.5
+## Latest release — 0.7.6
 
 - Fixed the main Football Hub **Match details** button so opening a completed result or fixture no longer adds it to the Live page or makes it appear live.
 - The Live **Test alert** button now tests every alert type you have ticked, in turn: kick-off, goal, yellow card, red card, half-time and full-time.
 - Each selected test uses its matching colour and, when **Alert sounds** is ticked, its matching sound.
 - No changes to LMS or Acca League scoring, rounds or data.
+
+## Quick start and installation
+
+1. In **HACS → Integrations → Custom repositories**, add `https://github.com/Adya84/ha-football-hub` as an **Integration** repository.
+2. Install **Football Hub**, restart Home Assistant, then add it from **Settings → Devices & Services**.
+3. Open Football Hub from the sidebar and choose your country, league and favourite clubs.
+
+For manual installation, download the latest [release](https://github.com/Adya84/ha-football-hub/releases), copy `custom_components/football_hub` to `config/custom_components/football_hub`, restart Home Assistant, then add the integration.
+
+Update through HACS, restart Home Assistant, then press **Ctrl+F5** in the browser.
+
+## Support Football Hub
+
+Football Hub is independently developed by Adrian Apel. Support future improvements via [Ko-fi](https://ko-fi.com/ady1984) or [PayPal](https://paypal.me/graffidoodle). Please also star the repository and report issues through the [issue tracker](https://github.com/Adya84/ha-football-hub/issues).
 
 ## Previous release — 0.7.4
 

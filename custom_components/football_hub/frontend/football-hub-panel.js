@@ -1,4 +1,4 @@
-const PANEL_VERSION = "0.7.5";
+const PANEL_VERSION = "0.7.6";
 const LMS_SHARE_SERVICE = "https://football-hub-lms.zesty-flame-5295.chatgpt.site";
 const FULL_COMPETITION_CATALOGUE = {
   England: ["Premier League", "Championship", "League One", "League Two", "National League", "FA Cup", "EFL Cup", "Community Shield"],
