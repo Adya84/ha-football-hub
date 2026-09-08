@@ -1,7 +1,7 @@
 # ⚽ Home Assistant Football Hub
 
 [![License](https://img.shields.io/badge/license-Personal%20Use-red.svg)](LICENSE)
-![Version](https://img.shields.io/badge/version-v0.7.6-green)
+![Version](https://img.shields.io/badge/version-v0.7.7-green)
 ![Home Assistant](https://img.shields.io/badge/Home%20Assistant-2024.1%2B-blue)
 ![HACS](https://img.shields.io/badge/HACS-Custom-orange)
 ![Cloud Polling](https://img.shields.io/badge/IoT--Class-Cloud%20Polling-blue)
@@ -16,11 +16,13 @@ Football Hub remembers the country, competition, favourite clubs and last-opened
 
 ---
 
-## Latest release — 0.7.6
+## Latest release — 0.7.7
 
-- Fixed the main Football Hub **Match details** button so opening a completed result or fixture no longer adds it to the Live page or makes it appear live.
-- The Live **Test alert** button now tests every alert type you have ticked, in turn: kick-off, goal, yellow card, red card, half-time and full-time.
-- Each selected test uses its matching colour and, when **Alert sounds** is ticked, its matching sound.
+- Replaced the generated alert tones with real recorded sound effects.
+- Kick-off uses a referee whistle, goals use a stadium crowd cheer, red cards use a crowd boo and full-time uses a three-whistle pattern.
+- Yellow cards and half-time also have their own distinct recorded sounds.
+- **Test alert** plays every alert type you have ticked so each sound can be checked individually.
+- Match details continues to open without adding completed fixtures to Live.
 - No changes to LMS or Acca League scoring, rounds or data.
 
 ## Quick start and installation

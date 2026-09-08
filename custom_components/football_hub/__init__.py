@@ -14,7 +14,7 @@ from .const import DOMAIN
 PLATFORMS = ["sensor"]
 PANEL_URL = "football-hub"
 PANEL_NAME = "football-hub-panel"
-PANEL_VERSION = "0.7.3"
+PANEL_VERSION = "0.7.7"
 PANEL_STATIC_URL = "/football_hub/football-hub-panel.js"
 PANEL_MODULE_URL = f"{PANEL_STATIC_URL}?v={PANEL_VERSION}"
 PANEL_SCRIPT_PATH = Path(__file__).parent / "frontend" / "football-hub-panel.js"
@@ -22,6 +22,8 @@ PANEL_BACKGROUND_URL = "/football_hub/football-hub-background.png"
 PANEL_BACKGROUND_PATH = Path(__file__).parent / "frontend" / "football-hub-background.png"
 PANEL_LOGO_URL = "/football_hub/football-hub-logo.png"
 PANEL_LOGO_PATH = Path(__file__).parent / "frontend" / "football-hub-logo.png"
+PANEL_SOUNDS_URL = "/football_hub/sounds"
+PANEL_SOUNDS_PATH = Path(__file__).parent / "frontend" / "sounds"
 
 
 async def async_migrate_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
@@ -40,6 +42,7 @@ async def async_setup(hass: HomeAssistant, config: dict) -> bool:
         StaticPathConfig(PANEL_STATIC_URL, str(PANEL_SCRIPT_PATH), False),
         StaticPathConfig(PANEL_BACKGROUND_URL, str(PANEL_BACKGROUND_PATH), False),
         StaticPathConfig(PANEL_LOGO_URL, str(PANEL_LOGO_PATH), False),
+        StaticPathConfig(PANEL_SOUNDS_URL, str(PANEL_SOUNDS_PATH), False),
     ])
     async_register_built_in_panel(
         hass,

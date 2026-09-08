@@ -1,4 +1,4 @@
-const PANEL_VERSION = "0.7.6";
+const PANEL_VERSION = "0.7.7";
 const LMS_SHARE_SERVICE = "https://football-hub-lms.zesty-flame-5295.chatgpt.site";
 const FULL_COMPETITION_CATALOGUE = {
   England: ["Premier League", "Championship", "League One", "League Two", "National League", "FA Cup", "EFL Cup", "Community Shield"],
@@ -2508,29 +2508,35 @@ class FootballHubPanel extends HTMLElement {
   }
 
   _enableAlertSounds() {
-    const AudioContext = window.AudioContext || window.webkitAudioContext;
-    if (!AudioContext) return false;
-    this._alertAudioContext ||= new AudioContext();
-    this._alertAudioContext.resume?.().catch(() => {});
+    if (!("Audio" in window)) return false;
+    this._alertSoundsEnabled = true;
     return true;
   }
 
   _playAlertSound(tone) {
-    if (!this._liveNotifications?.sounds || !["kickoff", "goal", "red-card", "full-time"].includes(tone)) return;
-    const context = this._alertAudioContext;
-    if (!context || context.state !== "running") return;
-    const now = context.currentTime;
-    const note = (frequency, start, duration, type = "sine", volume = .08) => {
-      const oscillator = context.createOscillator(); const gain = context.createGain();
-      oscillator.type = type; oscillator.frequency.setValueAtTime(frequency, start);
-      gain.gain.setValueAtTime(.0001, start); gain.gain.exponentialRampToValueAtTime(volume, start + .02); gain.gain.exponentialRampToValueAtTime(.0001, start + duration);
-      oscillator.connect(gain).connect(context.destination); oscillator.start(start); oscillator.stop(start + duration + .03);
+    if (!this._liveNotifications?.sounds || !this._alertSoundsEnabled) return;
+    const sounds = {
+      kickoff: ["kickoff-whistle.wav", .8],
+      goal: ["goal-crowd-cheer.mp3", .9],
+      "yellow-card": ["yellow-card-ding.wav", .7],
+      "red-card": ["red-card-boo.wav", .85],
+      "half-time": ["half-time-whistle.wav", .75],
+      "full-time": ["full-time-whistle.wav", .8],
     };
-    if (tone === "kickoff") { note(2080, now, .16, "sine", .07); note(2080, now + .22, .16, "sine", .07); return; }
-    if (tone === "full-time") { [0, .23, .46].forEach((offset) => note(2160, now + offset, .16, "sine", .075)); return; }
-    if (tone === "red-card") { [150, 142, 134].forEach((frequency, index) => note(frequency, now + index * .16, .28, "sawtooth", .065)); return; }
-    [392, 494, 587, 784].forEach((frequency, index) => note(frequency, now + index * .09, .55, "sawtooth", .045));
-    [220, 277, 330].forEach((frequency) => note(frequency, now + .12, .7, "triangle", .035));
+    const selected = sounds[tone];
+    if (!selected) return;
+    const playRecording = () => {
+      const audio = new Audio(`/football_hub/sounds/${selected[0]}?v=${PANEL_VERSION}`);
+      audio.volume = selected[1];
+      audio.play().catch(() => {});
+    };
+    if (tone === "full-time") {
+      playRecording();
+      setTimeout(playRecording, 700);
+      setTimeout(playRecording, 1400);
+      return;
+    }
+    playRecording();
   }
 
   _flushLiveAlerts() {
