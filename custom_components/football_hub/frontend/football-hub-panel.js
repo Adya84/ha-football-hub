@@ -1,4 +1,4 @@
-const PANEL_VERSION = "0.7.8";
+const PANEL_VERSION = "0.7.9";
 const LMS_SHARE_SERVICE = "https://football-hub-lms.zesty-flame-5295.chatgpt.site";
 const FULL_COMPETITION_CATALOGUE = {
   England: ["Premier League", "Championship", "League One", "League Two", "National League", "FA Cup", "EFL Cup", "Community Shield"],
@@ -2516,12 +2516,12 @@ class FootballHubPanel extends HTMLElement {
   _playAlertSound(tone) {
     if (!this._liveNotifications?.sounds || !this._alertSoundsEnabled) return;
     const sounds = {
-      kickoff: ["football-referee-whistle.wav", .85, 1],
-      goal: ["goal-crowd-cheer.mp3", .9, 1, 2000],
-      "yellow-card": ["yellow-card-ding.wav", .7, 1],
-      "red-card": ["red-card-boo.wav", .85, 1],
-      "half-time": ["football-referee-whistle.wav", .85, 2],
-      "full-time": ["football-referee-whistle.wav", .85, 3],
+      kickoff: ["kickoff-whistle.mp3", .85, 1],
+      goal: ["goal-cheer.mp3", .9, 1, 2000],
+      "yellow-card": ["yellow-card.mp3", .8, 1],
+      "red-card": ["red-card.mp3", .85, 1],
+      "half-time": ["half-time-whistle.mp3", .85, 1],
+      "full-time": ["full-time-whistle.mp3", .85, 1],
     };
     const selected = sounds[tone];
     if (!selected) return;
