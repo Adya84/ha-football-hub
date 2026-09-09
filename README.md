@@ -1,7 +1,7 @@
 # ⚽ Home Assistant Football Hub
 
 [![License](https://img.shields.io/badge/license-Personal%20Use-red.svg)](LICENSE)
-![Version](https://img.shields.io/badge/version-v0.7.9-green)
+![Version](https://img.shields.io/badge/version-v0.7.10-green)
 ![Home Assistant](https://img.shields.io/badge/Home%20Assistant-2024.1%2B-blue)
 ![HACS](https://img.shields.io/badge/HACS-Custom-orange)
 ![Cloud Polling](https://img.shields.io/badge/IoT--Class-Cloud%20Polling-blue)
@@ -16,14 +16,15 @@ Football Hub remembers the country, competition, favourite clubs and last-opened
 
 ---
 
-## Latest release — 0.7.9
+## Latest release — 0.7.10
 
-- Replaced all six match-alert sounds with the recordings supplied for kick-off, goals, yellow cards, red cards, half-time and full-time.
-- The goal celebration automatically stops after two seconds.
-- Each event has its own dedicated sound.
-- **Test alert** plays every alert type you have ticked so each sound can be checked individually.
-- Match details continues to open without adding completed fixtures to Live.
-- No changes to LMS or Acca League scoring, rounds or data.
+- Fixed Acca League Champions League results so **Check results** retrieves completed European matches.
+- Champions League, Europa League and Conference League picks are matched only against their selected competition, preventing domestic results from being used.
+- Acca fixture loading now respects each round's selected dates and competitions.
+- Paid-round corrections and the selected payer remain saved instead of being recalculated when the page refreshes.
+- Acca fixture and selection sections remember whether they were expanded or collapsed.
+- The external Acca data now includes the actual fixture associated with every selected team.
+- LMS scoring and round logic are unchanged.
 
 ## Quick start and installation
 
