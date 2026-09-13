@@ -1,4 +1,4 @@
-const PANEL_VERSION = "0.7.11";
+const PANEL_VERSION = "0.7.12";
 const LMS_SHARE_SERVICE = "https://football-hub-lms.zesty-flame-5295.chatgpt.site";
 const FULL_COMPETITION_CATALOGUE = {
   England: ["Premier League", "Championship", "League One", "League Two", "National League", "FA Cup", "EFL Cup", "Community Shield"],
@@ -969,9 +969,22 @@ class FootballHubPanel extends HTMLElement {
     const status = this._statusInfo();
     if (!competition?.leagues?.some((league) => league.key === status.competition_key)) return;
     const teams = this._lmsTeams();
-    const fixtures = this._attrs("fixtures").fixtures || [];
+    const incomingFixtures = this._attrs("fixtures").fixtures || [];
     if (!teams.length) return;
-    this._lmsLeagueCache[status.competition_key] = { teams, fixtures, updated: Date.now() };
+    const cached = this._lmsLeagueCache[status.competition_key] || {};
+    const fixtureMap = new Map();
+    const isFinal = (fixture) => ["FT", "AET", "PEN"].includes(String(fixture?.status_short || fixture?.status || "").toUpperCase())
+      && fixture.home_goals != null && fixture.away_goals != null;
+    for (const fixture of [...(cached.fixtures || []), ...incomingFixtures]) {
+      const key = String(fixture.fixture_id ?? fixture.id ?? `${fixture.home_team}-${fixture.away_team}-${this._lmsFixtureTimestamp(fixture)}`);
+      const previous = fixtureMap.get(key);
+      // A sensor can still hold the pre-match copy after Check results has
+      // fetched the final score. Keep that final result and full round metadata.
+      if (previous && isFinal(previous) && !isFinal(fixture)) continue;
+      fixtureMap.set(key, { ...previous, ...fixture });
+    }
+    const fixtures = [...fixtureMap.values()];
+    this._lmsLeagueCache[status.competition_key] = { teams: [...new Set([...(cached.teams || []), ...teams])], fixtures, updated: Date.now() };
     try {
       localStorage.setItem("football_hub_lms_league_cache", JSON.stringify(this._lmsLeagueCache));
     } catch (error) {
@@ -1305,11 +1318,11 @@ class FootballHubPanel extends HTMLElement {
     if (!competition || competition.completed || (!automatic && !this._isLmsAdmin())) return;
     if (automatic && Number(competition.manualRoundHold || 0) === Number(competition.round || 0)) return;
     if (!automatic) delete competition.manualRoundHold;
+    if (!automatic) await this._refreshLmsRoundFixtures();
     if (competition.mode === "global") {
       this._settleGlobalLmsRound();
       return;
     }
-    if (!automatic) await this._refreshLmsRoundFixtures();
     const roundKey = String(competition.round);
     const fixtures = this._lmsRoundFixtureGroups().flatMap((league) => league.roundFixtures || []);
     if (!fixtures.length) {

@@ -1,7 +1,7 @@
 # ⚽ Home Assistant Football Hub
 
 [![License](https://img.shields.io/badge/license-Personal%20Use-red.svg)](LICENSE)
-![Version](https://img.shields.io/badge/version-v0.7.11-green)
+![Version](https://img.shields.io/badge/version-v0.7.12-green)
 ![Home Assistant](https://img.shields.io/badge/Home%20Assistant-2024.1%2B-blue)
 ![HACS](https://img.shields.io/badge/HACS-Custom-orange)
 ![Cloud Polling](https://img.shields.io/badge/IoT--Class-Cloud%20Polling-blue)
@@ -16,7 +16,13 @@ Football Hub remembers the country, competition, favourite clubs and last-opened
 
 ---
 
-## Latest release — 0.7.11
+## Latest release — 0.7.12
+
+- LMS Check results now fetches fresh results before checking global competitions as well as private competitions.
+- Sensor refreshes retain downloaded fixtures and cannot replace a final score with an older unfinished match.
+- Update through HACS, restart Home Assistant, press Ctrl+F5, then check LMS results again.
+
+## Previous release — 0.7.11
 
 - Fixed Acca teams disappearing when a sensor refresh replaced the full fixture list with a smaller set of matches.
 - Cached matches are retained within their competition, while refreshed copies update existing matches without duplicates.
