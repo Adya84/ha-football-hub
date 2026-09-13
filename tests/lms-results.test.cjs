@@ -44,3 +44,18 @@ for (const mode of ['private', 'global']) {
     if (mode === 'global') assert.equal(panel._lmsCompetition.players[0].points, 3, 'repeat checks do not award twice');
   });
 }
+
+test('sole survivor is shown as winner only after their final result completes the round', async () => {
+  const { panel } = setup('private');
+  const [survivor, eliminated] = panel._lmsCompetition.players;
+  eliminated.alive = false;
+  eliminated.results['1'] = 'eliminated';
+  assert.equal(panel._isLmsWinner(survivor), false);
+  await panel._settleLmsRound();
+  assert.equal(panel._lmsCompetition.completed, true);
+  assert.equal(panel._lmsCompetition.winnerId, survivor.id);
+  assert.equal(panel._isLmsWinner(survivor), true);
+  assert.equal(panel._isLmsWinner(eliminated), false);
+  panel._lmsCompetition.completed = false;
+  assert.equal(panel._isLmsWinner(survivor), false, 'reopening a competition removes the winner label');
+});

@@ -1,7 +1,7 @@
 # ⚽ Home Assistant Football Hub
 
 [![License](https://img.shields.io/badge/license-Personal%20Use-red.svg)](LICENSE)
-![Version](https://img.shields.io/badge/version-v0.7.12-green)
+![Version](https://img.shields.io/badge/version-v0.7.13-green)
 ![Home Assistant](https://img.shields.io/badge/Home%20Assistant-2024.1%2B-blue)
 ![HACS](https://img.shields.io/badge/HACS-Custom-orange)
 ![Cloud Polling](https://img.shields.io/badge/IoT--Class-Cloud%20Polling-blue)
@@ -16,7 +16,12 @@ Football Hub remembers the country, competition, favourite clubs and last-opened
 
 ---
 
-## Latest release — 0.7.12
+## Latest release — 0.7.13
+
+- Show the sole surviving player as Winner in LMS standings and player cards once the round has completed.
+- A player awaiting their final result is not declared the winner.
+
+## Previous release — 0.7.12
 
 - LMS Check results now fetches fresh results before checking global competitions as well as private competitions.
 - Sensor refreshes retain downloaded fixtures and cannot replace a final score with an older unfinished match.
