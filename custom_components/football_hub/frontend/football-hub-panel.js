@@ -1,4 +1,4 @@
-const PANEL_VERSION = "0.7.9";
+const PANEL_VERSION = "0.7.11";
 const LMS_SHARE_SERVICE = "https://football-hub-lms.zesty-flame-5295.chatgpt.site";
 const FULL_COMPETITION_CATALOGUE = {
   England: ["Premier League", "Championship", "League One", "League Two", "National League", "FA Cup", "EFL Cup", "Community Shield"],
@@ -1641,7 +1641,13 @@ class FootballHubPanel extends HTMLElement {
         home_goals: fixture.home_goals ?? fixture.score_fulltime_home ?? fixture.fulltime_home ?? fixture.home_score ?? fixture.goals?.home ?? null,
         away_goals: fixture.away_goals ?? fixture.score_fulltime_away ?? fixture.fulltime_away ?? fixture.away_score ?? fixture.goals?.away ?? null,
       }));
-      const uniqueFixtures = [...new Map(normalizedFixtures.map((fixture, index) => [String(fixture.fixture_id ?? fixture.id ?? `${fixture.home_team}-${fixture.away_team}-${fixture.timestamp || index}`), fixture])).values()];
+      // Rendering captures the current sensors again. Their fixture list can be
+      // smaller than the full schedule loaded for Acca, so retain cached matches
+      // instead of removing teams that only occur in the full schedule.
+      const existing = this._doublePickCache[competition.key];
+      const cachedFixtures = existing?.competitionKey === competition.key ? existing.fixtures || [] : [];
+      const combinedFixtures = [...cachedFixtures, ...normalizedFixtures];
+      const uniqueFixtures = [...new Map(combinedFixtures.map((fixture, index) => [String(fixture.fixture_id ?? fixture.id ?? `${fixture.home_team}-${fixture.away_team}-${fixture.timestamp || index}`), fixture])).values()];
       teams.push(...uniqueFixtures.flatMap((fixture) => [fixture.home_team, fixture.away_team]));
       this._doublePickCache[competition.key] = { competitionKey: competition.key, teams: [...new Set(teams.filter(Boolean))].sort((a, b) => a.localeCompare(b)), fixtures: uniqueFixtures, updated: Date.now() };
       localStorage.setItem("football_hub_double_pick_cache", JSON.stringify(this._doublePickCache));

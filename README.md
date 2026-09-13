@@ -1,7 +1,7 @@
 # ⚽ Home Assistant Football Hub
 
 [![License](https://img.shields.io/badge/license-Personal%20Use-red.svg)](LICENSE)
-![Version](https://img.shields.io/badge/version-v0.7.10-green)
+![Version](https://img.shields.io/badge/version-v0.7.11-green)
 ![Home Assistant](https://img.shields.io/badge/Home%20Assistant-2024.1%2B-blue)
 ![HACS](https://img.shields.io/badge/HACS-Custom-orange)
 ![Cloud Polling](https://img.shields.io/badge/IoT--Class-Cloud%20Polling-blue)
@@ -16,7 +16,13 @@ Football Hub remembers the country, competition, favourite clubs and last-opened
 
 ---
 
-## Latest release — 0.7.10
+## Latest release — 0.7.11
+
+- Fixed Acca teams disappearing when a sensor refresh replaced the full fixture list with a smaller set of matches.
+- Cached matches are retained within their competition, while refreshed copies update existing matches without duplicates.
+- After updating, restart Home Assistant, hard-refresh Football Hub, and load all selected Acca competitions again.
+
+## Previous release — 0.7.10
 
 - Fixed Acca League Champions League results so **Check results** retrieves completed European matches.
 - Champions League, Europa League and Conference League picks are matched only against their selected competition, preventing domestic results from being used.
