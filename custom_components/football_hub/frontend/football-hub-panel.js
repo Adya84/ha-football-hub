@@ -1,4 +1,4 @@
-const PANEL_VERSION = "0.7.13";
+const PANEL_VERSION = "0.7.14";
 const LMS_SHARE_SERVICE = "https://football-hub-lms.zesty-flame-5295.chatgpt.site";
 const FULL_COMPETITION_CATALOGUE = {
   England: ["Premier League", "Championship", "League One", "League Two", "National League", "FA Cup", "EFL Cup", "Community Shield"],
@@ -995,7 +995,8 @@ class FootballHubPanel extends HTMLElement {
   }
 
   _isLmsWinner(player) {
-    return Boolean(this._lmsCompetition?.completed && player?.alive && this._lmsCompetition.winnerId === player.id);
+    return Boolean(this._lmsCompetition?.completed && player?.alive && this._lmsCompetition.winnerId === player.id
+      && ["survived", "bought-back"].includes(player.results?.[String(this._lmsCompetition.round)]));
   }
 
   _lmsTeamGroups() {
@@ -1319,7 +1320,12 @@ class FootballHubPanel extends HTMLElement {
 
   async _settleLmsRound(automatic = false) {
     const competition = this._lmsCompetition;
-    if (!competition || competition.completed || (!automatic && !this._isLmsAdmin())) return;
+    if (!competition || (!automatic && !this._isLmsAdmin())) return;
+    const repairPendingFinal = competition.completed && competition.mode !== "global"
+      && competition.players.some((player) => player.alive && !player.results?.[String(competition.round)]);
+    // Older saved/shared state can declare a winner before their last pick is
+    // resolved. An explicit result check must still be able to finish that pick.
+    if (competition.completed && (automatic || !repairPendingFinal)) return;
     if (automatic && Number(competition.manualRoundHold || 0) === Number(competition.round || 0)) return;
     if (!automatic) delete competition.manualRoundHold;
     if (!automatic) await this._refreshLmsRoundFixtures();
@@ -1332,6 +1338,10 @@ class FootballHubPanel extends HTMLElement {
     if (!fixtures.length) {
       if (!automatic) window.alert(`No fixtures were found for Round ${roundKey}. Load the selected leagues, then try again.`);
       return;
+    }
+    if (repairPendingFinal) {
+      competition.completed = false;
+      competition.winnerId = "";
     }
     let waiting = false;
     let resolvedCount = 0;
@@ -2351,8 +2361,8 @@ class FootballHubPanel extends HTMLElement {
           const earlyOptions = teamGroups.map((league) => `<optgroup label="${this._escape(league.name)} · ${this._escape(league.teams.length)} teams">${league.teams.map((team) => `<option value="${this._escape(team)}" ${earlyPick === team ? "selected" : ""} ${allUsedTeams.has(team) ? "disabled" : ""}>${this._escape(team)}${allUsedTeams.has(team) ? " · used" : ""}</option>`).join("")}</optgroup>`).join("");
           const boughtBack = result === "bought-back";
           const statusClass = !player.alive ? "eliminated" : ["survived", "bought-back"].includes(result) ? "survived" : pick ? (deadline.locked ? "waiting" : "selected") : "awaiting";
-          const statusIcon = statusClass === "eliminated" ? "mdi:close-circle" : ["awaiting", "waiting"].includes(statusClass) ? "mdi:clock-alert-outline" : "mdi:check-circle";
-          const statusText = statusClass === "eliminated" ? "Out" : boughtBack ? "Bought back · Through" : statusClass === "survived" ? "Through" : statusClass === "waiting" ? "Waiting for result · Still in" : statusClass === "selected" ? "Team selected · Still in" : "No team selected · Still in";
+          const statusIcon = this._isLmsWinner(player) ? "mdi:trophy-award" : statusClass === "eliminated" ? "mdi:close-circle" : ["awaiting", "waiting"].includes(statusClass) ? "mdi:clock-alert-outline" : "mdi:check-circle";
+          const statusText = this._isLmsWinner(player) ? "Winner" : statusClass === "eliminated" ? "Out" : boughtBack ? "Bought back · Through" : statusClass === "survived" ? "Through" : statusClass === "waiting" ? "Waiting for result · Still in" : statusClass === "selected" ? "Team selected · Still in" : "No team selected · Still in";
           const canPickEarly = player.alive && ["survived", "bought-back"].includes(result) && !competition.completed;
           const canBuyBack = this._canLmsBuyBack(player);
           const email = String(player.email || "");

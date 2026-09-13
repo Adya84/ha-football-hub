@@ -59,3 +59,39 @@ test('sole survivor is shown as winner only after their final result completes t
   panel._lmsCompetition.completed = false;
   assert.equal(panel._isLmsWinner(survivor), false, 'reopening a competition removes the winner label');
 });
+
+test('Check results repairs completed Round 4 with a pending Arsenal winner', async () => {
+  const { panel, requests } = setup('private');
+  const competition = panel._lmsCompetition;
+  competition.round = 4;
+  competition.completed = true;
+  competition.winnerId = 'a';
+  competition.players[0].picks = { 4: 'Arsenal' };
+  competition.players[1].alive = false;
+  competition.players[1].results = { 4: 'eliminated' };
+  assert.equal(panel._isLmsWinner(competition.players[0]), false);
+  await panel._settleLmsRound();
+  assert.equal(requests(), 1);
+  assert.equal(competition.players[0].results['4'], 'survived');
+  assert.equal(competition.completed, true);
+  assert.equal(competition.winnerId, 'a');
+  assert.equal(panel._isLmsWinner(competition.players[0]), true);
+  await panel._settleLmsRound();
+  assert.equal(requests(), 1, 'an already resolved completed competition remains unchanged');
+});
+
+test('premature completion is removed when the final pick is still unplayed', async () => {
+  const { panel } = setup('private');
+  const competition = panel._lmsCompetition;
+  competition.completed = true;
+  competition.winnerId = 'a';
+  competition.players[1].alive = false;
+  panel._refreshLmsRoundFixtures = async () => {
+    panel._lmsLeagueCache.premier_league = { fixtures: [{ ...arsenal, status: 'NS', status_short: 'NS', home_goals: null, away_goals: null }] };
+  };
+  await panel._settleLmsRound();
+  assert.equal(competition.completed, false);
+  assert.equal(competition.winnerId, '');
+  assert.equal(competition.players[0].results['1'], undefined);
+  assert.equal(panel._isLmsWinner(competition.players[0]), false);
+});
