@@ -123,3 +123,33 @@ test('restart retains players and links while archiving the winner and resetting
   assert.equal(competition.players[0].pickUrl, '/pick/existing');
   assert.ok(competition.players.every(player => player.alive && !player.paid && !Object.keys(player.picks).length && !Object.keys(player.results).length));
 });
+
+test('rendering the actual LMS standings does not erase a confirmed Arsenal result from shared state', () => {
+  const { panel } = setup('private');
+  const competition = panel._lmsCompetition;
+  competition.round = 4;
+  competition.completed = true;
+  competition.winnerId = 'a';
+  competition.players[0].picks = { 4: 'Arsenal' };
+  competition.players[0].results = { 4: 'survived' };
+  competition.players[1].alive = false;
+  panel._lmsLeagueCache = { premier_league: { teams: ['Arsenal'], fixtures: [pending] } };
+  panel._lmsMode = 'private';
+  panel._lmsPageView = 'standings';
+  panel._lmsEmailServices = () => [];
+  const html = panel._lastManStandingPage();
+  assert.equal(competition.players[0].results['4'], 'survived');
+  assert.match(html, /<b>Winner<\/b>/);
+});
+
+test('completed competitions with a literal pending result can be repaired', async () => {
+  const { panel, requests } = setup('private');
+  panel._lmsCompetition.completed = true;
+  panel._lmsCompetition.winnerId = 'a';
+  panel._lmsCompetition.players[0].results['1'] = 'pending';
+  panel._lmsCompetition.players[1].alive = false;
+  await panel._settleLmsRound();
+  assert.equal(requests(), 1);
+  assert.equal(panel._lmsCompetition.players[0].results['1'], 'survived');
+  assert.equal(panel._isLmsWinner(panel._lmsCompetition.players[0]), true);
+});

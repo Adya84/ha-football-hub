@@ -1,7 +1,7 @@
 # ⚽ Home Assistant Football Hub
 
 [![License](https://img.shields.io/badge/license-Personal%20Use-red.svg)](LICENSE)
-![Version](https://img.shields.io/badge/version-v0.7.15-green)
+![Version](https://img.shields.io/badge/version-v0.7.16-green)
 ![Home Assistant](https://img.shields.io/badge/Home%20Assistant-2024.1%2B-blue)
 ![HACS](https://img.shields.io/badge/HACS-Custom-orange)
 ![Cloud Polling](https://img.shields.io/badge/IoT--Class-Cloud%20Polling-blue)
@@ -16,7 +16,13 @@ Football Hub remembers the country, competition, favourite clubs and last-opened
 
 ---
 
-## Latest release — 0.7.15
+## Latest release — 0.7.16
+
+- Opening or refreshing LMS no longer deletes a confirmed survived result just because the local fixture cache has not loaded that match.
+- Check results can also repair a completed competition with a saved pending result.
+- After updating and restarting Home Assistant, press Ctrl+F5 and Check round results again to restore an affected final pick.
+
+## Previous release — 0.7.15
 
 - Restart a finished private LMS with the same players and links using Restart competition.
 - Archive the winner and prize, clear picks and results, and reset payments for a new Round 1 with a fresh prize fund.
