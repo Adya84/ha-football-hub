@@ -1,4 +1,4 @@
-const PANEL_VERSION = "0.7.16";
+const PANEL_VERSION = "0.7.17";
 const LMS_SHARE_SERVICE = "https://football-hub-lms.zesty-flame-5295.chatgpt.site";
 const FULL_COMPETITION_CATALOGUE = {
   England: ["Premier League", "Championship", "League One", "League Two", "National League", "FA Cup", "EFL Cup", "Community Shield"],
@@ -1028,15 +1028,25 @@ class FootballHubPanel extends HTMLElement {
           return timestamp >= roundStarted && this._doublePickFixtureMatchesCompetition(fixture, league);
         })
         .sort((a, b) => this._lmsFixtureTimestamp(a) - this._lmsFixtureTimestamp(b));
-      const first = candidates[0];
-      if (!first) return { ...league, roundFixtures: [] };
-      const roundValue = first.round ?? first.round_name ?? first.roundName ?? first.matchday ?? first.round_number;
-      const firstTimestamp = this._lmsFixtureTimestamp(first);
-      const roundFixtures = candidates.filter((fixture) => {
-        const fixtureRound = fixture.round ?? fixture.round_name ?? fixture.roundName ?? fixture.matchday ?? fixture.round_number;
-        if (roundValue !== undefined && roundValue !== null && roundValue !== "") return String(fixtureRound) === String(roundValue);
-        return this._lmsFixtureTimestamp(fixture) <= firstTimestamp + (4 * 86400);
-      });
+      if (!candidates.length) return { ...league, roundFixtures: [] };
+      // A postponed match can be the first upcoming item from a completed
+      // matchweek. Prefer the first proper matchweek, rather than opening a
+      // round which contains only that isolated fixture.
+      const fixtureRound = (fixture) => fixture.round ?? fixture.round_name ?? fixture.roundName ?? fixture.matchday ?? fixture.round_number;
+      const groups = [];
+      for (const fixture of candidates) {
+        const value = fixtureRound(fixture);
+        const timestamp = this._lmsFixtureTimestamp(fixture);
+        let group = value !== undefined && value !== null && value !== ""
+          ? groups.find((item) => item.key === `round:${String(value)}`)
+          : groups.find((item) => item.key.startsWith("date:") && timestamp <= item.firstTimestamp + (4 * 86400));
+        if (!group) {
+          group = { key: value !== undefined && value !== null && value !== "" ? `round:${String(value)}` : `date:${timestamp}`, firstTimestamp: timestamp, fixtures: [] };
+          groups.push(group);
+        }
+        group.fixtures.push(fixture);
+      }
+      const roundFixtures = (groups.find((group) => group.fixtures.length >= 2) || groups[0]).fixtures;
       return { ...league, roundFixtures };
     });
   }
@@ -2375,7 +2385,10 @@ class FootballHubPanel extends HTMLElement {
         ${this._lmsPageView === "fixtures" ? `<section class="lms-round-fixtures">${roundFixtureGroups.map((league) => `<article class="page-card lms-round-league"><header><div><span class="eyebrow">${this._escape(league.country || "")}</span><h3>${this._escape(league.name)}</h3></div><b>${league.roundFixtures.length} matches</b></header>${league.roundFixtures.length ? `<div class="lms-round-match-list">${league.roundFixtures.map((fixture) => { const kickoff = this._lmsFixtureTimestamp(fixture); const localKickoff = kickoff ? new Date(kickoff * 1000).toLocaleString([], { weekday: "short", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" }) : "Time TBC"; const status = String(fixture.status_short || fixture.status || "NS").toUpperCase(); const hasScore = fixture.home_goals !== null && fixture.home_goals !== undefined && fixture.away_goals !== null && fixture.away_goals !== undefined && !["NS", "TBD", "PST"].includes(status); const score = hasScore ? `${fixture.home_goals} - ${fixture.away_goals}` : "vs"; const matchState = ["FT", "AET", "PEN"].includes(status) ? `Full time · ${status}` : hasScore ? `${status}${fixture.elapsed ? ` · ${fixture.elapsed}'` : ""}` : localKickoff; return `<div class="lms-round-match ${hasScore ? "has-score" : ""}"><span class="home">${this._escape(fixture.home_team)}${this._logo(fixture.home_logo, fixture.home_team, "30")}</span><strong>${this._escape(score)}</strong><span class="away">${this._logo(fixture.away_logo, fixture.away_team, "30")}${this._escape(fixture.away_team)}</span><time>${this._escape(matchState)}</time></div>`; }).join("")}</div>` : `<div class="empty">Load this league to collect its next round of fixtures.</div>`}</article>`).join("") || `<div class="page-card empty">No round fixtures are available yet.</div>`}</section>` : this._lmsPageView === "standings" ? `<section class="page-card lms-standings"><header><div><span class="eyebrow">COMPETITION STATUS</span><h2>Players through and out</h2></div><b>${alive} still standing</b></header><div class="lms-standings-table"><div class="lms-standings-row heading"><span>#</span><span>Player</span><span>Status</span><span>Current pick</span><span>Teams used</span><span>Entry</span></div>${[...competition.players].sort((a, b) => Number(b.alive) - Number(a.alive) || a.name.localeCompare(b.name)).map((player, index) => { const currentPick = player.picks?.[roundKey] || "Not selected"; const usedTeams = Object.entries(player.picks || {}).sort(([a], [b]) => Number(a) - Number(b)).map(([round, team]) => `R${round}: ${team}`).join(" · ") || "None"; const playerResult = player.results?.[roundKey] || ""; const throughText = this._isLmsWinner(player) ? "Winner" : !player.alive ? (playerResult === "eliminated-no-pick" ? "Out · No pick" : "Out") : playerResult === "bought-back" ? "Bought back · Through" : playerResult === "survived" ? "Through" : currentPick !== "Not selected" ? "Not played" : "Awaiting pick"; return `<div class="lms-standings-row ${player.alive ? "through" : "eliminated"}"><span>${index + 1}</span><strong>${this._escape(player.name)}</strong><span><b>${this._escape(throughText)}</b></span><span>${this._escape(currentPick)}</span><span>${this._escape(usedTeams)}</span><span>${player.paid ? (player.buyBacks ? "Paid + buy-back" : "Paid") : "Due"}</span></div>`; }).join("") || `<div class="empty">No players added yet.</div>`}</div></section>` : `
         <section class="page-card lms-league-switch"><label><span>Choose teams from</span><select id="lms-active-league">${(competition.leagues || []).map((league) => `<option value="${this._escape(league.key)}" ${league.key === selectedLmsLeague ? "selected" : ""}>${this._escape(league.country)} · ${this._escape(league.name)}</option>`).join("")}</select></label>${loadedLmsLeague ? `<strong>${this._escape(teams.length)} teams loaded</strong>` : `<strong class="lms-loading">Loading selected league teams…</strong>`}</section>
         ${adminUnlocked ? `<section class="page-card lms-add-player"><input id="lms-player-name" maxlength="50" placeholder="Player name"><input id="lms-player-email" type="email" maxlength="120" placeholder="Email (for pick link)"><button id="lms-add-player">Add player</button><button id="lms-settle" type="button">Check round results</button><button id="lms-end-round" type="button">Start next round (failsafe)</button>${Number(competition.round || 1) > 1 ? `<button id="lms-undo-end-round" type="button">Undo last manual round</button>` : ""}</section>` : ""}
-        <section class="lms-player-list">${competition.players.length ? [...competition.players].sort((a, b) => Number(b.alive) - Number(a.alive) || String(a.name).localeCompare(String(b.name))).map((player, playerIndex, sortedPlayers) => {
+        <section class="lms-player-list">${competition.players.length ? [...competition.players].sort((a, b) => {
+          const group = (player) => this._isLmsWinner(player) ? 0 : player.paid ? 1 : player.alive ? 2 : 3;
+          return group(a) - group(b) || String(a.name).localeCompare(String(b.name));
+        }).map((player, playerIndex, sortedPlayers) => {
           const used = new Set(Object.entries(player.picks || {}).filter(([round]) => round !== roundKey).map(([, team]) => team));
           const pick = player.picks?.[roundKey] || "";
           const result = player.results?.[roundKey] || "";
@@ -2393,9 +2406,13 @@ class FootballHubPanel extends HTMLElement {
           const canBuyBack = this._canLmsBuyBack(player);
           const email = String(player.email || "");
           const maskedEmail = email ? email.replace(/^(.{1,2}).*(@.*)$/, "$1*****$2") : "No email added";
-          const startsPaymentGroup = playerIndex === 0 || Boolean(sortedPlayers[playerIndex - 1]?.alive) !== Boolean(player.alive);
-          const statusGroupCount = sortedPlayers.filter((item) => Boolean(item.alive) === Boolean(player.alive)).length;
-          const paymentHeading = startsPaymentGroup ? `<div class="lms-payment-group-title ${player.alive ? "paid" : "eliminated"}"><ha-icon icon="${player.alive ? "mdi:shield-check-outline" : "mdi:account-off-outline"}"></ha-icon><div><strong>${this._isLmsWinner(player) ? "Winner" : player.alive ? "Still in" : "Eliminated players"}</strong><span>${statusGroupCount} player${statusGroupCount === 1 ? "" : "s"}</span></div></div>` : "";
+          const paymentGroup = (item) => this._isLmsWinner(item) ? "winner" : item.paid ? "paid" : item.alive ? "unpaid" : "eliminated";
+          const groupName = { winner: "Winner", paid: "Paid players", unpaid: "Payment due", eliminated: "Eliminated players" };
+          const groupIcon = { winner: "mdi:trophy-award", paid: "mdi:cash-check", unpaid: "mdi:cash-clock", eliminated: "mdi:account-off-outline" };
+          const currentGroup = paymentGroup(player);
+          const startsPaymentGroup = playerIndex === 0 || paymentGroup(sortedPlayers[playerIndex - 1]) !== currentGroup;
+          const statusGroupCount = sortedPlayers.filter((item) => paymentGroup(item) === currentGroup).length;
+          const paymentHeading = startsPaymentGroup ? `<div class="lms-payment-group-title ${currentGroup}"><ha-icon icon="${groupIcon[currentGroup]}"></ha-icon><div><strong>${groupName[currentGroup]}</strong><span>${statusGroupCount} player${statusGroupCount === 1 ? "" : "s"}</span></div></div>` : "";
           return `${paymentHeading}<article class="page-card lms-player ${player.alive ? "alive" : "out"} ${statusClass}"><div class="lms-player-name"><ha-icon icon="${player.alive ? "mdi:shield-check-outline" : "mdi:close-octagon-outline"}"></ha-icon><div><strong>${this._escape(player.name)}</strong><span>${this._isLmsWinner(player) ? "Winner · " : ""}Round ${competition.round}</span></div><span class="lms-payment-status ${player.paid ? "paid" : "unpaid"}">${player.paid ? `£ Paid${player.buyBacks ? " + buy-back" : ""}` : "Payment due"}</span>${adminUnlocked ? `<button class="lms-toggle-paid" data-player-id="${this._escape(player.id)}">${player.paid ? "Mark unpaid" : "Mark paid"}</button>` : ""}${adminUnlocked && player.pickUrl ? `<button class="lms-copy-player-link" data-player-id="${this._escape(player.id)}"><ha-icon icon="mdi:email-fast-outline"></ha-icon> Copy pick link</button>` : ""}${adminUnlocked && canBuyBack ? `<button class="lms-buy-back" data-player-id="${this._escape(player.id)}"><ha-icon icon="mdi:account-reactivate-outline"></ha-icon> Buy back £${entryFee.toFixed(2)}</button>` : ""}<span class="lms-pick-status ${statusClass}"><ha-icon icon="${statusIcon}"></ha-icon>${statusText}</span></div>${player.alive ? `<label><span>Round ${competition.round} pick</span><select class="lms-pick" data-player-id="${this._escape(player.id)}" ${pickLocked ? "disabled" : ""}><option value="">${deadline.locked ? "Picks locked" : !adminUnlocked ? "Administrator locked" : "Choose a team"}</option>${groupedOptions}</select></label>` : ""}${canPickEarly ? `<label class="lms-early-pick"><span><ha-icon icon="mdi:fast-forward-outline"></ha-icon> Through — choose Round ${Number(competition.round) + 1} early</span><select class="lms-next-pick" data-player-id="${this._escape(player.id)}" ${!adminUnlocked ? "disabled" : ""}><option value="">${!adminUnlocked ? "Administrator locked" : "Choose next-round team"}</option>${earlyOptions}</select></label>` : ""}<div class="lms-history">${Object.entries(player.picks || {}).map(([round, team]) => `<span>R${this._escape(round)} · ${this._escape(team)} · ${this._escape(player.results?.[round] || (round === nextRoundKey ? "early pick" : "pending"))}</span>`).join("") || `<span>No picks yet</span>`}</div><div class="lms-player-email"><ha-icon icon="mdi:email-lock-outline"></ha-icon><span>${this._escape(adminUnlocked ? (email || "No email added") : maskedEmail)}</span>${adminUnlocked ? `<div class="lms-player-admin-actions"><button class="lms-edit-player-email" data-player-id="${this._escape(player.id)}"><ha-icon icon="mdi:email-edit-outline"></ha-icon>${email ? "Edit email" : "Add email"}</button><button class="lms-remove-player" data-player-id="${this._escape(player.id)}"><ha-icon icon="mdi:account-remove-outline"></ha-icon>Remove player</button></div>` : `<small>Hidden until administrator unlocks</small>`}</div></article>`;
         }).join("") : `<div class="page-card empty">Add the players taking part in this competition.</div>`}</section>`}
       `}
@@ -4972,6 +4989,7 @@ class FootballHubPanel extends HTMLElement {
       .lms-payment-group-title > div { display:flex; align-items:baseline; justify-content:space-between; gap:12px; width:100%; }
       .lms-payment-group-title.unpaid { color:#ffc85c; border-color:rgba(255,196,72,.45); background:rgba(255,164,35,.1); }
       .lms-payment-group-title.paid { color:#62ffa8; border-color:rgba(63,242,142,.45); background:rgba(31,203,108,.1); }
+      .lms-payment-group-title.winner { color:#ffd86a; border-color:rgba(255,216,106,.5); background:rgba(255,196,72,.12); }
       .lms-payment-group-title.eliminated { color:#ff858c; border-color:rgba(255,77,77,.45); background:rgba(255,55,65,.1); }
       .lms-player { display:grid; gap:14px; }
       .lms-player.out { opacity:.62; border-color:rgba(255,77,77,.35); }

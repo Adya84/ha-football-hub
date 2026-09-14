@@ -142,6 +142,17 @@ test('rendering the actual LMS standings does not erase a confirmed Arsenal resu
   assert.match(html, /<b>Winner<\/b>/);
 });
 
+test('LMS player page separates paid players from payment due players', () => {
+  const { panel } = setup('private');
+  panel._lmsMode = 'private';
+  panel._lmsPageView = 'picks';
+  panel._lmsCompetition.players[0].paid = true;
+  panel._lmsEmailServices = () => [];
+  const html = panel._lastManStandingPage();
+  assert.match(html, /Paid players/);
+  assert.match(html, /Payment due/);
+});
+
 test('completed competitions with a literal pending result can be repaired', async () => {
   const { panel, requests } = setup('private');
   panel._lmsCompetition.completed = true;
@@ -152,4 +163,15 @@ test('completed competitions with a literal pending result can be repaired', asy
   assert.equal(requests(), 1);
   assert.equal(panel._lmsCompetition.players[0].results['1'], 'survived');
   assert.equal(panel._isLmsWinner(panel._lmsCompetition.players[0]), true);
+});
+
+test('a new LMS round skips an isolated postponed fixture for the next full matchweek', () => {
+  const { panel } = setup('private');
+  panel._lmsLeagueCache.premier_league = { fixtures: [
+    { id: 'postponed', home_team: 'Leeds', away_team: 'Newcastle', timestamp: 1789400000, round: '4', status: 'NS' },
+    { id: 'next-1', home_team: 'Arsenal', away_team: 'Chelsea', timestamp: 1789650000, round: '5', status: 'NS' },
+    { id: 'next-2', home_team: 'Liverpool', away_team: 'Everton', timestamp: 1789660000, round: '5', status: 'NS' },
+  ] };
+  const fixtures = panel._lmsRoundFixtureGroups()[0].roundFixtures;
+  assert.deepEqual(Array.from(fixtures, (fixture) => fixture.id), ['next-1', 'next-2']);
 });
