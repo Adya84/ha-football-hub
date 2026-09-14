@@ -1,7 +1,7 @@
 # ⚽ Home Assistant Football Hub
 
 [![License](https://img.shields.io/badge/license-Personal%20Use-red.svg)](LICENSE)
-![Version](https://img.shields.io/badge/version-v0.7.14-green)
+![Version](https://img.shields.io/badge/version-v0.7.15-green)
 ![Home Assistant](https://img.shields.io/badge/Home%20Assistant-2024.1%2B-blue)
 ![HACS](https://img.shields.io/badge/HACS-Custom-orange)
 ![Cloud Polling](https://img.shields.io/badge/IoT--Class-Cloud%20Polling-blue)
@@ -16,7 +16,13 @@ Football Hub remembers the country, competition, favourite clubs and last-opened
 
 ---
 
-## Latest release — 0.7.14
+## Latest release — 0.7.15
+
+- Restart a finished private LMS with the same players and links using Restart competition.
+- Archive the winner and prize, clear picks and results, and reset payments for a new Round 1 with a fresh prize fund.
+- Shared competitions load upcoming fixtures before restarting and preserve the finished edition if those fixtures are unavailable.
+
+## Previous release — 0.7.14
 
 - Check results can repair a completed private LMS competition whose remaining player still has a pending final pick.
 - The player status badge shows Winner with a trophy once that pick is resolved.

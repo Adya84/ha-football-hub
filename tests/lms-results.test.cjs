@@ -10,6 +10,7 @@ function setup(mode) {
   vm.runInNewContext(fs.readFileSync(path.join(__dirname, '../custom_components/football_hub/frontend/football-hub-panel.js'), 'utf8'), {
     HTMLElement: class {}, customElements: { get: () => false, define: (_name, value) => { Panel = value; } },
     localStorage: { setItem() {} }, queueMicrotask() {}, console,
+    window: { confirm: () => true, alert: (message) => { throw new Error(message); } },
     fetch: async (url) => {
       assert.ok(url.endsWith('league=premier_league&fresh=1'));
       requests++;
@@ -94,4 +95,31 @@ test('premature completion is removed when the final pick is still unplayed', as
   assert.equal(competition.winnerId, '');
   assert.equal(competition.players[0].results['1'], undefined);
   assert.equal(panel._isLmsWinner(competition.players[0]), false);
+});
+
+test('restart retains players and links while archiving the winner and resetting the prize', async () => {
+  const { panel } = setup('private');
+  const competition = panel._lmsCompetition;
+  competition.completed = true;
+  competition.winnerId = 'a';
+  competition.edition = 2;
+  competition.entryFee = 5;
+  competition.carriedPrize = 10;
+  competition.players[0].results = { 1: 'survived' };
+  competition.players[0].paid = true;
+  competition.players[0].pickUrl = '/pick/existing';
+  competition.players[1].alive = false;
+  competition.players[1].paid = true;
+  competition.players[1].buyBacks = 1;
+  const ids = competition.players.map(player => player.id);
+  await panel._restartLmsCompetition();
+  assert.equal(competition.edition, 3);
+  assert.equal(competition.round, 1);
+  assert.equal(competition.completed, false);
+  assert.equal(competition.archives[0].winnerName, 'Arsenal player');
+  assert.equal(competition.archives[0].prizeFund, 25);
+  assert.equal(competition.carriedPrize, 0);
+  assert.deepEqual(Array.from(competition.players, player => player.id), ids);
+  assert.equal(competition.players[0].pickUrl, '/pick/existing');
+  assert.ok(competition.players.every(player => player.alive && !player.paid && !Object.keys(player.picks).length && !Object.keys(player.results).length));
 });

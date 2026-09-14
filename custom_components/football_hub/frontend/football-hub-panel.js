@@ -1,4 +1,4 @@
-const PANEL_VERSION = "0.7.14";
+const PANEL_VERSION = "0.7.15";
 const LMS_SHARE_SERVICE = "https://football-hub-lms.zesty-flame-5295.chatgpt.site";
 const FULL_COMPETITION_CATALOGUE = {
   England: ["Premier League", "Championship", "League One", "League Two", "National League", "FA Cup", "EFL Cup", "Community Shield"],
@@ -657,6 +657,12 @@ class FootballHubPanel extends HTMLElement {
         body: JSON.stringify({ competition: this._lmsSharePayload(), ...(competition.mode === "private" && this._lmsAdminPassword ? { adminPassword: this._lmsAdminPassword } : {}) }),
       });
       const result = await response.json();
+      if (response.status === 409 && result.code === "REMOTE_COMPETITION_NEWER") {
+        this._lmsShareSyncPending = false;
+        this._lmsShareBusy = false;
+        await this._pullLmsSharePicks(true);
+        return;
+      }
       if (!response.ok) throw new Error(result.error || "Share update failed");
       this._applyLmsPlayerLinks(result.playerLinks);
       localStorage.setItem(this._lmsMode === "global" ? "football_hub_lms_global" : "football_hub_lms_private", JSON.stringify(competition));
@@ -1242,6 +1248,53 @@ class FootballHubPanel extends HTMLElement {
     this._lmsCompetition.entryFee = Math.max(0, Number(value) || 0);
     this._saveLms();
     this._render();
+  }
+
+  async _restartLmsCompetition() {
+    const competition = this._lmsCompetition;
+    if (!competition?.completed || competition.mode === "global" || !this._isLmsAdmin() || this._lmsRestartBusy) return;
+    if (competition.players.some((player) => player.alive && !["survived", "bought-back"].includes(player.results?.[String(competition.round)]))) {
+      window.alert("Check the final round results before restarting.");
+      return;
+    }
+    if (!window.confirm("Restart with the same players? The winner and prize are saved in Previous winners. Picks, results and payments reset for a new Round 1, with a fresh prize fund.")) return;
+    this._lmsRestartBusy = true;
+    let ownsShareLock = false;
+    try {
+      if (competition.shareId) {
+        if (this._lmsShareBusy || this._lmsShareSyncPending) throw new Error("The final results are still syncing. Please try again in a moment.");
+        this._lmsShareBusy = true;
+        ownsShareLock = true;
+        const response = await fetch(`${LMS_SHARE_SERVICE}/api/competitions/${encodeURIComponent(competition.shareId)}`, {
+          method: "PUT",
+          headers: { "content-type": "application/json", ...(competition.shareEditToken ? { authorization: `Bearer ${competition.shareEditToken}` } : {}), ...(this._lmsAdminPassword ? { "x-admin-password": this._lmsAdminPassword } : {}) },
+          body: JSON.stringify({ restart: true, edition: Number(competition.edition || 1) }),
+        });
+        const result = await response.json();
+        if (!response.ok) throw new Error(result.error || "Competition could not be restarted");
+        this._lmsShareBusy = false;
+        ownsShareLock = false;
+        await this._pullLmsSharePicks(true);
+      } else {
+        const winner = competition.players.find((player) => this._isLmsWinner(player));
+        const entries = competition.players.filter((player) => player.paid).length + competition.players.reduce((sum, player) => sum + Number(player.buyBacks || 0), 0);
+        competition.archives = [...(competition.archives || []), { edition: Number(competition.edition || 1), completed: new Date().toISOString(), winnerId: winner?.id || "", winnerName: winner?.name || "", prizeFund: Number(competition.carriedPrize || 0) + entries * Number(competition.entryFee || 0) }];
+        competition.edition = Number(competition.edition || 1) + 1;
+        competition.round = 1;
+        competition.roundStarted = Math.floor(Date.now() / 1000);
+        competition.completed = false;
+        competition.winnerId = "";
+        competition.carriedPrize = 0;
+        competition.deadlines = {};
+        for (const key of ["matchResultEmails", "resultsEmailSent", "resultsEmailPending", "nextRoundEmailSchedules", "reminderEmails", "pickReminderEmails"]) competition[key] = {};
+        delete competition.manualRoundHold;
+        delete competition.lastManualEndSnapshot;
+        competition.players = competition.players.map((player) => ({ ...player, alive: true, paid: false, points: 0, buyBacks: 0, buyBackRounds: {}, picks: {}, results: {}, currentRoundPicked: false }));
+        this._saveLms();
+      }
+      this._render();
+    } catch (error) { window.alert(error?.message || "Competition could not be restarted"); }
+    finally { this._lmsRestartBusy = false; if (ownsShareLock) this._lmsShareBusy = false; }
   }
 
   _rolloverLmsCompetition() {
@@ -2338,7 +2391,7 @@ class FootballHubPanel extends HTMLElement {
         <section class="page-card lms-create"><div><span class="eyebrow">NEW PRIVATE GAME</span><h2>Create your competition</h2><p>Win to survive. A draw or defeat eliminates the player, and a team cannot be selected twice.</p></div><div class="lms-form"><input id="lms-name" maxlength="60" placeholder="Competition name"><label class="lms-fee-input"><span>Entry fee</span><b>£</b><input id="lms-entry-fee" type="number" min="0" step="0.50" value="5"></label></div><div class="lms-password-setup"><label><span>Administrator password</span><input id="lms-admin-password" type="password" minlength="6" autocomplete="new-password" placeholder="Create password"></label><label><span>Confirm password</span><input id="lms-admin-confirm" type="password" minlength="6" autocomplete="new-password" placeholder="Repeat password"></label><small>Use this password with the competition link to manage the same game on another device.</small></div><div class="lms-league-heading"><strong>Choose the leagues included</strong><span>Tick one or more leagues</span></div><div class="lms-league-groups">${leagueCountries.map((country) => `<fieldset><legend>${this._escape(country)}</legend>${leagueCatalogue.filter((item) => item.country === country).map((item) => `<label><input type="checkbox" class="lms-league-check" value="${this._escape(item.key)}" ${item.key === status.competition_key ? "checked" : ""}><span>${this._escape(item.name)}</span></label>`).join("")}</fieldset>`).join("")}</div><button id="lms-create" class="lms-create-button">Create competition</button><small>Football Hub will use the selected leagues for team picks and results.</small></section>
       ` : `
         <section class="page-card lms-summary"><div><span class="eyebrow">PRIVATE COMPETITION · EDITION ${Number(competition.edition || 1)}</span><h2>${this._escape(competition.name)}</h2><p>${this._escape((competition.leagues || []).map((item) => item.name).join(" · ") || competition.competitionName)} · Round ${competition.round}</p></div><div class="lms-summary-stats"><span><b>${(competition.leagues || []).length || 1}</b> leagues</span><span><b>${competition.players.length}</b> players</span><span><b>${alive}</b> remaining</span><span class="lms-picked-total"><b>${pickedThisRound}/${alive}</b> selected</span>${adminUnlocked ? `<button id="lms-admin-lock"><ha-icon icon="mdi:lock-outline"></ha-icon> Lock admin</button><button id="lms-delete" class="danger">Delete</button>` : `<span class="lms-admin-status"><ha-icon icon="mdi:shield-lock-outline"></ha-icon> ${needsAdminPassword ? "Password setup required" : "Admin locked"}</span>`}</div></section>
-        <section class="page-card lms-prize"><div><span class="eyebrow">PRIZE FUND</span><strong>£${prizeFund.toFixed(2)}</strong><small>${paidCount} entries${buyBackCount ? ` + ${buyBackCount} buy-back${buyBackCount === 1 ? "" : "s"}` : ""} × £${entryFee.toFixed(2)}${carriedPrize ? ` + £${carriedPrize.toFixed(2)} rollover` : ""}</small></div>${adminUnlocked ? `<label><span>Entry fee</span><b>£</b><input id="lms-edit-entry-fee" type="number" min="0" step="0.50" value="${entryFee.toFixed(2)}"></label><button id="lms-rollover"><ha-icon icon="mdi:cash-sync"></ha-icon> Rollover competition</button>` : `<span>${paidCount}/${competition.players.length} players paid</span>`}</section>
+        <section class="page-card lms-prize"><div><span class="eyebrow">PRIZE FUND</span><strong>£${prizeFund.toFixed(2)}</strong><small>${paidCount} entries${buyBackCount ? ` + ${buyBackCount} buy-back${buyBackCount === 1 ? "" : "s"}` : ""} × £${entryFee.toFixed(2)}${carriedPrize ? ` + £${carriedPrize.toFixed(2)} rollover` : ""}</small></div>${adminUnlocked ? `<label><span>Entry fee</span><b>£</b><input id="lms-edit-entry-fee" type="number" min="0" step="0.50" value="${entryFee.toFixed(2)}"></label>${competition.completed ? `<button id="lms-restart"><ha-icon icon="mdi:restart"></ha-icon> Restart competition</button>` : ""}<button id="lms-rollover"><ha-icon icon="mdi:cash-sync"></ha-icon> Rollover competition</button>` : `<span>${paidCount}/${competition.players.length} players paid</span>`}</section>
         <section class="page-card lms-share"><ha-icon icon="mdi:share-variant-outline"></ha-icon><div><span class="eyebrow">SHARE THIS COMPETITION</span><strong>${competition.shareUrl ? "Public competition page is live" : "Create a read-only public page"}</strong><small>Players can view standings, picks, round fixtures, results, countdown and prize fund without Home Assistant.</small>${competition.shareUrl ? `<a href="${this._escape(competition.shareUrl)}" target="_blank" rel="noopener noreferrer">${this._escape(competition.shareUrl)}</a>` : ""}</div>${adminUnlocked ? competition.shareUrl ? `<button id="lms-copy-share"><ha-icon icon="mdi:content-copy"></ha-icon> Copy link</button><button id="lms-share-sync"><ha-icon icon="mdi:sync"></ha-icon> Update now</button>` : `<button id="lms-create-share" ${LMS_SHARE_SERVICE ? "" : "disabled"}><ha-icon icon="mdi:link-plus"></ha-icon> Generate link</button>` : ""}</section>
         <section class="page-card lms-email"><ha-icon icon="mdi:email-fast-outline"></ha-icon><div><span class="eyebrow">PLAYER EMAILS</span><strong>Send private pick links through Home Assistant</strong><small>${emailServices.length ? "Choose the email notification service configured on this Home Assistant installation." : "No compatible Home Assistant email notification service was found. Add the SMTP integration first."}</small></div>${adminUnlocked ? `<label><span>Email service</span><select id="lms-email-service"><option value="">Choose email service</option>${emailServices.map((item) => `<option value="${this._escape(item.value)}" ${item.value === selectedEmailService ? "selected" : ""}>${this._escape(item.label)} (${this._escape(item.value)})</option>`).join("")}</select></label><button id="lms-email-outstanding" ${selectedEmailService && competition.shareUrl ? "" : "disabled"}><ha-icon icon="mdi:email-sync-outline"></ha-icon> Email outstanding picks</button>` : ""}</section>
         ${competition.completed ? `<section class="page-card lms-winner"><ha-icon icon="mdi:trophy-award"></ha-icon><div><span class="eyebrow">COMPETITION COMPLETE</span><h2>${winner ? `${this._escape(winner.name)} wins!` : "No surviving player"}</h2><p>Final prize fund: £${prizeFund.toFixed(2)}</p></div></section>` : ""}
@@ -4705,6 +4758,7 @@ class FootballHubPanel extends HTMLElement {
       button.addEventListener("click", () => this._buyBackLmsPlayer(button.dataset.playerId));
     });
     this.shadowRoot.querySelector("#lms-edit-entry-fee")?.addEventListener("change", (event) => this._setLmsEntryFee(event.target.value));
+    this.shadowRoot.querySelector("#lms-restart")?.addEventListener("click", () => void this._restartLmsCompetition());
     this.shadowRoot.querySelector("#lms-rollover")?.addEventListener("click", () => this._rolloverLmsCompetition());
     this.shadowRoot.querySelector("#lms-admin-unlock")?.addEventListener("click", async () => {
       await this._unlockLmsAdmin(this.shadowRoot.querySelector("#lms-admin-unlock-password")?.value);
