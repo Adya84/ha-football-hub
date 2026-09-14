@@ -153,6 +153,12 @@ test('LMS player page separates paid players from payment due players', () => {
   assert.match(html, /Payment due/);
 });
 
+test('automatic LMS emails are paused while fixture scheduling is corrected', () => {
+  const source = fs.readFileSync(path.join(__dirname, '../custom_components/football_hub/frontend/football-hub-panel.js'), 'utf8');
+  assert.match(source, /const LMS_AUTOMATIC_EMAILS_ENABLED = false/);
+  assert.match(source, /if \(!LMS_AUTOMATIC_EMAILS_ENABLED\) return;/);
+});
+
 test('completed competitions with a literal pending result can be repaired', async () => {
   const { panel, requests } = setup('private');
   panel._lmsCompetition.completed = true;

@@ -1,4 +1,7 @@
-const PANEL_VERSION = "0.7.17";
+const PANEL_VERSION = "0.7.18";
+// Temporarily paused while fixture schedules are being corrected. Manual email
+// actions remain available to the administrator.
+const LMS_AUTOMATIC_EMAILS_ENABLED = false;
 const LMS_SHARE_SERVICE = "https://football-hub-lms.zesty-flame-5295.chatgpt.site";
 const FULL_COMPETITION_CATALOGUE = {
   England: ["Premier League", "Championship", "League One", "League Two", "National League", "FA Cup", "EFL Cup", "Community Shield"],
@@ -616,7 +619,7 @@ class FootballHubPanel extends HTMLElement {
       this._applyLmsPlayerLinks(result.playerLinks);
       localStorage.setItem(this._lmsMode === "global" ? "football_hub_lms_global" : "football_hub_lms_private", JSON.stringify(this._lmsCompetition));
       this._render();
-      const emailed = this._lmsCompetition.emailNotifyService ? await this._sendLmsOutstandingEmails(true, false) : 0;
+      const emailed = LMS_AUTOMATIC_EMAILS_ENABLED && this._lmsCompetition.emailNotifyService ? await this._sendLmsOutstandingEmails(true, false) : 0;
       const copied = await this._copyText(result.shareUrl);
       if (copied) window.alert(`Competition link generated and copied.${emailed ? ` Pick links emailed to ${emailed} player${emailed === 1 ? "" : "s"}.` : ""}`);
       else window.prompt("Competition link generated. Copy this link:", result.shareUrl);
@@ -905,6 +908,7 @@ class FootballHubPanel extends HTMLElement {
   }
 
   async _checkLmsEmailReminders() {
+    if (!LMS_AUTOMATIC_EMAILS_ENABLED) return;
     const competition = this._lmsCompetition;
     if (!competition || this._lmsReminderBusy || !competition.emailNotifyService) return;
     const roundKey = String(competition.round || 1);
@@ -1446,7 +1450,7 @@ class FootballHubPanel extends HTMLElement {
       resolvedCount += 1;
       if (!won) player.alive = false;
       const emailKey = `${roundKey}:${player.id}`;
-      if (player.email && !competition.matchResultEmails?.[emailKey]) {
+      if (LMS_AUTOMATIC_EMAILS_ENABLED && player.email && !competition.matchResultEmails?.[emailKey]) {
         competition.matchResultEmails = competition.matchResultEmails || {};
         competition.matchResultEmails[emailKey] = "sending";
         void this._sendLmsPlayerMatchResultEmail(player, roundKey, match, won).then((sent) => {
@@ -1461,7 +1465,7 @@ class FootballHubPanel extends HTMLElement {
       const survivors = competition.players.filter((player) => player.alive);
       const completedRoundEnds = fixtures.map((fixture) => this._lmsFixtureTimestamp(fixture)).filter(Boolean);
       const nextRoundStartsAfter = completedRoundEnds.length ? Math.max(...completedRoundEnds) + 300 : Math.floor(Date.now() / 1000);
-      if (!competition.resultsEmailSent?.[roundKey]) {
+      if (LMS_AUTOMATIC_EMAILS_ENABLED && !competition.resultsEmailSent?.[roundKey]) {
         competition.resultsEmailSent = competition.resultsEmailSent || {};
         competition.resultsEmailSent[roundKey] = Math.floor(Date.now() / 1000);
         const summary = competition.players.map((player) => `${player.name}: ${player.picks?.[roundKey] || "No pick"} - ${player.results?.[roundKey] === "survived" ? "Through" : "Out"}`).join("\n");
