@@ -1,4 +1,4 @@
-const PANEL_VERSION = "0.7.18";
+const PANEL_VERSION = "0.7.19";
 // Temporarily paused while fixture schedules are being corrected. Manual email
 // actions remain available to the administrator.
 const LMS_AUTOMATIC_EMAILS_ENABLED = false;
@@ -2915,12 +2915,12 @@ class FootballHubPanel extends HTMLElement {
     const catalogue = Array.isArray(status.available_competitions)
       ? status.available_competitions
       : [];
-    const firstLeague = catalogue
-      .filter((item) => item.country === country && (item.type || "league") === "league")
+    const firstCompetition = catalogue
+      .filter((item) => item.country === country)
       .sort((a, b) => a.name.localeCompare(b.name))[0];
 
-    if (firstLeague?.key) {
-      this._setLeague(firstLeague.key);
+    if (firstCompetition?.key) {
+      this._setLeague(firstCompetition.key);
     }
     this._render();
   }
@@ -3167,8 +3167,10 @@ class FootballHubPanel extends HTMLElement {
     if (!countries.includes(this._selectedCountry)) {
       this._selectedCountry = countries.includes(status.country) ? status.country : (countries[0] || "");
     }
-    const countryLeagues = catalogue
-      .filter((item) => item.country === this._selectedCountry && (item.type || "league") === "league")
+    // My Club follows the active competition. Include cups here as well as
+    // domestic leagues so a club can be followed in Europe and cup ties.
+    const countryCompetitions = catalogue
+      .filter((item) => item.country === this._selectedCountry)
       .sort((a, b) => a.name.localeCompare(b.name));
     const pendingLeague = catalogue.find((item) => item.key === this._pendingCompetition);
     const activeCompetition = pendingLeague || {
@@ -3216,8 +3218,8 @@ class FootballHubPanel extends HTMLElement {
               <label><span>${this._t("country")}</span><select id="country-select" aria-label="Country">
                 ${countries.map((country) => `<option value="${this._escape(country)}" ${country === this._selectedCountry ? "selected" : ""}>${this._escape(this._displayCountry(country))}</option>`).join("")}
               </select></label>
-              <label><span>${this._t("league")}</span><select id="league-select" aria-label="League">
-                ${countryLeagues.map((league) => `<option value="${this._escape(league.key)}" ${league.key === status.competition_key ? "selected" : ""}>${this._escape(league.name)}</option>`).join("")}
+              <label><span>Competition</span><select id="league-select" aria-label="Competition">
+                ${countryCompetitions.map((competition) => `<option value="${this._escape(competition.key)}" ${competition.key === status.competition_key ? "selected" : ""}>${this._escape(competition.name)}</option>`).join("")}
               </select></label>
             </div>
           ` : ""}

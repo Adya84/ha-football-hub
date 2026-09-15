@@ -159,6 +159,13 @@ test('automatic LMS emails are paused while fixture scheduling is corrected', ()
   assert.match(source, /if \(!LMS_AUTOMATIC_EMAILS_ENABLED\) return;/);
 });
 
+test('the main competition picker includes cups for My Club', () => {
+  const source = fs.readFileSync(path.join(__dirname, '../custom_components/football_hub/frontend/football-hub-panel.js'), 'utf8');
+  assert.match(source, /const countryCompetitions = catalogue/);
+  assert.doesNotMatch(source, /const countryLeagues = catalogue/);
+  assert.match(source, /aria-label="Competition"/);
+});
+
 test('completed competitions with a literal pending result can be repaired', async () => {
   const { panel, requests } = setup('private');
   panel._lmsCompetition.completed = true;
