@@ -1,4 +1,4 @@
-const PANEL_VERSION = "0.7.20";
+const PANEL_VERSION = "0.7.21";
 // Temporarily paused while fixture schedules are being corrected. Manual email
 // actions remain available to the administrator.
 const LMS_AUTOMATIC_EMAILS_ENABLED = false;

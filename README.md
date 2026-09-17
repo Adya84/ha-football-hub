@@ -1,7 +1,7 @@
 # ⚽ Home Assistant Football Hub
 
 [![License](https://img.shields.io/badge/license-Personal%20Use-red.svg)](LICENSE)
-![Version](https://img.shields.io/badge/version-v0.7.20-green)
+![Version](https://img.shields.io/badge/version-v0.7.21-green)
 ![Home Assistant](https://img.shields.io/badge/Home%20Assistant-2024.1%2B-blue)
 ![HACS](https://img.shields.io/badge/HACS-Custom-orange)
 ![Cloud Polling](https://img.shields.io/badge/IoT--Class-Cloud%20Polling-blue)
@@ -16,7 +16,12 @@ Football Hub remembers the country, competition, favourite clubs and last-opened
 
 ---
 
-## Latest release — 0.7.20
+## Latest release — 0.7.21
+
+- Any saved club now automatically follows every listed cup in its country and the UEFA cups, while still using one My Club slot.
+- Existing saved clubs receive the same competition links when Football Hub starts.
+
+## Previous release — 0.7.20
 
 - A club now occupies one My Club favourite slot across its domestic league and linked cup competitions.
 - Fixtures and results from linked FA Cup, EFL Cup and UEFA competitions appear together with their competition labels.

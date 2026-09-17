@@ -169,8 +169,20 @@ test('the main competition picker includes cups for My Club', () => {
 test('unified favourites store linked competitions once per club', () => {
   const source = fs.readFileSync(path.join(__dirname, '../custom_components/football_hub/api/coordinator.py'), 'utf8');
   assert.match(source, /def _normalise_favourite_clubs/);
-  assert.match(source, /"competitions": \[self\.competition_key\]/);
+  assert.match(source, /"competitions": self\._default_club_competitions\(self\.competition_key\)/);
   assert.match(source, /def club_matches/);
+});
+
+test('a domestic club automatically links national and European cup competitions', () => {
+  const source = fs.readFileSync(path.join(__dirname, '../custom_components/football_hub/api/coordinator.py'), 'utf8');
+  assert.match(source, /def _default_club_competitions/);
+  assert.match(source, /competition\.get\("country"\) == home_country/);
+  assert.match(source, /competition\.get\("country"\) == "Europe"/);
+});
+
+test('saved club sensors use the favourite home competition after migration', () => {
+  const source = fs.readFileSync(path.join(__dirname, '../custom_components/football_hub/api/coordinator.py'), 'utf8');
+  assert.match(source, /favourite\.get\("home_competition"\) or favourite\.get\("competition"\)/);
 });
 
 test('completed competitions with a literal pending result can be repaired', async () => {

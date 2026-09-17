@@ -110,6 +110,23 @@ class FootballHubCoordinator(DataUpdateCoordinator):
         )
 
     @staticmethod
+    def _default_club_competitions(home_competition: str) -> list[str]:
+        """Return the league, national cups and UEFA cups for a saved club."""
+        home = COMPETITIONS.get(home_competition, {})
+        home_country = home.get("country", "")
+        national_cups = [
+            key for key, competition in COMPETITIONS.items()
+            if competition.get("type") == "cup"
+            and competition.get("country") == home_country
+        ]
+        european_cups = [
+            key for key, competition in COMPETITIONS.items()
+            if competition.get("type") == "cup"
+            and competition.get("country") == "Europe"
+        ]
+        return list(dict.fromkeys([home_competition, *national_cups, *european_cups]))
+
+    @staticmethod
     def _normalise_favourite_clubs(records: list[dict[str, Any]] | Any) -> list[dict[str, Any]]:
         """Merge legacy competition-specific favourites into one club record."""
         merged: dict[str, dict[str, Any]] = {}
@@ -131,6 +148,9 @@ class FootballHubCoordinator(DataUpdateCoordinator):
                 record["home_competition"] = preferred if preferred in COMPETITIONS else record["competitions"][0]
             if not record["country"]:
                 record["country"] = COMPETITIONS[record["home_competition"]].get("country", "")
+            for competition in FootballHubCoordinator._default_club_competitions(record["home_competition"]):
+                if competition not in record["competitions"]:
+                    record["competitions"].append(competition)
         return list(merged.values())
 
     def _favourite_for_competition(self, competition_key: str) -> str:
@@ -387,15 +407,16 @@ class FootballHubCoordinator(DataUpdateCoordinator):
                     self._updated_at.pop(key, None)
         favourite = next((item for item in self.favourite_clubs if item.get("team", "").casefold() == self.my_club.casefold()), None)
         if favourite:
-            if self.competition_key not in favourite["competitions"]:
-                favourite["competitions"].append(self.competition_key)
+            for competition in self._default_club_competitions(self.competition_key):
+                if competition not in favourite["competitions"]:
+                    favourite["competitions"].append(competition)
         elif self.my_club:
             if len(self.favourite_clubs) >= 5:
                 raise ValueError("A maximum of five favourite clubs is supported")
             self.favourite_clubs.append({
                 "team": self.my_club,
                 "home_competition": self.competition_key,
-                "competitions": [self.competition_key],
+                "competitions": self._default_club_competitions(self.competition_key),
                 "country": self.competition.get("country", ""),
             })
         options = {
@@ -780,7 +801,7 @@ class FootballHubCoordinator(DataUpdateCoordinator):
         favourite_data = {}
         for favourite in self.favourite_clubs:
             team = str(favourite.get("team") or "")
-            competition_key = str(favourite.get("competition") or "")
+            competition_key = str(favourite.get("home_competition") or favourite.get("competition") or "")
             competition = COMPETITIONS.get(competition_key, {})
             fixtures = (
                 self._cache.get("fixtures", [])
