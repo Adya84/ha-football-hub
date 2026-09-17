@@ -497,12 +497,15 @@ class FootballHubFixturesSensor(FootballHubBaseSensor):
     @property
     def extra_state_attributes(self):
         fixtures = self.engine.fixtures.all()
+        club_fixtures, _ = self.coordinator.club_matches(self.coordinator.my_club)
         return {
             "total_fixtures": len(fixtures),
             "today_count": len(self.engine.fixtures.today()),
             "this_week_count": len(self.engine.fixtures.this_week()),
             "next_5": limit_items(fixtures, ATTRIBUTE_LIMIT),
             "fixtures": fixtures,
+            "club": self.coordinator.my_club,
+            "club_fixtures": club_fixtures[:20],
         }
 
 
@@ -535,16 +538,13 @@ class FootballHubResultsSensor(FootballHubBaseSensor):
     @property
     def extra_state_attributes(self):
         results = self.engine.results.all()
+        _, club_results = self.coordinator.club_matches(self.coordinator.my_club)
         return {
             "total_results": len(results),
             "last_result": self.engine.results.last(),
             "latest_5": self.engine.results.latest(ATTRIBUTE_LIMIT),
             "club": self.coordinator.my_club,
-            "club_results": sorted(
-                [match for match in results if self.coordinator.my_club.casefold() in {
-                    str(match.get("home_team") or "").casefold(), str(match.get("away_team") or "").casefold()}],
-                key=lambda match: match.get("timestamp") or 0, reverse=True,
-            )[:10],
+            "club_results": club_results[:20],
         }
 
 

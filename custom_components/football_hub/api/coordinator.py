@@ -16,6 +16,7 @@ from homeassistant.helpers.storage import Store
 
 from ..competitions import COMPETITIONS
 from ..engine import FootballHubEngine
+from ..engine.helpers import clean_fixture, is_finished, is_not_started
 from .api import FootballHubAPI
 
 _LOGGER = logging.getLogger(__name__)
@@ -83,10 +84,9 @@ class FootballHubCoordinator(DataUpdateCoordinator):
             self.competition_key, entry.options.get("supported_team", "")
         )
         self.my_clubs = dict(entry.options.get("my_clubs", {}))
-        self.my_club = self.my_clubs.get(self.competition_key, "")
         self.ui_preferences = dict(entry.options.get("ui_preferences", {}))
         stored_favourites = entry.options.get("favourite_clubs", [])
-        self.favourite_clubs = [dict(item) for item in stored_favourites if isinstance(item, dict)]
+        self.favourite_clubs = self._normalise_favourite_clubs(stored_favourites)
         if "favourite_clubs" not in entry.options:
             # Migrate the old one-club-per-league selections without losing them.
             for competition_key, team in self.my_clubs.items():
@@ -94,10 +94,12 @@ class FootballHubCoordinator(DataUpdateCoordinator):
                 if team and competition:
                     self.favourite_clubs.append({
                         "team": team,
-                        "competition": competition_key,
-                        "league_id": competition.get("league_id"),
+                        "home_competition": competition_key,
+                        "competitions": [competition_key],
                         "country": competition.get("country", ""),
                     })
+        self.favourite_clubs = self._normalise_favourite_clubs(self.favourite_clubs)
+        self.my_club = self._favourite_for_competition(self.competition_key) or self.my_clubs.get(self.competition_key, "")
         self.selected_live_fixture = ""
 
         super().__init__(
@@ -105,6 +107,54 @@ class FootballHubCoordinator(DataUpdateCoordinator):
             _LOGGER,
             name=f"Football Hub - {self.competition['name']}",
             update_interval=timedelta(seconds=30),
+        )
+
+    @staticmethod
+    def _normalise_favourite_clubs(records: list[dict[str, Any]] | Any) -> list[dict[str, Any]]:
+        """Merge legacy competition-specific favourites into one club record."""
+        merged: dict[str, dict[str, Any]] = {}
+        for item in records or []:
+            if not isinstance(item, dict) or not str(item.get("team") or "").strip():
+                continue
+            team = str(item["team"]).strip()
+            key = team.casefold()
+            competitions = item.get("competitions") or [item.get("home_competition") or item.get("competition")]
+            competitions = [str(value) for value in competitions if str(value) in COMPETITIONS]
+            if not competitions:
+                continue
+            record = merged.setdefault(key, {"team": team, "home_competition": "", "competitions": [], "country": item.get("country", "")})
+            for competition in competitions:
+                if competition not in record["competitions"]:
+                    record["competitions"].append(competition)
+            preferred = str(item.get("home_competition") or item.get("competition") or "")
+            if not record["home_competition"] or (COMPETITIONS.get(preferred, {}).get("type") == "league"):
+                record["home_competition"] = preferred if preferred in COMPETITIONS else record["competitions"][0]
+            if not record["country"]:
+                record["country"] = COMPETITIONS[record["home_competition"]].get("country", "")
+        return list(merged.values())
+
+    def _favourite_for_competition(self, competition_key: str) -> str:
+        return next((str(item.get("team")) for item in self.favourite_clubs if competition_key in item.get("competitions", [])), "")
+
+    def club_matches(self, team: str) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+        """Return one club's matches across its linked competitions."""
+        favourite = next((item for item in self.favourite_clubs if str(item.get("team", "")).casefold() == str(team or "").casefold()), {})
+        competition_keys = favourite.get("competitions", []) or [self.competition_key]
+        merged: dict[str, dict[str, Any]] = {}
+        folded = str(team or "").casefold()
+        for competition_key in competition_keys:
+            source = self._cache.get("fixtures", []) if competition_key == self.competition_key else self._cache.get(f"favourite:{competition_key}:fixtures", [])
+            for raw in source or []:
+                clean = clean_fixture(raw)
+                if folded not in {str(clean.get("home_team") or "").casefold(), str(clean.get("away_team") or "").casefold()}:
+                    continue
+                clean["competition_key"] = competition_key
+                clean["competition_name"] = COMPETITIONS.get(competition_key, {}).get("name", clean.get("league", ""))
+                merged[str(clean.get("fixture_id") or f"{competition_key}:{clean.get('timestamp')}")] = clean
+        matches = list(merged.values())
+        return (
+            sorted([item for item in matches if is_not_started({"fixture": {"status": {"short": item.get("status_short")}, "timestamp": item.get("timestamp")}})], key=lambda item: item.get("timestamp") or 0),
+            sorted([item for item in matches if item.get("status_short") in {"FT", "AET", "PEN"}], key=lambda item: item.get("timestamp") or 0, reverse=True),
         )
 
     def _is_stale(self, key: str, ttl: int, *, randomise: bool = True) -> bool:
@@ -254,7 +304,7 @@ class FootballHubCoordinator(DataUpdateCoordinator):
         self.competition_key = competition_key
         self.competition = COMPETITIONS[competition_key]
         self.supported_team = self.supported_teams.get(competition_key, "")
-        self.my_club = self.my_clubs.get(competition_key, "")
+        self.my_club = self._favourite_for_competition(competition_key) or self.my_clubs.get(competition_key, "")
         self._cache.clear()
         self._updated_at.clear()
         self._cache.update(saved_favourite_cache)
@@ -335,17 +385,17 @@ class FootballHubCoordinator(DataUpdateCoordinator):
             for key in list(self._updated_at):
                 if key.startswith("club_"):
                     self._updated_at.pop(key, None)
-        if self.my_club and not any(
-            item.get("team", "").casefold() == self.my_club.casefold()
-            and item.get("competition") == self.competition_key
-            for item in self.favourite_clubs
-        ):
+        favourite = next((item for item in self.favourite_clubs if item.get("team", "").casefold() == self.my_club.casefold()), None)
+        if favourite:
+            if self.competition_key not in favourite["competitions"]:
+                favourite["competitions"].append(self.competition_key)
+        elif self.my_club:
             if len(self.favourite_clubs) >= 5:
                 raise ValueError("A maximum of five favourite clubs is supported")
             self.favourite_clubs.append({
                 "team": self.my_club,
-                "competition": self.competition_key,
-                "league_id": self.competition.get("league_id"),
+                "home_competition": self.competition_key,
+                "competitions": [self.competition_key],
                 "country": self.competition.get("country", ""),
             })
         options = {
@@ -372,7 +422,7 @@ class FootballHubCoordinator(DataUpdateCoordinator):
             item for item in self.favourite_clubs
             if not (
                 str(item.get("team", "")).casefold() == folded
-                and (not competition_key or item.get("competition") == competition_key)
+                and (not competition_key or competition_key in item.get("competitions", []))
             )
         ]
         options = {**self.entry.options, "favourite_clubs": self.favourite_clubs}
@@ -557,19 +607,13 @@ class FootballHubCoordinator(DataUpdateCoordinator):
         # requested per coordinator cycle to avoid bursts.
         favourite_budget = 2
         for favourite in self.favourite_clubs:
-            competition_key = str(favourite.get("competition") or "")
-            competition = COMPETITIONS.get(competition_key)
-            if not competition:
-                continue
-            for suffix, ttl, request_factory in (
-                ("fixtures", FIXTURES_TTL, lambda c=competition: self.api.get_fixtures(c["league_id"], self.season)),
-                ("standings", STANDINGS_TTL, lambda c=competition: self.api.get_standings(c["league_id"], self.season)),
-            ):
-                key = f"favourite:{competition_key}:{suffix}"
-                if competition_key == self.competition_key:
+            for competition_key in favourite.get("competitions", []):
+                competition = COMPETITIONS.get(competition_key)
+                if not competition:
                     continue
-                if favourite_budget and self._is_stale(key, ttl):
-                    requests.append((key, request_factory()))
+                key = f"favourite:{competition_key}:fixtures"
+                if competition_key != self.competition_key and favourite_budget and self._is_stale(key, FIXTURES_TTL):
+                    requests.append((key, self.api.get_fixtures(competition["league_id"], self.season)))
                     favourite_budget -= 1
 
         if requests:

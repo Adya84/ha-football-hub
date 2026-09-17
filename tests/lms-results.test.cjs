@@ -166,6 +166,13 @@ test('the main competition picker includes cups for My Club', () => {
   assert.match(source, /aria-label="Competition"/);
 });
 
+test('unified favourites store linked competitions once per club', () => {
+  const source = fs.readFileSync(path.join(__dirname, '../custom_components/football_hub/api/coordinator.py'), 'utf8');
+  assert.match(source, /def _normalise_favourite_clubs/);
+  assert.match(source, /"competitions": \[self\.competition_key\]/);
+  assert.match(source, /def club_matches/);
+});
+
 test('completed competitions with a literal pending result can be repaired', async () => {
   const { panel, requests } = setup('private');
   panel._lmsCompetition.completed = true;

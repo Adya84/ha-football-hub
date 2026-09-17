@@ -1,4 +1,4 @@
-const PANEL_VERSION = "0.7.19";
+const PANEL_VERSION = "0.7.20";
 // Temporarily paused while fixture schedules are being corrected. Manual email
 // actions remain available to the administrator.
 const LMS_AUTOMATIC_EMAILS_ENABLED = false;
@@ -3281,7 +3281,8 @@ class FootballHubPanel extends HTMLElement {
     const last = this._attrs("last_result");
     const table = this._attrs("standings").table || [];
     const scorers = this._attrs("top_scorers").top_scorers || [];
-    const fixtures = this._attrs("fixtures").fixtures || [];
+    const fixturesAttrs = this._attrs("fixtures");
+    const fixtures = fixturesAttrs.club === club && Array.isArray(fixturesAttrs.club_fixtures) ? fixturesAttrs.club_fixtures : (fixturesAttrs.fixtures || []);
     const selectedClub = this._selectedClub;
     const isClubFixture = (match) => Boolean(
       selectedClub && (match.home_team === selectedClub || match.away_team === selectedClub)
@@ -4021,9 +4022,9 @@ class FootballHubPanel extends HTMLElement {
           <strong>My Clubs (${favourites.length}/5)</strong>
           ${favourites.length ? favourites.map((item) => `
             <span class="favourite-club-chip">
-              <button type="button" class="favourite-club-open" data-team="${this._escape(item.team)}" data-competition="${this._escape(item.competition)}">${this._escape(item.team)}</button>
-              <small>${this._escape(item.country || "")} · ${this._escape(item.competition || "")}</small>
-              <button type="button" class="favourite-club-remove" data-team="${this._escape(item.team)}" data-competition="${this._escape(item.competition)}" title="Remove favourite">×</button>
+              <button type="button" class="favourite-club-open" data-team="${this._escape(item.team)}" data-competition="${this._escape(item.home_competition || item.competition || "")}">${this._escape(item.team)}</button>
+              <small>${this._escape(item.country || "")} · ${this._escape((item.competitions || [item.competition]).map((key) => key.replaceAll("_", " ")).join(" · "))}</small>
+              <button type="button" class="favourite-club-remove" data-team="${this._escape(item.team)}" title="Remove favourite">×</button>
             </span>`).join("") : `<span class="empty">Choose a club to add your first favourite.</span>`}
         </div>
       </section>
