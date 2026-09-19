@@ -49,6 +49,7 @@ for (const mode of ['private', 'global']) {
 test('sole survivor is shown as winner only after their final result completes the round', async () => {
   const { panel } = setup('private');
   const [survivor, eliminated] = panel._lmsCompetition.players;
+  eliminated.picks['1'] = 'Sunderland';
   eliminated.alive = false;
   eliminated.results['1'] = 'eliminated';
   assert.equal(panel._isLmsWinner(survivor), false);
@@ -95,6 +96,37 @@ test('premature completion is removed when the final pick is still unplayed', as
   assert.equal(competition.winnerId, '');
   assert.equal(competition.players[0].results['1'], undefined);
   assert.equal(panel._isLmsWinner(competition.players[0]), false);
+});
+
+test('an early eliminated result is restored to live while the picked match is unfinished', async () => {
+  const { panel } = setup('private');
+  const competition = panel._lmsCompetition;
+  const player = competition.players[0];
+  player.alive = false;
+  player.results['1'] = 'eliminated';
+  panel._refreshLmsRoundFixtures = async () => {
+    panel._lmsLeagueCache.premier_league = { fixtures: [{ ...arsenal, status: '1H', status_short: '1H', home_goals: 0, away_goals: 0 }] };
+  };
+
+  await panel._settleLmsRound();
+
+  assert.equal(player.alive, true);
+  assert.equal(player.results['1'], undefined);
+});
+
+test('an early survived result is restored to live while the picked match is unfinished', async () => {
+  const { panel } = setup('private');
+  const competition = panel._lmsCompetition;
+  const player = competition.players[0];
+  player.results['1'] = 'survived';
+  panel._refreshLmsRoundFixtures = async () => {
+    panel._lmsLeagueCache.premier_league = { fixtures: [{ ...arsenal, status: '2H', status_short: '2H', home_goals: 2, away_goals: 0 }] };
+  };
+
+  await panel._settleLmsRound();
+
+  assert.equal(player.alive, true);
+  assert.equal(player.results['1'], undefined);
 });
 
 test('restart retains players and links while archiving the winner and resetting the prize', async () => {

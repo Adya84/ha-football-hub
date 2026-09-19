@@ -1372,11 +1372,14 @@ class FootballHubPanel extends HTMLElement {
       if (!fixtures.length) return;
       const roundKey = String(competition.round);
       const hasNewResult = competition.players.some((player) => {
-        if (!player.alive || player.results?.[roundKey]) return false;
         const pick = player.picks?.[roundKey];
-        if (!pick) return true;
         const match = fixtures.find((fixture) => fixture.home_team === pick || fixture.away_team === pick);
-        return Boolean(match && finished.has(String(match.status_short || match.status || "").toUpperCase()));
+        const isFinal = Boolean(match && finished.has(String(match.status_short || match.status || "").toUpperCase()));
+        const result = player.results?.[roundKey];
+        if (["survived", "eliminated"].includes(result) && !isFinal) return true;
+        if (!player.alive || result) return false;
+        if (!pick) return true;
+        return isFinal;
       });
       if (!hasNewResult) return;
       this._settleLmsRound(true);
@@ -1409,6 +1412,22 @@ class FootballHubPanel extends HTMLElement {
     if (repairPendingFinal) {
       competition.completed = false;
       competition.winnerId = "";
+    }
+    // A stale sensor update can briefly settle a live fixture. Reopen that
+    // player's current-round result before checking the actual final score.
+    for (const player of competition.players) {
+      if (!["survived", "eliminated"].includes(player.results?.[roundKey])) continue;
+      const pick = player.picks?.[roundKey];
+      const match = fixtures
+        .filter((item) => (item.home_team === pick || item.away_team === pick) && this._lmsFixtureTimestamp(item) >= Number(competition.roundStarted || 0))
+        .sort((a, b) => this._lmsFixtureTimestamp(a) - this._lmsFixtureTimestamp(b))[0];
+      const isFinal = ["FT", "AET", "PEN"].includes(String(match?.status_short || match?.status || "").toUpperCase());
+      const hasFinalScore = Number.isFinite(Number(match?.home_goals)) && Number.isFinite(Number(match?.away_goals))
+        && match?.home_goals !== null && match?.away_goals !== null;
+      if (!match || !isFinal || !hasFinalScore) {
+        delete player.results[roundKey];
+        player.alive = true;
+      }
     }
     let waiting = false;
     let resolvedCount = 0;
@@ -4318,7 +4337,7 @@ class FootballHubPanel extends HTMLElement {
         const fixture = fixtures.find((item) => item.home_team === pick || item.away_team === pick);
         const status = String(fixture?.status_short || fixture?.status || "").toUpperCase();
         const statusLabel = row.children?.[2]?.querySelector("b");
-        if (statusLabel?.textContent?.trim() === "Not played" && liveStatuses.has(status)) statusLabel.textContent = "Live";
+        if (statusLabel && liveStatuses.has(status)) statusLabel.textContent = "Live";
       });
     }
 
