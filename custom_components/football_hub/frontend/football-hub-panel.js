@@ -1448,6 +1448,13 @@ class FootballHubPanel extends HTMLElement {
       const isFinal = ["FT", "AET", "PEN"].includes(String(match?.status_short || match?.status || "").toUpperCase());
       const hasFinalScore = Number.isFinite(Number(match?.home_goals)) && Number.isFinite(Number(match?.away_goals))
         && match?.home_goals !== null && match?.away_goals !== null;
+      if (match && isFinal && hasFinalScore) {
+        const won = (match.home_team === pick && Number(match.home_goals) > Number(match.away_goals))
+          || (match.away_team === pick && Number(match.away_goals) > Number(match.home_goals));
+        player.results[roundKey] = won ? "survived" : "eliminated";
+        player.alive = won;
+        continue;
+      }
       if (!match || !isFinal || !hasFinalScore) {
         delete player.results[roundKey];
         player.alive = true;

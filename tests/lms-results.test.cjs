@@ -114,6 +114,18 @@ test('an early eliminated result is restored to live while the picked match is u
   assert.equal(player.results['1'], undefined);
 });
 
+test('a final winning pick restores a stale eliminated LMS player as through', async () => {
+  const { panel } = setup('private');
+  const player = panel._lmsCompetition.players[0];
+  player.alive = false;
+  player.results['1'] = 'eliminated';
+
+  await panel._settleLmsRound();
+
+  assert.equal(player.alive, true);
+  assert.equal(player.results['1'], 'survived');
+});
+
 test('an early survived result is restored to live while the picked match is unfinished', async () => {
   const { panel } = setup('private');
   const competition = panel._lmsCompetition;
