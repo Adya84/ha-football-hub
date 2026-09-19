@@ -4354,8 +4354,8 @@ class FootballHubPanel extends HTMLElement {
       details.addEventListener("toggle", () => localStorage.setItem(storageKey, String(details.open)));
     });
 
-    // Only an in-progress picked fixture is live. Future fixtures remain
-    // Not played; only final games show Through/Out.
+    // Show the scheduled fixture time until kick-off, then Live; only final
+    // games show Through/Out.
     if (this._activeTab === "last-man-standing" && this._lmsCompetition) {
       const finalStatuses = new Set(["FT", "AET", "PEN"]);
       const liveStatuses = new Set(["1H", "HT", "2H", "ET", "BT", "P", "LIVE", "INT"]);
@@ -4365,7 +4365,15 @@ class FootballHubPanel extends HTMLElement {
         const fixture = fixtures.find((item) => item.home_team === pick || item.away_team === pick);
         const status = String(fixture?.status_short || fixture?.status || "").toUpperCase();
         const statusLabel = row.children?.[2]?.querySelector("b");
-        if (statusLabel && pick && pick !== "Not selected" && !finalStatuses.has(status) && liveStatuses.has(status)) statusLabel.textContent = "Live";
+        if (!statusLabel || !pick || pick === "Not selected" || finalStatuses.has(status)) return;
+        if (liveStatuses.has(status)) {
+          statusLabel.textContent = "Live";
+          return;
+        }
+        const kickoff = this._lmsFixtureTimestamp(fixture);
+        statusLabel.textContent = kickoff
+          ? `Plays ${new Date(kickoff * 1000).toLocaleString([], { weekday: "short", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}`
+          : "Fixture time TBC";
       });
     }
 
