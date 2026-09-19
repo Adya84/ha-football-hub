@@ -4354,17 +4354,18 @@ class FootballHubPanel extends HTMLElement {
       details.addEventListener("toggle", () => localStorage.setItem(storageKey, String(details.open)));
     });
 
-    // Until a picked fixture is final, its player is live. This also covers
-    // fixtures that have not kicked off yet: only final games show Through/Out.
+    // Only an in-progress picked fixture is live. Future fixtures remain
+    // Not played; only final games show Through/Out.
     if (this._activeTab === "last-man-standing" && this._lmsCompetition) {
       const finalStatuses = new Set(["FT", "AET", "PEN"]);
+      const liveStatuses = new Set(["1H", "HT", "2H", "ET", "BT", "P", "LIVE", "INT"]);
       const fixtures = this._lmsRoundFixtureGroups().flatMap((group) => group.roundFixtures || []);
       this.shadowRoot.querySelectorAll(".lms-standings-row:not(.heading)").forEach((row) => {
         const pick = row.children?.[3]?.textContent?.trim();
         const fixture = fixtures.find((item) => item.home_team === pick || item.away_team === pick);
         const status = String(fixture?.status_short || fixture?.status || "").toUpperCase();
         const statusLabel = row.children?.[2]?.querySelector("b");
-        if (statusLabel && pick && pick !== "Not selected" && !finalStatuses.has(status)) statusLabel.textContent = "Live";
+        if (statusLabel && pick && pick !== "Not selected" && !finalStatuses.has(status) && liveStatuses.has(status)) statusLabel.textContent = "Live";
       });
     }
 
