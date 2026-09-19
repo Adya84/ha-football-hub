@@ -1,7 +1,7 @@
 # ⚽ Home Assistant Football Hub
 
 [![License](https://img.shields.io/badge/license-Personal%20Use-red.svg)](LICENSE)
-![Version](https://img.shields.io/badge/version-v0.7.24-green)
+![Version](https://img.shields.io/badge/version-v0.7.25-green)
 ![Home Assistant](https://img.shields.io/badge/Home%20Assistant-2024.1%2B-blue)
 ![HACS](https://img.shields.io/badge/HACS-Custom-orange)
 ![Cloud Polling](https://img.shields.io/badge/IoT--Class-Cloud%20Polling-blue)
@@ -16,7 +16,13 @@ Football Hub remembers the country, competition, favourite clubs and last-opened
 
 ---
 
-## Latest release — 0.7.24
+## Latest release — 0.7.25
+
+- LMS standings now separate **Live now**, **To play**, **Through** and **Eliminated** players.
+- Live picks show the current score and match minute; future picks show their fixture date and kick-off time.
+- A Round 1 buy-back remains active after results refresh, appears as **Paid back · Round 1**, and retains the original team as used.
+
+## Previous release — 0.7.24
 
 - Fixed Acca League payer history so corrected previous rounds remain saved when a new round starts.
 - Home Assistant now keeps the corrected payer history after synchronising with the shared Acca League.
