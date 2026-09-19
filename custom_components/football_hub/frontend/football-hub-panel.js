@@ -790,8 +790,37 @@ class FootballHubPanel extends HTMLElement {
     }
     competition.adminPasswordHash = await this._lmsPasswordHash(password);
     this._lmsAdminUnlocked = true;
-    this._saveLms();
+    this._saveLms(false);
     this._render();
+    if (competition.shareId && LMS_SHARE_SERVICE && (competition.shareEditToken || this._lmsAdminPassword)) {
+      void this._commitLmsBuyBack(player.id);
+    } else {
+      this._saveLms();
+    }
+  }
+
+  async _commitLmsBuyBack(playerId) {
+    const competition = this._lmsCompetition;
+    if (!competition?.shareId || this._lmsShareBusy) return;
+    this._lmsShareBusy = true;
+    try {
+      const response = await fetch(`${LMS_SHARE_SERVICE}/api/competitions/${encodeURIComponent(competition.shareId)}`, {
+        method: "PATCH",
+        headers: { "content-type": "application/json", ...(competition.shareEditToken ? { authorization: `Bearer ${competition.shareEditToken}` } : {}), ...(this._lmsAdminPassword ? { "x-admin-password": this._lmsAdminPassword } : {}) },
+        body: JSON.stringify({ action: "buy-back", playerId }),
+      });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error || "Buy-back could not be saved");
+      const player = competition.players?.find((item) => String(item.id) === String(playerId));
+      if (player && result.player) Object.assign(player, result.player);
+      Object.assign(competition, { round: result.round ?? competition.round, completed: result.completed ?? competition.completed, winnerId: result.winnerId ?? competition.winnerId });
+      this._saveLms(false);
+      this._render();
+    } catch (error) {
+      console.warn("Football Hub LMS buy-back save failed", error);
+      await this._pullLmsSharePicks(true);
+      window.alert(error?.message || "Buy-back could not be saved. Please try again.");
+    } finally { this._lmsShareBusy = false; }
   }
 
   async _unlockLmsAdmin(password) {
@@ -1254,8 +1283,33 @@ class FootballHubPanel extends HTMLElement {
       competition.round = 2;
       competition.roundStarted = Math.floor(Date.now() / 1000);
     }
-    this._saveLms();
+    this._saveLms(false);
     this._render();
+    if (competition.shareId && LMS_SHARE_SERVICE && (competition.shareEditToken || this._lmsAdminPassword)) void this._commitLmsBuyBack(player.id);
+    else this._saveLms();
+  }
+
+  async _commitLmsBuyBack(playerId) {
+    const competition = this._lmsCompetition;
+    if (!competition?.shareId || this._lmsShareBusy) return;
+    this._lmsShareBusy = true;
+    try {
+      const response = await fetch(`${LMS_SHARE_SERVICE}/api/competitions/${encodeURIComponent(competition.shareId)}`, {
+        method: "PATCH",
+        headers: { "content-type": "application/json", ...(competition.shareEditToken ? { authorization: `Bearer ${competition.shareEditToken}` } : {}), ...(this._lmsAdminPassword ? { "x-admin-password": this._lmsAdminPassword } : {}) },
+        body: JSON.stringify({ action: "buy-back", playerId }),
+      });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error || "Buy-back could not be saved");
+      const player = competition.players?.find((item) => String(item.id) === String(playerId));
+      if (player && result.player) Object.assign(player, result.player);
+      this._saveLms(false);
+      this._render();
+    } catch (error) {
+      console.warn("Football Hub LMS buy-back save failed", error);
+      await this._pullLmsSharePicks(true);
+      window.alert(error?.message || "Buy-back could not be saved. Please try again.");
+    } finally { this._lmsShareBusy = false; }
   }
 
   _restoreLmsBuyBacks() {
