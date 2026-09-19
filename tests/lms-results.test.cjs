@@ -189,6 +189,21 @@ test('a Round 1 buy-back remains active when results are checked again', async (
   assert.equal(player.picks['1'], 'Sunderland');
 });
 
+test('a saved buy-back restores a player overwritten as eliminated by shared state', () => {
+  const { panel } = setup('private');
+  const player = panel._lmsCompetition.players[0];
+  player.picks['1'] = 'Sunderland';
+  player.buyBacks = 1;
+  player.buyBackRounds = {};
+  player.alive = false;
+  player.results['1'] = 'eliminated';
+
+  assert.equal(panel._restoreLmsBuyBacks(), true);
+  assert.equal(player.alive, true);
+  assert.equal(player.results['1'], 'bought-back');
+  assert.equal(player.buyBackRounds['1'], true);
+});
+
 test('restart retains players and links while archiving the winner and resetting the prize', async () => {
   const { panel } = setup('private');
   const competition = panel._lmsCompetition;

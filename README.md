@@ -1,7 +1,7 @@
 # ⚽ Home Assistant Football Hub
 
 [![License](https://img.shields.io/badge/license-Personal%20Use-red.svg)](LICENSE)
-![Version](https://img.shields.io/badge/version-v0.7.25-green)
+![Version](https://img.shields.io/badge/version-v0.7.26-green)
 ![Home Assistant](https://img.shields.io/badge/Home%20Assistant-2024.1%2B-blue)
 ![HACS](https://img.shields.io/badge/HACS-Custom-orange)
 ![Cloud Polling](https://img.shields.io/badge/IoT--Class-Cloud%20Polling-blue)
@@ -16,7 +16,12 @@ Football Hub remembers the country, competition, favourite clubs and last-opened
 
 ---
 
-## Latest release — 0.7.25
+## Latest release — 0.7.26
+
+- Restored Round 1 buy-backs when an older shared LMS record still says the player is eliminated.
+- A buy-back now remains active after shared-game syncing, and retains its **Paid back · Round 1** record.
+
+## Previous release — 0.7.25
 
 - LMS standings now separate **Live now**, **To play**, **Through** and **Eliminated** players.
 - Live picks show the current score and match minute; future picks show their fixture date and kick-off time.

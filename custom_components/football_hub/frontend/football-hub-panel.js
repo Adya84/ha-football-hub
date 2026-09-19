@@ -713,6 +713,7 @@ class FootballHubPanel extends HTMLElement {
           return { ...localPlayer, ...remotePlayer, email: remotePlayer.email || localPlayer.email || "", pickUrl: remotePlayer.pickUrl || localPlayer.pickUrl || "" };
         });
         Object.assign(competition, remote, localAccess, { mode: "private", players: mergedPlayers });
+        this._restoreLmsBuyBacks();
         this._applyLmsPlayerLinks(result.playerLinks || []);
         if (!(competition.leagues || []).some((league) => league.key === this._lmsActiveLeague)) {
           this._lmsActiveLeague = competition.leagues?.[0]?.key || "";
@@ -1257,6 +1258,29 @@ class FootballHubPanel extends HTMLElement {
     this._render();
   }
 
+  _restoreLmsBuyBacks() {
+    const competition = this._lmsCompetition;
+    if (!competition || competition.mode === "global") return false;
+    let changed = false;
+    for (const player of competition.players || []) {
+      // Older shared records preserved the buy-back payment but could restore
+      // the previous eliminated result. The payment is the durable record that
+      // the player has been reinstated for Round 1.
+      if (!Number(player.buyBacks || 0) && !player.buyBackRounds?.["1"]) continue;
+      if (!player.buyBackRounds?.["1"]) {
+        player.buyBackRounds = { ...(player.buyBackRounds || {}), "1": true };
+        changed = true;
+      }
+      player.results = player.results || {};
+      if (!player.alive || player.results["1"] !== "bought-back") {
+        player.alive = true;
+        player.results["1"] = "bought-back";
+        changed = true;
+      }
+    }
+    return changed;
+  }
+
   _setLmsEntryFee(value) {
     if (!this._isLmsAdmin() || !this._lmsCompetition) return;
     this._lmsCompetition.entryFee = Math.max(0, Number(value) || 0);
@@ -1516,7 +1540,9 @@ class FootballHubPanel extends HTMLElement {
     const competition = this._lmsCompetition;
     // A finished competition is historical; do not replace its confirmed
     // results with a later stale sensor snapshot.
-    if (!competition || competition.mode === "global" || competition.completed) return false;
+    if (!competition || competition.mode === "global") return false;
+    const buyBackRestored = this._restoreLmsBuyBacks();
+    if (competition.completed) return buyBackRestored;
     const roundKey = String(competition.round || 1);
     const roundStarted = Number(competition.roundStarted || 0);
     const fixtures = this._lmsRoundFixtureGroups().flatMap((league) => league.roundFixtures || []);
@@ -1534,8 +1560,8 @@ class FootballHubPanel extends HTMLElement {
         changed = true;
       }
     }
-    if (changed) this._saveLms();
-    return changed;
+    if (changed || buyBackRestored) this._saveLms();
+    return changed || buyBackRestored;
   }
 
   _endLmsRoundNow() {
