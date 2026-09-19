@@ -1561,7 +1561,17 @@ class FootballHubPanel extends HTMLElement {
         .filter((item) => (item.home_team === pick || item.away_team === pick) && this._lmsFixtureTimestamp(item) >= roundStarted)
         .sort((a, b) => this._lmsFixtureTimestamp(a) - this._lmsFixtureTimestamp(b))[0];
       const isFinal = ["FT", "AET", "PEN"].includes(String(match?.status_short || match?.status || "").toUpperCase());
-      if (!match || !isFinal) {
+      const hasFinalScore = Number.isFinite(Number(match?.home_goals)) && Number.isFinite(Number(match?.away_goals))
+        && match?.home_goals !== null && match?.away_goals !== null;
+      if (match && isFinal && hasFinalScore) {
+        const won = (match.home_team === pick && Number(match.home_goals) > Number(match.away_goals))
+          || (match.away_team === pick && Number(match.away_goals) > Number(match.home_goals));
+        player.results[roundKey] = won ? "survived" : "eliminated";
+        player.alive = won;
+        changed = true;
+        continue;
+      }
+      if (!match || !isFinal || !hasFinalScore) {
         delete player.results[roundKey];
         player.alive = true;
         changed = true;

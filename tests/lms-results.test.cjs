@@ -126,6 +126,18 @@ test('a final winning pick restores a stale eliminated LMS player as through', a
   assert.equal(player.results['1'], 'survived');
 });
 
+test('rendering restores a stale eliminated player whose final pick won', () => {
+  const { panel } = setup('private');
+  const player = panel._lmsCompetition.players[0];
+  player.alive = false;
+  player.results['1'] = 'eliminated';
+  panel._lmsLeagueCache = { premier_league: { fixtures: [arsenal] } };
+
+  assert.equal(panel._reopenLmsUnfinishedResults(), true);
+  assert.equal(player.alive, true);
+  assert.equal(player.results['1'], 'survived');
+});
+
 test('an early survived result is restored to live while the picked match is unfinished', async () => {
   const { panel } = setup('private');
   const competition = panel._lmsCompetition;
