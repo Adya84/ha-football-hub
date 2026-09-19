@@ -145,6 +145,50 @@ test('rendering reopens stale results so unfinished picks stay in the standing g
   assert.equal(player.results['1'], undefined);
 });
 
+test('standings separate live, to-play and eliminated LMS players', () => {
+  const { panel } = setup('private');
+  const competition = panel._lmsCompetition;
+  competition.players = [
+    { id: 'live', name: 'Live player', alive: true, paid: true, picks: { 1: 'Arsenal' }, results: {} },
+    { id: 'scheduled', name: 'Scheduled player', alive: true, paid: true, picks: { 1: 'Test Home' }, results: {} },
+    { id: 'out', name: 'Eliminated player', alive: false, paid: true, picks: { 1: 'Tottenham Hotspur' }, results: { 1: 'eliminated' } },
+  ];
+  panel._lmsLeagueCache = { premier_league: { teams: ['Arsenal', 'Test Home', 'Tottenham Hotspur'], fixtures: [
+    { ...arsenal, status: '2H', status_short: '2H', home_goals: 0, away_goals: 2, elapsed: 74 },
+    pending,
+    { id: 'tottenham-final', home_team: 'Tottenham Hotspur', away_team: 'Chelsea', timestamp: 1789239700, round: '4', status: 'FT', status_short: 'FT', home_goals: 0, away_goals: 1 },
+  ] } };
+  panel._captureLmsLeagueData = () => {};
+  panel._lmsMode = 'private';
+  panel._lmsPageView = 'standings';
+  panel._lmsEmailServices = () => [];
+
+  const html = panel._lastManStandingPage();
+
+  assert.match(html, /Live now/);
+  assert.match(html, /To play/);
+  assert.match(html, /Eliminated/);
+  assert.match(html, /Live player/);
+  assert.match(html, /Scheduled player/);
+  assert.match(html, /Eliminated player/);
+});
+
+test('a Round 1 buy-back remains active when results are checked again', async () => {
+  const { panel } = setup('private');
+  const competition = panel._lmsCompetition;
+  const player = competition.players[0];
+  player.picks['1'] = 'Sunderland';
+  player.alive = false;
+  player.results['1'] = 'eliminated';
+
+  panel._buyBackLmsPlayer(player.id);
+  await panel._settleLmsRound();
+
+  assert.equal(player.alive, true);
+  assert.equal(player.results['1'], 'bought-back');
+  assert.equal(player.picks['1'], 'Sunderland');
+});
+
 test('restart retains players and links while archiving the winner and resetting the prize', async () => {
   const { panel } = setup('private');
   const competition = panel._lmsCompetition;
