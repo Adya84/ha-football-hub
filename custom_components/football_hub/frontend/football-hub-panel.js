@@ -2282,7 +2282,14 @@ class FootballHubPanel extends HTMLElement {
       const result = await response.json();
       if (!response.ok) throw new Error(result.error || "Acca League update failed");
       game.shareUrl = result.shareUrl || game.shareUrl;
+      // The shared Acca page may contain corrections to completed rounds.
+      // Keep those historic payer and return values in Home Assistant too,
+      // so starting another round cannot restore an older local assignment.
+      if (result.competition?.gameType === "acca" && result.competition?.rounds) {
+        game.rounds = { ...(game.rounds || {}), ...result.competition.rounds };
+      }
       localStorage.setItem("football_hub_double_pick_game", JSON.stringify(game));
+      this._saveSharedPreferences();
     } catch (error) { console.warn("Acca League public update failed", error); }
   }
 

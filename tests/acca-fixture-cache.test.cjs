@@ -4,11 +4,13 @@ const fs = require('node:fs');
 const vm = require('node:vm');
 const path = require('node:path');
 let Panel;
-vm.runInNewContext(fs.readFileSync(path.join(__dirname, '../custom_components/football_hub/frontend/football-hub-panel.js'), 'utf8'), {
+const panelContext = {
   HTMLElement: class {},
   customElements: { get: () => false, define: (_name, value) => { Panel = value; } },
   localStorage: { setItem() {} },
-});
+  fetch: async () => ({ ok: true, json: async () => ({}) }),
+};
+vm.runInNewContext(fs.readFileSync(path.join(__dirname, '../custom_components/football_hub/frontend/football-hub-panel.js'), 'utf8'), panelContext);
 const match = (id, home, away) => ({ id, home_team: home, away_team: away, timestamp: 1789212600 });
 const championship = { key: 'championship', name: 'Championship' };
 const leagueTwo = { key: 'league_two', name: 'League Two' };
@@ -53,4 +55,27 @@ test('a cache belonging to another competition is not retained', () => {
   panel._doublePickCache.championship.competitionKey = 'league_two';
   capture(panel, 'championship', []);
   assert.equal(panel._doublePickCache.championship.fixtures.length, 0);
+});
+
+test('Acca sync adopts corrected completed-round payers returned by the shared game', async () => {
+  const panel = Object.create(Panel.prototype);
+  panel._doublePickGame = {
+    shareId: 'acca-1', shareEditToken: 'token', shareUrl: 'https://example.test/acca/acca-1',
+    round: 4,
+    rounds: { '2': { payerId: 'wrong-player' }, '3': { payerId: 'wrong-player' }, '4': { payerId: 'next-player' } },
+  };
+  panel._doublePickSharePayload = () => ({ gameType: 'acca' });
+  panel._saveSharedPreferences = () => {};
+  panelContext.fetch = async () => ({
+    ok: true,
+    json: async () => ({
+      shareUrl: 'https://example.test/acca/acca-1',
+      competition: { gameType: 'acca', rounds: { '2': { payerId: 'rob' }, '3': { payerId: 'me' }, '4': { payerId: 'rob' } } },
+    }),
+  });
+
+  await panel._syncDoublePickShare();
+
+  assert.equal(panel._doublePickGame.rounds['2'].payerId, 'rob');
+  assert.equal(panel._doublePickGame.rounds['3'].payerId, 'me');
 });
