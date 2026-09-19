@@ -129,6 +129,22 @@ test('an early survived result is restored to live while the picked match is unf
   assert.equal(player.results['1'], undefined);
 });
 
+test('rendering reopens stale results so unfinished picks stay in the standing group', () => {
+  const { panel } = setup('private');
+  const player = panel._lmsCompetition.players[0];
+  player.alive = false;
+  player.results['1'] = 'eliminated';
+  panel._lmsLeagueCache = { premier_league: { teams: ['Arsenal'], fixtures: [{ ...arsenal, status: '2H', status_short: '2H' }] } };
+  panel._lmsMode = 'private';
+  panel._lmsPageView = 'standings';
+  panel._lmsEmailServices = () => [];
+
+  panel._lastManStandingPage();
+
+  assert.equal(player.alive, true);
+  assert.equal(player.results['1'], undefined);
+});
+
 test('restart retains players and links while archiving the winner and resetting the prize', async () => {
   const { panel } = setup('private');
   const competition = panel._lmsCompetition;

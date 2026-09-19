@@ -1,7 +1,7 @@
 # ⚽ Home Assistant Football Hub
 
 [![License](https://img.shields.io/badge/license-Personal%20Use-red.svg)](LICENSE)
-![Version](https://img.shields.io/badge/version-v0.7.22-green)
+![Version](https://img.shields.io/badge/version-v0.7.23-green)
 ![Home Assistant](https://img.shields.io/badge/Home%20Assistant-2024.1%2B-blue)
 ![HACS](https://img.shields.io/badge/HACS-Custom-orange)
 ![Cloud Polling](https://img.shields.io/badge/IoT--Class-Cloud%20Polling-blue)
@@ -16,7 +16,7 @@ Football Hub remembers the country, competition, favourite clubs and last-opened
 
 ---
 
-## Latest release — 0.7.22
+## Latest release — 0.7.23
 
 - Fixed Acca League payer history so corrected previous rounds remain saved when a new round starts.
 - Home Assistant now keeps the corrected payer history after synchronising with the shared Acca League.

@@ -1509,6 +1509,32 @@ class FootballHubPanel extends HTMLElement {
     this._render();
   }
 
+  _reopenLmsUnfinishedResults() {
+    const competition = this._lmsCompetition;
+    // A finished competition is historical; do not replace its confirmed
+    // results with a later stale sensor snapshot.
+    if (!competition || competition.mode === "global" || competition.completed) return false;
+    const roundKey = String(competition.round || 1);
+    const roundStarted = Number(competition.roundStarted || 0);
+    const fixtures = this._lmsRoundFixtureGroups().flatMap((league) => league.roundFixtures || []);
+    let changed = false;
+    for (const player of competition.players || []) {
+      if (!["survived", "eliminated"].includes(player.results?.[roundKey])) continue;
+      const pick = player.picks?.[roundKey];
+      const match = fixtures
+        .filter((item) => (item.home_team === pick || item.away_team === pick) && this._lmsFixtureTimestamp(item) >= roundStarted)
+        .sort((a, b) => this._lmsFixtureTimestamp(a) - this._lmsFixtureTimestamp(b))[0];
+      const isFinal = ["FT", "AET", "PEN"].includes(String(match?.status_short || match?.status || "").toUpperCase());
+      if (!match || !isFinal) {
+        delete player.results[roundKey];
+        player.alive = true;
+        changed = true;
+      }
+    }
+    if (changed) this._saveLms();
+    return changed;
+  }
+
   _endLmsRoundNow() {
     const competition = this._lmsCompetition;
     if (!competition || competition.completed || competition.mode === "global" || !this._isLmsAdmin()) return;
@@ -2360,6 +2386,7 @@ class FootballHubPanel extends HTMLElement {
       .sort((a, b) => String(a.country).localeCompare(String(b.country)) || String(a.name).localeCompare(String(b.name)));
     const leagueCountries = [...new Set(leagueCatalogue.map((item) => item.country).filter(Boolean))];
     this._captureLmsLeagueData();
+    this._reopenLmsUnfinishedResults();
     const teamGroups = this._lmsTeamGroups();
     const teams = [...new Set(teamGroups.flatMap((league) => league.teams || []))];
     const roundKey = String(competition?.round || 1);
@@ -4327,17 +4354,17 @@ class FootballHubPanel extends HTMLElement {
       details.addEventListener("toggle", () => localStorage.setItem(storageKey, String(details.open)));
     });
 
-    // Standings are rendered from saved LMS state, but an in-progress fixture
-    // must override the waiting label immediately.
+    // Until a picked fixture is final, its player is live. This also covers
+    // fixtures that have not kicked off yet: only final games show Through/Out.
     if (this._activeTab === "last-man-standing" && this._lmsCompetition) {
-      const liveStatuses = new Set(["1H", "HT", "2H", "ET", "BT", "P", "LIVE", "INT"]);
+      const finalStatuses = new Set(["FT", "AET", "PEN"]);
       const fixtures = this._lmsRoundFixtureGroups().flatMap((group) => group.roundFixtures || []);
       this.shadowRoot.querySelectorAll(".lms-standings-row:not(.heading)").forEach((row) => {
         const pick = row.children?.[3]?.textContent?.trim();
         const fixture = fixtures.find((item) => item.home_team === pick || item.away_team === pick);
         const status = String(fixture?.status_short || fixture?.status || "").toUpperCase();
         const statusLabel = row.children?.[2]?.querySelector("b");
-        if (statusLabel && liveStatuses.has(status)) statusLabel.textContent = "Live";
+        if (statusLabel && pick && pick !== "Not selected" && !finalStatuses.has(status)) statusLabel.textContent = "Live";
       });
     }
 
