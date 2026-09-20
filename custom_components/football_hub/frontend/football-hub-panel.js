@@ -1,4 +1,4 @@
-const PANEL_VERSION = "0.8.2-beta4";
+const PANEL_VERSION = "0.8.2-beta5";
 // Temporarily paused while fixture schedules are being corrected. Manual email
 // actions remain available to the administrator.
 const LMS_AUTOMATIC_EMAILS_ENABLED = false;
@@ -2777,6 +2777,27 @@ class FootballHubPanel extends HTMLElement {
     this._render();
   }
 
+  _setAllLiveFilters(enabled) {
+    if (enabled) {
+      this._hiddenLiveCountries.clear();
+      this._hiddenLiveCompetitions.clear();
+      this._hiddenLiveGenders.clear();
+    }
+    this.shadowRoot?.querySelectorAll("[data-live-filter-kind]").forEach((input) => {
+      const kind = input.dataset.liveFilterKind;
+      const value = input.dataset.liveFilterValue;
+      const filters = kind === "country" ? this._hiddenLiveCountries : kind === "gender" ? this._hiddenLiveGenders : this._hiddenLiveCompetitions;
+      input.checked = enabled;
+      if (enabled) filters.delete(value);
+      else filters.add(value);
+    });
+    localStorage.setItem("football_hub_hidden_live_countries", JSON.stringify([...this._hiddenLiveCountries]));
+    localStorage.setItem("football_hub_hidden_live_competitions", JSON.stringify([...this._hiddenLiveCompetitions]));
+    localStorage.setItem("football_hub_hidden_live_genders", JSON.stringify([...this._hiddenLiveGenders]));
+    this._saveSharedPreferences();
+    this._render();
+  }
+
   _processLiveNotifications() {
     const enabled = this._liveNotifications || {};
     const matches = this._attrs("matches_today").matches || [];
@@ -3856,7 +3877,7 @@ class FootballHubPanel extends HTMLElement {
       return `<details class="country-filter-tree"><summary><label><input type="checkbox" data-live-filter-kind="country" data-live-filter-value="${this._escape(country)}" ${countryChecked ? "checked" : ""}>${this._countryFlag(country, "live-country-flag")}<strong>${this._escape(this._displayCountry(country))}</strong></label><span>${competitions.length} competitions</span></summary><div class="live-filter-options">${competitions.map((competition) => { const key = this._liveCompetitionKey(country, competition); return `<label class="${isFavouriteCompetition(country, competition) ? "favourite" : ""}"><input type="checkbox" data-live-filter-kind="competition" data-live-filter-value="${this._escape(key)}" data-live-filter-countries="${this._escape(country)}" ${this._hiddenLiveCompetitions.has(key) || !countryChecked ? "" : "checked"}><span>${this._escape(competition)}</span><button type="button" data-live-favourite="${this._escape(key)}" title="Pin competition">${isFavouriteCompetition(country, competition) ? "★" : "☆"}</button></label>`; }).join("")}</div></details>`;
     }).join("");
     const selectedCompetitionCount = [...competitionCountries.entries()].reduce((total, [competition, countries]) => total + [...countries].filter((country) => !this._hiddenLiveCountries.has(country) && !this._hiddenLiveCompetitions.has(`${country}|||${competition}`) && !this._hiddenLiveCompetitions.has(competition)).length, 0);
-    const liveFilters = `${toolbar}<details id="live-filter-panel" class="page-card live-competition-filter live-filter-panel" ${this._liveFiltersOpen ? "open" : ""}><summary><div><span class="eyebrow">MATCH FILTERS</span><h2>Countries and competitions</h2></div><span class="live-filter-summary-count">${selectedCompetitionCount} selected <ha-icon icon="mdi:chevron-down"></ha-icon></span></summary><div class="live-filter-panel-body"><p>Expand a country to choose its leagues and cups. Favourites are pinned first and settings synchronise through Home Assistant.</p><div class="live-filter-groups"><details open><summary>Men's and women's football ${filterActions("gender")}</summary><div class="live-filter-options">${filterChecks(["Men's", "Women's"], "gender", this._hiddenLiveGenders)}</div></details>${countryCompetitionFilters}</div></div></details>`;
+    const liveFilters = `${toolbar}<details id="live-filter-panel" class="page-card live-competition-filter live-filter-panel" ${this._liveFiltersOpen ? "open" : ""}><summary><div><span class="eyebrow">MATCH FILTERS</span><h2>Countries and competitions</h2></div><span class="live-filter-summary-count">${selectedCompetitionCount} selected ${filterActions("all")} <ha-icon icon="mdi:chevron-down"></ha-icon></span></summary><div class="live-filter-panel-body"><p>Expand a country to choose its leagues and cups. Favourites are pinned first and settings synchronise through Home Assistant.</p><div class="live-filter-groups"><details open><summary>Men's and women's football</summary><div class="live-filter-options">${filterChecks(["Men's", "Women's"], "gender", this._hiddenLiveGenders)}</div></details>${countryCompetitionFilters}</div></div></details>`;
     const statusInfo = this._statusInfo();
     const notifyChecks = [["kickoff", "Kickoff"], ["goals", "Goals"], ["yellowCards", "Yellow cards"], ["redCards", "Red cards"], ["halftime", "Half-time"], ["fulltime", "Full-time"], ["sounds", "Alert sounds"], ["selectedClubOnly", "Selected club only"]].map(([key, label]) => `<label><input type="checkbox" data-live-notification="${key}" ${this._liveNotifications[key] ? "checked" : ""}><span>${label}</span></label>`).join("");
     const nuvioSettings = `<details class="page-card nuvio-settings"><summary><span><ha-icon icon="mdi:play-circle-outline"></ha-icon> Nuvio watch links <small>Beta</small></span><span>${this._nuvioManifestUrl ? "Configured" : "Optional"}</span></summary><div><p>Paste your Sports Streams Nuvio manifest. Football Hub compares public event names only and shows a Watch in Nuvio button only when one exact match is found.</p><label>Sports Streams manifest URL<input id="nuvio-manifest-url" type="url" value="${this._escape(this._nuvioManifestUrl)}" placeholder="https://sports.highfly.to/.../manifest.json"></label><button type="button" id="save-nuvio-manifest">Save Nuvio link</button></div></details>`;
@@ -4842,7 +4863,7 @@ class FootballHubPanel extends HTMLElement {
       this._render();
     }));
     this.shadowRoot.querySelectorAll("[data-live-favourite]").forEach((button) => button.addEventListener("click", (event) => { event.preventDefault(); event.stopPropagation(); const name = button.dataset.liveFavourite; if (this._favouriteLiveCompetitions.has(name)) this._favouriteLiveCompetitions.delete(name); else this._favouriteLiveCompetitions.add(name); localStorage.setItem("football_hub_favourite_live_competitions", JSON.stringify([...this._favouriteLiveCompetitions])); this._saveSharedPreferences(); this._render(); }));
-    this.shadowRoot.querySelectorAll("[data-live-filter-action]").forEach((button) => button.addEventListener("click", (event) => { event.preventDefault(); const target = button.dataset.liveFilterTarget; const checked = button.dataset.liveFilterAction === "all"; this.shadowRoot.querySelectorAll(`[data-live-filter-kind="${target}"]`).forEach((input) => { input.checked = checked; const filters = target === "country" ? this._hiddenLiveCountries : target === "gender" ? this._hiddenLiveGenders : this._hiddenLiveCompetitions; if (checked) filters.delete(input.dataset.liveFilterValue); else filters.add(input.dataset.liveFilterValue); }); localStorage.setItem(target === "country" ? "football_hub_hidden_live_countries" : target === "gender" ? "football_hub_hidden_live_genders" : "football_hub_hidden_live_competitions", JSON.stringify([...(target === "country" ? this._hiddenLiveCountries : target === "gender" ? this._hiddenLiveGenders : this._hiddenLiveCompetitions)])); this._saveSharedPreferences(); this._render(); }));
+    this.shadowRoot.querySelectorAll("[data-live-filter-action]").forEach((button) => button.addEventListener("click", (event) => { event.preventDefault(); const target = button.dataset.liveFilterTarget; const checked = button.dataset.liveFilterAction === "all"; if (target === "all") { this._setAllLiveFilters(checked); return; } this.shadowRoot.querySelectorAll(`[data-live-filter-kind="${target}"]`).forEach((input) => { input.checked = checked; const filters = target === "country" ? this._hiddenLiveCountries : target === "gender" ? this._hiddenLiveGenders : this._hiddenLiveCompetitions; if (checked) filters.delete(input.dataset.liveFilterValue); else filters.add(input.dataset.liveFilterValue); }); localStorage.setItem(target === "country" ? "football_hub_hidden_live_countries" : target === "gender" ? "football_hub_hidden_live_genders" : "football_hub_hidden_live_competitions", JSON.stringify([...(target === "country" ? this._hiddenLiveCountries : target === "gender" ? this._hiddenLiveGenders : this._hiddenLiveCompetitions)])); this._saveSharedPreferences(); this._render(); }));
     this.shadowRoot.querySelectorAll("[data-live-notification]").forEach((input) => input.addEventListener("change", async () => { this._liveNotifications[input.dataset.liveNotification] = input.checked; if (input.dataset.liveNotification === "sounds" && input.checked) this._enableAlertSounds(); if (input.checked && "Notification" in window && Notification.permission === "default") await Notification.requestPermission(); localStorage.setItem("football_hub_live_notifications", JSON.stringify(this._liveNotifications)); this._saveSharedPreferences(); }));
 
     this.shadowRoot.querySelectorAll("[data-transfer-view]").forEach((button) => {

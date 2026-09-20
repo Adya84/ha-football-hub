@@ -84,3 +84,30 @@ test("live alert bulk actions enable and disable every alert option", () => {
   assert.equal(saves, 2);
   assert.equal(renders, 2);
 });
+
+test("match filter bulk actions select and clear countries, competitions and genders together", () => {
+  const panel = makePanel({ primary: {}, liveMatches: [], hiddenCompetitions: [] });
+  panel._hiddenLiveCountries = new Set(["England"]);
+  panel._hiddenLiveCompetitions = new Set(["England|||Premier League", "Old|||No longer listed"]);
+  panel._hiddenLiveGenders = new Set(["Men's"]);
+  const inputs = [
+    { checked: false, dataset: { liveFilterKind: "country", liveFilterValue: "England" } },
+    { checked: false, dataset: { liveFilterKind: "competition", liveFilterValue: "England|||Premier League" } },
+    { checked: false, dataset: { liveFilterKind: "gender", liveFilterValue: "Men's" } },
+  ];
+  panel.shadowRoot = { querySelectorAll: () => inputs };
+  panel._saveSharedPreferences = () => {};
+  panel._render = () => {};
+
+  panel._setAllLiveFilters(true);
+  assert.deepEqual([...panel._hiddenLiveCountries], []);
+  assert.deepEqual([...panel._hiddenLiveCompetitions], []);
+  assert.deepEqual([...panel._hiddenLiveGenders], []);
+  assert.ok(inputs.every((input) => input.checked));
+
+  panel._setAllLiveFilters(false);
+  assert.deepEqual([...panel._hiddenLiveCountries], ["England"]);
+  assert.deepEqual([...panel._hiddenLiveCompetitions], ["England|||Premier League"]);
+  assert.deepEqual([...panel._hiddenLiveGenders], ["Men's"]);
+  assert.ok(inputs.every((input) => !input.checked));
+});
