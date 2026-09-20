@@ -16,7 +16,7 @@ from .const import DOMAIN
 PLATFORMS = ["sensor"]
 PANEL_URL = "football-hub"
 PANEL_NAME = "football-hub-panel"
-PANEL_VERSION = "0.7.34"
+PANEL_VERSION = "0.7.35"
 PANEL_STATIC_URL = "/football_hub/football-hub-panel.js"
 PANEL_MODULE_URL = f"{PANEL_STATIC_URL}?v={PANEL_VERSION}"
 PANEL_SCRIPT_PATH = Path(__file__).parent / "frontend" / "football-hub-panel.js"
@@ -38,23 +38,32 @@ async def async_migrate_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     return True
 
 
-def async_cleanup_legacy_favourite_devices(hass: HomeAssistant, entry: ConfigEntry) -> None:
-    """Remove only favourite devices created before their competition key was saved."""
+def async_cleanup_obsolete_favourite_devices(
+    hass: HomeAssistant, entry: ConfigEntry, favourites: list[dict]
+) -> None:
+    """Remove sensors for clubs that are no longer saved favourites."""
     device_registry = dr.async_get(hass)
     entity_registry = er.async_get(hass)
-    legacy_device_prefix = f"{entry.entry_id}__"
-    legacy_entity_prefix = f"{entry.entry_id}_favourite__"
+    device_prefix = f"{entry.entry_id}_"
+    entity_prefix = f"{entry.entry_id}_favourite_"
+    active_device_identifiers = {
+        f"{entry.entry_id}_{str(favourite.get('home_competition') or favourite.get('competition') or '')}_{str(favourite.get('team') or '').casefold()}"
+        for favourite in favourites
+        if str(favourite.get("team") or "").strip()
+    }
 
     for device in list(dr.async_entries_for_config_entry(device_registry, entry.entry_id)):
-        if not any(
-            domain == DOMAIN and identifier.startswith(legacy_device_prefix)
+        favourite_identifiers = {
+            identifier
             for domain, identifier in device.identifiers
-        ):
+            if domain == DOMAIN and identifier.startswith(device_prefix)
+        }
+        if not favourite_identifiers or favourite_identifiers & active_device_identifiers:
             continue
         for entity in er.async_entries_for_device(
             entity_registry, device.id, include_disabled_entities=True
         ):
-            if entity.unique_id.startswith(legacy_entity_prefix):
+            if entity.unique_id.startswith(entity_prefix):
                 entity_registry.async_remove(entity.entity_id)
         device_registry.async_remove_device(device.id)
 
@@ -151,8 +160,8 @@ async def async_setup(hass: HomeAssistant, config: dict) -> bool:
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     hass.data.setdefault(DOMAIN, {})
-    async_cleanup_legacy_favourite_devices(hass, entry)
     coordinator = FootballHubCoordinator(hass, entry)
+    async_cleanup_obsolete_favourite_devices(hass, entry, coordinator.favourite_clubs)
     await coordinator.async_config_entry_first_refresh()
     hass.data[DOMAIN][entry.entry_id] = {"coordinator": coordinator}
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)

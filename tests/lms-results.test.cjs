@@ -302,10 +302,11 @@ test('favourite club sensors use the normalised home competition cache key', () 
   assert.match(source, /favourite\.get\("home_competition"\) or favourite\.get\("competition"\)/);
 });
 
-test('startup removes only favourite devices created with an empty competition key', () => {
+test('startup removes favourite devices that are no longer saved favourites', () => {
   const source = fs.readFileSync(path.join(__dirname, '../custom_components/football_hub/__init__.py'), 'utf8');
-  assert.match(source, /async_cleanup_legacy_favourite_devices/);
-  assert.match(source, /f"\{entry\.entry_id\}__"/);
+  assert.match(source, /async_cleanup_obsolete_favourite_devices/);
+  assert.match(source, /active_device_identifiers/);
+  assert.match(source, /active_device_identifiers/);
   assert.match(source, /entity_registry\.async_remove\(entity\.entity_id\)/);
   assert.match(source, /device_registry\.async_remove_device\(device\.id\)/);
 });
