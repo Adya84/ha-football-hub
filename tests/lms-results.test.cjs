@@ -273,15 +273,16 @@ test('rendering the actual LMS standings does not erase a confirmed Arsenal resu
   assert.match(html, /<b>Winner<\/b>/);
 });
 
-test('LMS player page separates paid players from payment due players', () => {
+test('LMS player page separates through, to-play and eliminated players', () => {
   const { panel } = setup('private');
   panel._lmsMode = 'private';
   panel._lmsPageView = 'picks';
   panel._lmsCompetition.players[0].paid = true;
   panel._lmsEmailServices = () => [];
   const html = panel._lastManStandingPage();
-  assert.match(html, /Paid players/);
-  assert.match(html, /Payment due/);
+  assert.match(html, /To play/);
+  assert.doesNotMatch(html, /<strong>Paid players<\/strong>/);
+  assert.doesNotMatch(html, /<strong>Payment due<\/strong>/);
 });
 
 test('automatic LMS emails are paused while fixture scheduling is corrected', () => {
