@@ -297,6 +297,11 @@ test('the panel cache-busting version matches the integration release', () => {
   assert.match(source, new RegExp(`PANEL_VERSION = "${manifest.version}"`));
 });
 
+test('favourite club sensors use the normalised home competition cache key', () => {
+  const source = fs.readFileSync(path.join(__dirname, '../custom_components/football_hub/sensors/sensor.py'), 'utf8');
+  assert.match(source, /favourite\.get\("home_competition"\) or favourite\.get\("competition"\)/);
+});
+
 test('the main competition picker includes cups for My Club', () => {
   const source = fs.readFileSync(path.join(__dirname, '../custom_components/football_hub/frontend/football-hub-panel.js'), 'utf8');
   assert.match(source, /const countryCompetitions = catalogue/);

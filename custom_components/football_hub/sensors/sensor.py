@@ -170,7 +170,12 @@ class FootballHubFavouriteClubSensor(FootballHubBaseSensor):
     def __init__(self, coordinator, entry, favourite: dict, kind: str, label: str):
         self.favourite = dict(favourite)
         self.team = str(favourite.get("team") or "Unknown club")
-        self.competition_key = str(favourite.get("competition") or "")
+        # Favourites are normalised to ``home_competition``.  Keep the legacy
+        # field as a fallback for existing configurations created before that
+        # migration, otherwise the sensor looks up an empty cache key.
+        self.competition_key = str(
+            favourite.get("home_competition") or favourite.get("competition") or ""
+        )
         self.kind = kind
         slug = re.sub(r"[^a-z0-9]+", "_", self.team.casefold()).strip("_")
         super().__init__(coordinator, entry, f"favourite_{self.competition_key}_{slug}_{kind}", f"{self.team} {label}")
