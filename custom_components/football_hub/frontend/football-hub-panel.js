@@ -1,4 +1,4 @@
-const PANEL_VERSION = "0.8.2-beta5";
+const PANEL_VERSION = "0.8.2";
 // Temporarily paused while fixture schedules are being corrected. Manual email
 // actions remain available to the administrator.
 const LMS_AUTOMATIC_EMAILS_ENABLED = false;
@@ -359,24 +359,34 @@ class FootballHubPanel extends HTMLElement {
     if (inlineFlags[name]) return inlineFlags[name];
 
     const codes = {
-      argentina:"ar", australia:"au", austria:"at", belgium:"be",
-      brazil:"br", bulgaria:"bg", canada:"ca", chile:"cl",
-      china:"cn", colombia:"co", croatia:"hr", cyprus:"cy",
+      albania:"al", algeria:"dz", argentina:"ar", armenia:"am",
+      australia:"au", austria:"at", azerbaijan:"az", bahrain:"bh",
+      belarus:"by", belgium:"be", "bosnia and herzegovina":"ba",
+      brazil:"br", bulgaria:"bg", burkina:"bf", "burkina faso":"bf",
+      cambodia:"kh", cameroon:"cm", canada:"ca", "cape verde":"cv",
+      chile:"cl", china:"cn", colombia:"co", "costa rica":"cr",
+      croatia:"hr", cuba:"cu", cyprus:"cy",
       czechia:"cz", "czech republic":"cz", denmark:"dk",
-      estonia:"ee", finland:"fi", france:"fr", germany:"de",
-      greece:"gr", hungary:"hu", iceland:"is", india:"in",
-      indonesia:"id", ireland:"ie", italy:"it", japan:"jp",
-      latvia:"lv", lithuania:"lt", luxembourg:"lu", malaysia:"my",
-      mexico:"mx", netherlands:"nl", holland:"nl", "new zealand":"nz",
-      norway:"no", philippines:"ph", poland:"pl", portugal:"pt",
-      romania:"ro", serbia:"rs", singapore:"sg", slovakia:"sk",
-      slovenia:"si", "south africa":"za", "south korea":"kr",
-      korea:"kr", spain:"es", sweden:"se", switzerland:"ch",
-      thailand:"th", turkey:"tr", turkiye:"tr", ukraine:"ua",
+      "dominican republic":"do", ecuador:"ec", egypt:"eg", estonia:"ee",
+      "el salvador":"sv", finland:"fi", france:"fr", georgia:"ge",
+      germany:"de", ghana:"gh", greece:"gr", guatemala:"gt", honduras:"hn",
+      hungary:"hu", iceland:"is", india:"in", indonesia:"id", iran:"ir",
+      iraq:"iq", ireland:"ie", "republic of ireland":"ie", israel:"il",
+      italy:"it", jamaica:"jm", japan:"jp", jordan:"jo", kazakhstan:"kz",
+      kenya:"ke", kuwait:"kw", lebanon:"lb", latvia:"lv", lithuania:"lt",
+      luxembourg:"lu", malaysia:"my", moldova:"md", montenegro:"me",
+      morocco:"ma", netherlands:"nl", holland:"nl", "new zealand":"nz",
+      nigeria:"ng", "north macedonia":"mk", norway:"no", oman:"om",
+      panama:"pa", paraguay:"py", peru:"pe", philippines:"ph", poland:"pl",
+      portugal:"pt", "puerto rico":"pr", qatar:"qa", romania:"ro",
+      "saudi arabia":"sa", senegal:"sn", serbia:"rs", singapore:"sg",
+      slovakia:"sk", slovenia:"si", "south africa":"za", "south korea":"kr",
+      korea:"kr", spain:"es", sweden:"se", switzerland:"ch", thailand:"th",
+      tunisia:"tn", turkey:"tr", turkiye:"tr", uganda:"ug", ukraine:"ua",
       "united arab emirates":"ae", uae:"ae", "united kingdom":"gb",
       uk:"gb", "great britain":"gb", usa:"us", us:"us",
       "united states":"us", "united states of america":"us",
-      vietnam:"vn"
+      uruguay:"uy", uzbekistan:"uz", venezuela:"ve", vietnam:"vn", zimbabwe:"zw"
     };
 
     const iso3Codes = {

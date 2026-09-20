@@ -331,6 +331,13 @@ test('live provider ISO3 country codes render a real flag instead of the fallbac
   }
 });
 
+test('live country names used by the filter render a real flag instead of the fallback', () => {
+  const { panel } = setup('private');
+  for (const country of ['Albania', 'Algeria', 'Armenia', 'Azerbaijan', 'Israel', 'Kazakhstan', 'Kuwait', 'Moldova', 'Montenegro', 'Saudi Arabia', 'United Arab Emirates']) {
+    assert.doesNotMatch(panel._countryFlag(country, 'live-country-flag'), /🏳️/, country);
+  }
+});
+
 test('Live Centre keeps pins country-specific and shows club cards with refresh age', () => {
   const source = fs.readFileSync(path.join(__dirname, '../custom_components/football_hub/frontend/football-hub-panel.js'), 'utf8');
   assert.match(source, /_liveCompetitionKey\(country, competition\)/);
