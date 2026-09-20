@@ -291,6 +291,12 @@ test('automatic LMS emails are paused while fixture scheduling is corrected', ()
   assert.match(source, /if \(!LMS_AUTOMATIC_EMAILS_ENABLED\) return;/);
 });
 
+test('the panel cache-busting version matches the integration release', () => {
+  const source = fs.readFileSync(path.join(__dirname, '../custom_components/football_hub/__init__.py'), 'utf8');
+  const manifest = JSON.parse(fs.readFileSync(path.join(__dirname, '../custom_components/football_hub/manifest.json'), 'utf8'));
+  assert.match(source, new RegExp(`PANEL_VERSION = "${manifest.version}"`));
+});
+
 test('the main competition picker includes cups for My Club', () => {
   const source = fs.readFileSync(path.join(__dirname, '../custom_components/football_hub/frontend/football-hub-panel.js'), 'utf8');
   assert.match(source, /const countryCompetitions = catalogue/);
