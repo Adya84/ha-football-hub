@@ -9,11 +9,22 @@ from urllib.parse import quote
 
 
 def _normalise_name(value: object) -> str:
-    """Return a comparison key for team names from two separate providers."""
+    """Return a forgiving comparison key for team names from separate providers."""
     text = unicodedata.normalize("NFKD", str(value or ""))
     text = "".join(character for character in text if not unicodedata.combining(character))
     text = text.casefold().replace("&", " and ")
-    return " ".join(re.findall(r"[a-z0-9]+", text))
+    words = re.findall(r"[a-z0-9]+", text)
+
+    # Sports catalogues commonly add/remove generic club suffixes while still
+    # referring to the same team (e.g. "Leon" vs "Club Leon", "Queretaro FC"
+    # vs "Queretaro"). Ignore only those generic tokens; keep the distinctive
+    # team name intact.
+    generic = {
+        "fc", "cf", "afc", "sc", "ac", "club", "football", "futbol",
+        "soccer", "deportivo",
+    }
+    stripped = [word for word in words if word not in generic]
+    return " ".join(stripped or words)
 
 
 def _event_sides(name: object) -> tuple[str, str] | None:
