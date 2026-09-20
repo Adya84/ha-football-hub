@@ -3463,8 +3463,8 @@ class FootballHubPanel extends HTMLElement {
     const table = this._attrs("standings").table || [];
     const scorers = this._attrs("top_scorers").top_scorers || [];
     const fixturesAttrs = this._attrs("fixtures");
-    const fixtures = fixturesAttrs.club === club && Array.isArray(fixturesAttrs.club_fixtures) ? fixturesAttrs.club_fixtures : (fixturesAttrs.fixtures || []);
     const selectedClub = this._selectedClub;
+    const fixtures = fixturesAttrs.club === selectedClub && Array.isArray(fixturesAttrs.club_fixtures) ? fixturesAttrs.club_fixtures : (fixturesAttrs.fixtures || []);
     const isClubFixture = (match) => Boolean(
       selectedClub && (match.home_team === selectedClub || match.away_team === selectedClub)
     );
