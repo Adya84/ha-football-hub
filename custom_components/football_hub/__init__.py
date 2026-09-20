@@ -7,6 +7,8 @@ from homeassistant.components.frontend import async_register_built_in_panel
 from homeassistant.components.http import StaticPathConfig
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant, ServiceCall
+from homeassistant.helpers import device_registry as dr
+from homeassistant.helpers import entity_registry as er
 
 from .api.coordinator import FootballHubCoordinator
 from .const import DOMAIN
@@ -14,7 +16,7 @@ from .const import DOMAIN
 PLATFORMS = ["sensor"]
 PANEL_URL = "football-hub"
 PANEL_NAME = "football-hub-panel"
-PANEL_VERSION = "0.7.33"
+PANEL_VERSION = "0.7.34"
 PANEL_STATIC_URL = "/football_hub/football-hub-panel.js"
 PANEL_MODULE_URL = f"{PANEL_STATIC_URL}?v={PANEL_VERSION}"
 PANEL_SCRIPT_PATH = Path(__file__).parent / "frontend" / "football-hub-panel.js"
@@ -34,6 +36,27 @@ async def async_migrate_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     data["provider_mode"] = "fm"
     hass.config_entries.async_update_entry(entry, data=data, version=3)
     return True
+
+
+def async_cleanup_legacy_favourite_devices(hass: HomeAssistant, entry: ConfigEntry) -> None:
+    """Remove only favourite devices created before their competition key was saved."""
+    device_registry = dr.async_get(hass)
+    entity_registry = er.async_get(hass)
+    legacy_device_prefix = f"{entry.entry_id}__"
+    legacy_entity_prefix = f"{entry.entry_id}_favourite__"
+
+    for device in list(dr.async_entries_for_config_entry(device_registry, entry.entry_id)):
+        if not any(
+            domain == DOMAIN and identifier.startswith(legacy_device_prefix)
+            for domain, identifier in device.identifiers
+        ):
+            continue
+        for entity in er.async_entries_for_device(
+            entity_registry, device.id, include_disabled_entities=True
+        ):
+            if entity.unique_id.startswith(legacy_entity_prefix):
+                entity_registry.async_remove(entity.entity_id)
+        device_registry.async_remove_device(device.id)
 
 
 async def async_setup(hass: HomeAssistant, config: dict) -> bool:
@@ -128,6 +151,7 @@ async def async_setup(hass: HomeAssistant, config: dict) -> bool:
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     hass.data.setdefault(DOMAIN, {})
+    async_cleanup_legacy_favourite_devices(hass, entry)
     coordinator = FootballHubCoordinator(hass, entry)
     await coordinator.async_config_entry_first_refresh()
     hass.data[DOMAIN][entry.entry_id] = {"coordinator": coordinator}
