@@ -375,7 +375,7 @@ class FootballHubPanel extends HTMLElement {
       italy:"it", jamaica:"jm", japan:"jp", jordan:"jo", kazakhstan:"kz",
       kenya:"ke", kuwait:"kw", lebanon:"lb", latvia:"lv", lithuania:"lt",
       luxembourg:"lu", malaysia:"my", moldova:"md", montenegro:"me",
-      morocco:"ma", netherlands:"nl", holland:"nl", "new zealand":"nz",
+      morocco:"ma", mexico:"mx", netherlands:"nl", holland:"nl", "new zealand":"nz",
       nigeria:"ng", "north macedonia":"mk", norway:"no", oman:"om",
       panama:"pa", paraguay:"py", peru:"pe", philippines:"ph", poland:"pl",
       portugal:"pt", "puerto rico":"pr", qatar:"qa", romania:"ro", russia:"ru",
