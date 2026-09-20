@@ -309,6 +309,23 @@ test('favourite league position looks through the provider standings table', () 
   assert.match(source, /row\.get\("team"\).*team\.casefold\(\)/);
 });
 
+test('live competition headers show a country flag and do not merge equal league names', () => {
+  const source = fs.readFileSync(path.join(__dirname, '../custom_components/football_hub/frontend/football-hub-panel.js'), 'utf8');
+  assert.match(source, /const country = match\.country \|\| match\.country_code \|\| ""/);
+  assert.match(source, /const groupKey = this\._liveCompetitionKey\(country, competition\)/);
+  assert.match(source, /this\._countryFlag\(country, "live-country-flag"\)/);
+});
+
+test('Live Centre keeps pins country-specific and shows club cards with refresh age', () => {
+  const source = fs.readFileSync(path.join(__dirname, '../custom_components/football_hub/frontend/football-hub-panel.js'), 'utf8');
+  assert.match(source, /_liveCompetitionKey\(country, competition\)/);
+  assert.match(source, /const competitionFilterKey = \(match\) => this\._liveCompetitionKey\(countryName\(match\), competitionName\(match\)\)/);
+  assert.match(source, /_liveFavouriteClubsSection\(matches\)/);
+  assert.match(source, /MY CLUBS LIVE/);
+  assert.match(source, /_liveUpdatedAge\(timestamp\)/);
+  assert.match(source, /this\._escape\(this\._liveUpdatedAge\(statusInfo\.last_updated\)\)/);
+});
+
 test('startup removes favourite devices that are no longer saved favourites', () => {
   const source = fs.readFileSync(path.join(__dirname, '../custom_components/football_hub/__init__.py'), 'utf8');
   assert.match(source, /async_cleanup_obsolete_favourite_devices/);

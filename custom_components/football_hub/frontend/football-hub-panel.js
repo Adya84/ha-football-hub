@@ -378,9 +378,25 @@ class FootballHubPanel extends HTMLElement {
       vietnam:"vn"
     };
 
-    const code = codes[name] || (/^[a-z]{2}$/.test(name) ? name : "");
+    const iso3Codes = {
+      eng: "england", sco: "scotland", wal: "wales", nir: "northern ireland",
+      tun: "tn", aze: "az", bih: "ba", gha: "gh", alb: "al", alg: "dz",
+      arm: "am", bfa: "bf", bgr: "bg", bhr: "bh", bol: "bo", bdi: "bi",
+      blr: "by", che: "ch", civ: "ci", cmr: "cm", cod: "cd", cog: "cg",
+      cri: "cr", cub: "cu", dom: "do", dza: "dz", ecu: "ec", egy: "eg",
+      est: "ee", eth: "et", geo: "ge", gtm: "gt", hnd: "hn", hrv: "hr",
+      isr: "il", jam: "jm", jor: "jo", ken: "ke", khm: "kh", kwt: "kw",
+      lbn: "lb", ltu: "lt", lva: "lv", mar: "ma", mdv: "mv", mlt: "mt",
+      mne: "me", nga: "ng", nic: "ni", omn: "om", pan: "pa", per: "pe",
+      pri: "pr", pry: "py", qat: "qa", rou: "ro", sau: "sa", sen: "sn",
+      slv: "sv", smr: "sm", srb: "rs", svk: "sk", svn: "si", tha: "th",
+      tto: "tt", tur: "tr", uga: "ug", ury: "uy", ven: "ve", zaf: "za",
+      zwe: "zw"
+    };
 
-    if (!code) return `<span class="supporter-flag-fallback">🏳️</span>`;
+    const code = codes[name] || iso3Codes[name] || (/^[a-z]{2}$/.test(name) ? name : "");
+
+    if (!code) return `<span class="${className} supporter-flag-fallback">🏳️</span>`;
 
     return `<img class="${className}" src="https://flagcdn.com/w160/${code}.png" alt="${this._escape(country || code)} flag" loading="lazy">`;
   }
@@ -3694,18 +3710,55 @@ class FootballHubPanel extends HTMLElement {
     }).join("")}</div>`;
   }
 
+  _liveCompetitionKey(country, competition) {
+    return `${String(country || "International").trim()}|||${String(competition || "Other matches").trim()}`;
+  }
+
+  _liveUpdatedAge(timestamp) {
+    const updated = new Date(timestamp || 0).getTime();
+    if (!Number.isFinite(updated) || updated <= 0) return "Waiting for an update";
+    const seconds = Math.max(0, Math.floor((Date.now() - updated) / 1000));
+    if (seconds < 10) return "Updated just now";
+    if (seconds < 60) return `Updated ${seconds}s ago`;
+    const minutes = Math.floor(seconds / 60);
+    if (minutes < 60) return `Updated ${minutes}m ago`;
+    return `Updated ${Math.floor(minutes / 60)}h ago`;
+  }
+
+  _liveFavouriteClubsSection(matches) {
+    const favourites = Array.isArray(this._statusInfo().favourite_clubs) ? this._statusInfo().favourite_clubs : [];
+    const clubNames = favourites.map((club) => String(club?.name || club?.team || club || "").trim()).filter(Boolean);
+    const normalise = (value) => String(value || "").trim().toLocaleLowerCase();
+    const cards = clubNames.map((club) => {
+      const match = matches.find((item) => normalise(item.home_team) === normalise(club) || normalise(item.away_team) === normalise(club));
+      if (!match) return "";
+      const isHome = normalise(match.home_team) === normalise(club);
+      const opponent = isHome ? match.away_team : match.home_team;
+      const clubGoals = isHome ? match.home_goals : match.away_goals;
+      const opponentGoals = isHome ? match.away_goals : match.home_goals;
+      const logo = isHome ? match.home_logo : match.away_logo;
+      const fixtureId = String(match.fixture_id ?? match.id ?? `${match.home_team}-${match.away_team}`);
+      const minute = match.elapsed ? `${String(match.elapsed).replace(/'+$/, "")}'` : (match.status_short || "LIVE");
+      return `<button type="button" class="my-club-live-card" data-live-score="${this._escape(fixtureId)}"><span>${this._logo(logo, club, "32")}</span><div><small>${this._escape(club)} v ${this._escape(opponent)}</small><strong>${this._score(clubGoals)} – ${this._score(opponentGoals)} <em>${this._escape(minute)}</em></strong></div></button>`;
+    }).filter(Boolean);
+    if (!cards.length) return "";
+    return `<section class="section my-clubs-live"><div class="section-title-row"><div><span class="eyebrow">MY CLUBS LIVE</span><h2>Your clubs playing now</h2></div><span class="pill">${cards.length} live</span></div><div class="my-clubs-live-grid">${cards.join("")}</div></section>`;
+  }
+
   _liveCompetitionGroups(matches, selectedId = "") {
     const matchId = (match, index = 0) => String(match.fixture_id ?? match.id ?? `${match.home_team}-${match.away_team}-${index}`);
     const groups = new Map();
     matches.forEach((match) => {
       const competition = match.competition || match.league_name || "Other live matches";
-      if (!groups.has(competition)) groups.set(competition, []);
-      groups.get(competition).push(match);
+      const country = match.country || match.country_code || "";
+      const groupKey = this._liveCompetitionKey(country, competition);
+      if (!groups.has(groupKey)) groups.set(groupKey, { competition, country, games: [] });
+      groups.get(groupKey).games.push(match);
     });
     if (!groups.size) return `<div class="empty">No live matches right now.</div>`;
-    return `<div class="country-live-groups">${[...groups.entries()].map(([competition, games]) => `
+    return `<div class="country-live-groups">${[...groups.values()].map(({ competition, country, games }) => `
       <article class="country-live-group">
-        <header><ha-icon icon="mdi:trophy-outline"></ha-icon><strong>${this._escape(competition)}</strong><span>${games.length} live</span></header>
+        <header><ha-icon icon="mdi:trophy-outline"></ha-icon>${this._countryFlag(country, "live-country-flag")}<strong>${this._escape(competition)}</strong><span>${games.length} live</span></header>
         <div>${games.map((match, index) => {
           const id = matchId(match, index);
           const minuteValue = String(match.elapsed ?? "").replace(/'+$/, "");
@@ -3761,34 +3814,33 @@ class FootballHubPanel extends HTMLElement {
       if (!competitionCountries.has(competition)) competitionCountries.set(competition, new Set());
       competitionCountries.get(competition).add(countryName(match));
     });
-    const competitionNames = [...competitionCountries.keys()].sort((a, b) => {
-      const favouriteDiff = Number(this._favouriteLiveCompetitions.has(b)) - Number(this._favouriteLiveCompetitions.has(a));
-      return favouriteDiff || a.localeCompare(b);
-    });
+    const isFavouriteCompetition = (country, competition) => this._favouriteLiveCompetitions.has(this._liveCompetitionKey(country, competition));
+    const competitionNames = [...competitionCountries.keys()].sort((a, b) => a.localeCompare(b));
     const countryNames = [...new Set([...catalogue.map((item) => item.country), ...allTodayMatches.map(countryName), ...allLiveMatches.map(countryName)])].sort((a, b) => a.localeCompare(b));
     const statusGroup = (match) => ["FT", "AET", "PEN", "CANC", "PST", "ABD", "AWD", "WO"].includes(match.status_short) ? "completed" : ["1H", "HT", "2H", "ET", "BT", "P", "SUSP", "INT", "LIVE"].includes(match.status_short) ? "live" : "upcoming";
-    const competitionFilterKey = (match) => `${countryName(match)}|||${competitionName(match)}`;
+    const competitionFilterKey = (match) => this._liveCompetitionKey(countryName(match), competitionName(match));
     const isVisible = (match) => !this._hiddenLiveCompetitions.has(competitionFilterKey(match)) && !this._hiddenLiveCompetitions.has(competitionName(match)) && !this._hiddenLiveCountries.has(countryName(match)) && !this._hiddenLiveGenders.has(genderName(match)) && (this._liveStatusFilter === "all" || statusGroup(match) === this._liveStatusFilter);
     const matches = allLiveMatches.filter(isVisible);
     const todayMatches = allTodayMatches.filter(isVisible);
     const search = this._liveFilterSearch.trim().toLowerCase();
-    const filterChecks = (items, kind, hidden) => items.filter((name) => !search || name.toLowerCase().includes(search)).map((name) => `<label class="${kind === "competition" && this._favouriteLiveCompetitions.has(name) ? "favourite" : ""}"><input type="checkbox" data-live-filter-kind="${kind}" data-live-filter-value="${this._escape(name)}" ${kind === "competition" ? `data-live-filter-countries="${this._escape([...(competitionCountries.get(name) || [])].join("|"))}"` : ""} ${hidden.has(name) ? "" : "checked"}><span>${this._escape(name)}</span>${kind === "competition" ? `<button type="button" data-live-favourite="${this._escape(name)}" title="Pin competition">${this._favouriteLiveCompetitions.has(name) ? "★" : "☆"}</button>` : ""}</label>`).join("");
+    const filterChecks = (items, kind, hidden) => items.filter((name) => !search || name.toLowerCase().includes(search)).map((name) => `<label><input type="checkbox" data-live-filter-kind="${kind}" data-live-filter-value="${this._escape(name)}" ${hidden.has(name) ? "" : "checked"}><span>${this._escape(name)}</span></label>`).join("");
     const filterActions = (kind) => `<span class="live-filter-actions"><button type="button" data-live-filter-action="all" data-live-filter-target="${kind}">Select all</button><button type="button" data-live-filter-action="none" data-live-filter-target="${kind}">Clear all</button></span>`;
     const toolbar = `<section class="page-card live-toolbar"><label>Search filters<input id="live-filter-search" type="search" value="${this._escape(this._liveFilterSearch)}" placeholder="Country, league, cup or club"></label><label>Matches<select id="live-status-filter"><option value="all" ${this._liveStatusFilter === "all" ? "selected" : ""}>All today</option><option value="upcoming" ${this._liveStatusFilter === "upcoming" ? "selected" : ""}>Upcoming only</option><option value="live" ${this._liveStatusFilter === "live" ? "selected" : ""}>Live only</option><option value="completed" ${this._liveStatusFilter === "completed" ? "selected" : ""}>Completed only</option></select></label><label>Display<select id="live-display-mode"><option value="cards" ${this._liveDisplayMode === "cards" ? "selected" : ""}>Cards</option><option value="compact" ${this._liveDisplayMode === "compact" ? "selected" : ""}>Compact list</option></select></label><label>Timezone<select id="live-timezone"><option value="local" ${this._liveTimezone === "local" ? "selected" : ""}>Home Assistant / device</option><option value="Europe/London" ${this._liveTimezone === "Europe/London" ? "selected" : ""}>UK</option><option value="UTC" ${this._liveTimezone === "UTC" ? "selected" : ""}>UTC</option><option value="Europe/Paris" ${this._liveTimezone === "Europe/Paris" ? "selected" : ""}>Central Europe</option><option value="America/New_York" ${this._liveTimezone === "America/New_York" ? "selected" : ""}>US Eastern</option></select></label><button type="button" id="football-hub-refresh"><ha-icon icon="mdi:refresh"></ha-icon> Refresh</button></section>`;
     const countryCompetitionFilters = countryNames.filter((country) => !search || country.toLowerCase().includes(search) || competitionNames.some((competition) => competitionCountries.get(competition)?.has(country) && competition.toLowerCase().includes(search))).map((country) => {
       const competitions = competitionNames.filter((competition) => competitionCountries.get(competition)?.has(country) && (!search || country.toLowerCase().includes(search) || competition.toLowerCase().includes(search)));
       const countryChecked = !this._hiddenLiveCountries.has(country);
-      return `<details class="country-filter-tree"><summary><label><input type="checkbox" data-live-filter-kind="country" data-live-filter-value="${this._escape(country)}" ${countryChecked ? "checked" : ""}><strong>${this._escape(this._displayCountry(country))}</strong></label><span>${competitions.length} competitions</span></summary><div class="live-filter-options">${competitions.map((competition) => { const key = `${country}|||${competition}`; return `<label class="${this._favouriteLiveCompetitions.has(competition) ? "favourite" : ""}"><input type="checkbox" data-live-filter-kind="competition" data-live-filter-value="${this._escape(key)}" data-live-filter-countries="${this._escape(country)}" ${this._hiddenLiveCompetitions.has(key) || this._hiddenLiveCompetitions.has(competition) || !countryChecked ? "" : "checked"}><span>${this._escape(competition)}</span><button type="button" data-live-favourite="${this._escape(competition)}" title="Pin competition">${this._favouriteLiveCompetitions.has(competition) ? "★" : "☆"}</button></label>`; }).join("")}</div></details>`;
+      return `<details class="country-filter-tree"><summary><label><input type="checkbox" data-live-filter-kind="country" data-live-filter-value="${this._escape(country)}" ${countryChecked ? "checked" : ""}>${this._countryFlag(country, "live-country-flag")}<strong>${this._escape(this._displayCountry(country))}</strong></label><span>${competitions.length} competitions</span></summary><div class="live-filter-options">${competitions.map((competition) => { const key = this._liveCompetitionKey(country, competition); return `<label class="${isFavouriteCompetition(country, competition) ? "favourite" : ""}"><input type="checkbox" data-live-filter-kind="competition" data-live-filter-value="${this._escape(key)}" data-live-filter-countries="${this._escape(country)}" ${this._hiddenLiveCompetitions.has(key) || !countryChecked ? "" : "checked"}><span>${this._escape(competition)}</span><button type="button" data-live-favourite="${this._escape(key)}" title="Pin competition">${isFavouriteCompetition(country, competition) ? "★" : "☆"}</button></label>`; }).join("")}</div></details>`;
     }).join("");
     const selectedCompetitionCount = [...competitionCountries.entries()].reduce((total, [competition, countries]) => total + [...countries].filter((country) => !this._hiddenLiveCountries.has(country) && !this._hiddenLiveCompetitions.has(`${country}|||${competition}`) && !this._hiddenLiveCompetitions.has(competition)).length, 0);
     const liveFilters = `${toolbar}<details id="live-filter-panel" class="page-card live-competition-filter live-filter-panel" ${this._liveFiltersOpen ? "open" : ""}><summary><div><span class="eyebrow">MATCH FILTERS</span><h2>Countries and competitions</h2></div><span class="live-filter-summary-count">${selectedCompetitionCount} selected <ha-icon icon="mdi:chevron-down"></ha-icon></span></summary><div class="live-filter-panel-body"><p>Expand a country to choose its leagues and cups. Favourites are pinned first and settings synchronise through Home Assistant.</p><div class="live-filter-groups"><details open><summary>Men's and women's football ${filterActions("gender")}</summary><div class="live-filter-options">${filterChecks(["Men's", "Women's"], "gender", this._hiddenLiveGenders)}</div></details>${countryCompetitionFilters}</div></div></details>`;
     const statusInfo = this._statusInfo();
     const notifyChecks = [["kickoff", "Kickoff"], ["goals", "Goals"], ["yellowCards", "Yellow cards"], ["redCards", "Red cards"], ["halftime", "Half-time"], ["fulltime", "Full-time"], ["sounds", "Alert sounds"], ["selectedClubOnly", "Selected club only"]].map(([key, label]) => `<label><input type="checkbox" data-live-notification="${key}" ${this._liveNotifications[key] ? "checked" : ""}><span>${label}</span></label>`).join("");
-    const liveExtras = `<section class="live-utility-grid compact"><article class="page-card live-alerts-compact"><header><div><span class="eyebrow">MATCH ALERTS</span><strong>Goal and match notifications</strong></div><div class="live-alert-actions"><button id="football-hub-alert-all" type="button">Select all</button><button id="football-hub-alert-none" type="button">Deselect all</button><button id="football-hub-test-alert" type="button">Test alert</button></div></header><small class="live-alert-status">${this._escape(this._browserAlertStatus())}</small><div class="live-alert-options">${notifyChecks}</div></article><article class="page-card live-diagnostics compact"><header><span class="eyebrow">DATA STATUS</span><strong>${this._escape(statusInfo.state)}</strong></header><div><span>Matches</span><strong>${allTodayMatches.length}</strong></div><div><span>Live</span><strong>${allLiveMatches.length}</strong></div><div><span>Competitions</span><strong>${competitionNames.length}</strong></div><div><span>Updated</span><strong>${this._escape(statusInfo.last_updated ? this._formatDate(statusInfo.last_updated) : "Waiting")}</strong></div></article></section>`;
+    const liveExtras = `<section class="live-utility-grid compact"><article class="page-card live-alerts-compact"><header><div><span class="eyebrow">MATCH ALERTS</span><strong>Goal and match notifications</strong></div><div class="live-alert-actions"><button id="football-hub-alert-all" type="button">Select all</button><button id="football-hub-alert-none" type="button">Deselect all</button><button id="football-hub-test-alert" type="button">Test alert</button></div></header><small class="live-alert-status">${this._escape(this._browserAlertStatus())}</small><div class="live-alert-options">${notifyChecks}</div></article><article class="page-card live-diagnostics compact"><header><span class="eyebrow">DATA STATUS</span><strong>${this._escape(statusInfo.state)}</strong></header><div><span>Matches</span><strong>${allTodayMatches.length}</strong></div><div><span>Live</span><strong>${allLiveMatches.length}</strong></div><div><span>Competitions</span><strong>${competitionNames.length}</strong></div><div><span>Updated</span><strong>${this._escape(this._liveUpdatedAge(statusInfo.last_updated))}</strong></div></article></section>`;
     const grouped = new Map();
-    todayMatches.forEach((match) => { const key = `${countryName(match)}|||${competitionName(match)}`; if (!grouped.has(key)) grouped.set(key, []); grouped.get(key).push(match); });
-    const groupedMatches = [...grouped.entries()].sort(([a], [b]) => { const ac = a.split("|||")[1], bc = b.split("|||")[1]; return Number(this._favouriteLiveCompetitions.has(bc)) - Number(this._favouriteLiveCompetitions.has(ac)) || a.localeCompare(b); }).map(([key, games]) => { const [country, competition] = key.split("|||"); return `<article class="live-schedule-group"><header><div><span>${this._escape(this._displayCountry(country))}</span><strong>${this._escape(competition)}</strong></div><span>${games.length} match${games.length === 1 ? "" : "es"}</span></header><div class="match-list ${this._liveDisplayMode === "compact" ? "compact" : ""}">${games.map((match) => this._matchCard(match, statusGroup(match) === "completed" ? "result" : undefined)).join("")}</div></article>`; }).join("");
+    todayMatches.forEach((match) => { const key = this._liveCompetitionKey(countryName(match), competitionName(match)); if (!grouped.has(key)) grouped.set(key, []); grouped.get(key).push(match); });
+    const groupedMatches = [...grouped.entries()].sort(([a], [b]) => { const [acountry, ac] = a.split("|||"), [bcountry, bc] = b.split("|||"); return Number(isFavouriteCompetition(bcountry, bc)) - Number(isFavouriteCompetition(acountry, ac)) || a.localeCompare(b); }).map(([key, games]) => { const [country, competition] = key.split("|||"); return `<article class="live-schedule-group"><header><div>${this._countryFlag(country, "live-country-flag")}<span>${this._escape(this._displayCountry(country))}</span><strong>${this._escape(competition)}</strong></div><span>${games.length} match${games.length === 1 ? "" : "es"}</span></header><div class="match-list ${this._liveDisplayMode === "compact" ? "compact" : ""}">${games.map((match) => this._matchCard(match, statusGroup(match) === "completed" ? "result" : undefined)).join("")}</div></article>`; }).join("");
     const todaySection = `<section class="section"><div class="section-title-row"><div><span class="eyebrow">TODAY'S WORLDWIDE SCHEDULE</span><h2>Today's fixtures and results</h2></div><span class="pill">${todayMatches.length} of ${allTodayMatches.length} shown</span></div>${groupedMatches || `<div class="empty">No matches are shown. Change the filters above to add them.</div>`}</section>`;
+    const myClubsLive = this._liveFavouriteClubsSection(allLiveMatches);
     const leagueTeams = [...new Set((this._attrs("standings").table || [])
       .map((row) => row.team || row.team_name)
       .filter(Boolean))].sort((a, b) => a.localeCompare(b));
@@ -3803,7 +3855,7 @@ class FootballHubPanel extends HTMLElement {
 
     if (!primary.is_live) {
       return `
-        ${liveFilters}${liveExtras}
+        ${liveFilters}${liveExtras}${myClubsLive}
         <section class="page-card live-control-empty">
           <div><span class="live-kicker">⚽ MATCHDAY CONTROL ROOM</span><h2>Live Centre</h2><p>The feed updates automatically when a match begins.</p></div>
           ${teamOptions()}
@@ -3827,7 +3879,7 @@ class FootballHubPanel extends HTMLElement {
       return total + (Number.isFinite(home) ? home : 0) + (Number.isFinite(away) ? away : 0);
     }, 0);
     if (!this._selectedLiveMatch) {
-      return `${liveFilters}${liveExtras}
+      return `${liveFilters}${liveExtras}${myClubsLive}
         <section class="page-card live-control-hero"><div><span class="live-kicker">⚽ MATCHDAY CONTROL ROOM</span><h2>Live Centre <b>LIVE</b></h2><p>Select any match below to open its full live details.</p></div>${teamOptions(this._selectedLiveTeam)}<div class="live-control-stats"><div><strong>${liveMatches.length}</strong><span>Live now</span></div><div><strong>${totalLiveGoals}</strong><span>Goals</span></div><div><strong>0</strong><span>Selected</span></div></div></section>
         <section class="section country-live-section"><div class="page-heading"><div><span class="eyebrow">LIVE AROUND THE WORLD</span><h2>All live scores</h2></div><div class="count-badge">${liveMatches.length} live</div></div>${this._liveCompetitionGroups(liveMatches, "")}</section>${todaySection}`;
     }
@@ -3841,7 +3893,7 @@ class FootballHubPanel extends HTMLElement {
     const stats = selectedIsPrimary ? (primary.statistics || []) : (selectedBasic.statistics || []);
     const lineups = selectedIsPrimary ? (primary.lineups || []) : (selectedBasic.lineups || []);
     return `
-      ${liveFilters}${liveExtras}
+      ${liveFilters}${liveExtras}${myClubsLive}
       <section class="page-card live-control-hero">
         <div><span class="live-kicker">⚽ MATCHDAY CONTROL ROOM</span><h2>Live Centre <b>LIVE</b></h2><p>Scores, incidents, statistics and team sheets update automatically.</p></div>
         ${teamOptions(this._selectedLiveTeam || live.home_team)}
@@ -6174,6 +6226,8 @@ class FootballHubPanel extends HTMLElement {
       .country-live-group { overflow:hidden; border:1px solid rgba(255,255,255,.14); border-radius:16px; background:rgba(3,14,25,.68); }
       .country-live-group > header { display:flex; align-items:center; gap:9px; min-height:48px; padding:0 16px; background:rgba(255,255,255,.08); }
       .country-live-group > header ha-icon { --mdc-icon-size:20px; color:var(--fh-cyan); }
+      .live-country-flag { display:inline-block; width:25px; height:16px; flex:0 0 25px; object-fit:cover; border-radius:2px; box-shadow:0 0 0 1px rgba(255,255,255,.18); }
+      .supporter-flag-fallback.live-country-flag { display:inline-flex; align-items:center; justify-content:center; font-size:15px; }
       .country-live-group > header span { margin-left:auto; color:#86efac; font-size:.7rem; font-weight:900; text-transform:uppercase; }
       .country-live-row { width:100%; display:grid; grid-template-columns:56px minmax(150px,1fr) 76px minmax(150px,1fr); align-items:center; gap:12px; min-height:58px; padding:8px 16px; border:0; border-bottom:1px solid rgba(255,255,255,.1); color:#fff; background:transparent; cursor:pointer; font:inherit; }
       .country-live-row:last-child { border-bottom:0; }
@@ -6185,6 +6239,16 @@ class FootballHubPanel extends HTMLElement {
       .country-live-team.away { justify-content:flex-start; text-align:left; }
       .country-live-row > strong { display:flex; justify-content:center; gap:7px; font-size:1rem; }
       .country-live-row > strong i { opacity:.55; font-style:normal; }
+      .live-schedule-group > header > div { display:flex; align-items:center; gap:8px; }
+      .my-clubs-live { margin: 0 0 22px; }
+      .my-clubs-live-grid { display:grid; grid-template-columns:repeat(auto-fit, minmax(220px, 1fr)); gap:12px; }
+      .my-club-live-card { display:flex; align-items:center; gap:11px; width:100%; padding:13px; border:1px solid rgba(74,222,128,.48); border-radius:14px; color:#fff; background:linear-gradient(135deg, rgba(8,62,47,.72), rgba(5,22,36,.86)); cursor:pointer; text-align:left; font:inherit; }
+      .my-club-live-card:hover { border-color:var(--fh-cyan); box-shadow:0 0 16px rgba(34,197,94,.2); }
+      .my-club-live-card > span { display:flex; flex:0 0 32px; }
+      .my-club-live-card div { min-width:0; display:grid; gap:4px; }
+      .my-club-live-card small { overflow:hidden; color:var(--secondary-text-color); text-overflow:ellipsis; white-space:nowrap; }
+      .my-club-live-card strong { font-size:1.15rem; }
+      .my-club-live-card em { margin-left:8px; color:#86efac; font-size:.78rem; font-style:normal; }
 
       .live-control-hero, .live-control-empty {
         display: flex;
