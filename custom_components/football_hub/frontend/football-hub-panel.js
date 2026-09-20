@@ -1,4 +1,4 @@
-const PANEL_VERSION = "0.8.2-beta1";
+const PANEL_VERSION = "0.8.2-beta2";
 // Temporarily paused while fixture schedules are being corrected. Manual email
 // actions remain available to the administrator.
 const LMS_AUTOMATIC_EMAILS_ENABLED = false;
@@ -381,6 +381,14 @@ class FootballHubPanel extends HTMLElement {
 
     const iso3Codes = {
       eng: "england", sco: "scotland", wal: "wales", nir: "northern ireland",
+      arg: "ar", aut: "at", bel: "be", bra: "br", bul: "bg", can: "ca",
+      col: "co", crc: "cr", cro: "hr", den: "dk", ecu: "ec", esp: "es",
+      fin: "fi", fra: "fr", ger: "de", gre: "gr", gua: "gt", hun: "hu",
+      isl: "is", ita: "it", jpn: "jp", kor: "kr", ksa: "sa", mda: "md",
+      mex: "mx", ned: "nl", nor: "no", pan: "pa", par: "py", pol: "pl",
+      por: "pt", qat: "qa", rsa: "za", slv: "sv", sui: "ch", svk: "sk",
+      svn: "si", swe: "se", tur: "tr", uae: "ae", uru: "uy", uzb: "uz",
+      ven: "ve", vie: "vn",
       tun: "tn", aze: "az", bih: "ba", gha: "gh", alb: "al", alg: "dz",
       arm: "am", bfa: "bf", bgr: "bg", bhr: "bh", bol: "bo", bdi: "bi",
       blr: "by", che: "ch", civ: "ci", cmr: "cm", cod: "cd", cog: "cg",

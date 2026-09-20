@@ -324,6 +324,13 @@ test('live competition headers show a country flag and do not merge equal league
   assert.match(source, /this\._countryFlag\(country, "live-country-flag"\)/);
 });
 
+test('live provider ISO3 country codes render a real flag instead of the fallback', () => {
+  const { panel } = setup('private');
+  for (const code of ['ARG', 'AUT', 'BEL', 'CAN', 'COL', 'CRC', 'GUA', 'MDA', 'MEX', 'POR', 'UZB', 'VIE']) {
+    assert.doesNotMatch(panel._countryFlag(code, 'live-country-flag'), /🏳️/, code);
+  }
+});
+
 test('Live Centre keeps pins country-specific and shows club cards with refresh age', () => {
   const source = fs.readFileSync(path.join(__dirname, '../custom_components/football_hub/frontend/football-hub-panel.js'), 'utf8');
   assert.match(source, /_liveCompetitionKey\(country, competition\)/);
