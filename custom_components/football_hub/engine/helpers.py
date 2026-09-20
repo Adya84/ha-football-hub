@@ -133,6 +133,7 @@ def clean_fixture(match: dict[str, Any] | None) -> dict[str, Any]:
         "score_penalty_away": get_path(score, "penalty", "away"),
         "stadium": venue.get("name"),
         "city": venue.get("city"),
+        "nuvio_watch_url": match.get("nuvio_watch_url"),
     }
 
 

@@ -10,13 +10,18 @@ import logging
 import random
 from time import monotonic, time
 from typing import Any, Awaitable
+from urllib.parse import urlsplit
+
+import aiohttp
 
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 from homeassistant.helpers.storage import Store
+from homeassistant.helpers.aiohttp_client import async_get_clientsession
 
 from ..competitions import COMPETITIONS
 from ..engine import FootballHubEngine
 from ..engine.helpers import clean_fixture, is_finished, is_not_started
+from ..engine.nuvio import match_nuvio_event, nuvio_deep_link
 from ..engine.standings import league_table
 from .api import FootballHubAPI
 
@@ -45,6 +50,7 @@ NEWS_TTL = 60 * 60
 TV_GUIDE_TTL = 6 * 60 * 60
 TRANSFER_MARKET_TTL = 60 * 60
 COMPETITION_CATALOGUE_TTL = 7 * 24 * 60 * 60
+NUVIO_CATALOGUE_TTL = 2 * 60
 LIVE_RATE_LIMIT_BACKOFF = 30
 PRE_LIVE_WINDOW = timedelta(minutes=5)
 POST_LIVE_WINDOW = timedelta(hours=3, minutes=15)
@@ -433,9 +439,73 @@ class FootballHubCoordinator(DataUpdateCoordinator):
         self.ui_preferences = dict(preferences or {})
         options = {**self.entry.options, "ui_preferences": self.ui_preferences}
         self.hass.config_entries.async_update_entry(self.entry, options=options)
+        self._updated_at.pop("nuvio_events", None)
         current = dict(self.data or {})
         current["ui_preferences"] = self.ui_preferences
         self.async_set_updated_data(current)
+        await self.async_request_refresh()
+
+    def _nuvio_catalogue_url(self) -> str:
+        """Return the supported public Nuvio football catalogue URL, if set.
+
+        The beta intentionally accepts only Sports Streams' public catalogue.
+        That avoids turning a Home Assistant preference into a general-purpose
+        server-side URL fetcher while the matching behaviour is being tested.
+        """
+        manifest_url = str(self.ui_preferences.get("nuvioManifestUrl") or "").strip()
+        parsed = urlsplit(manifest_url)
+        if (
+            parsed.scheme != "https"
+            or parsed.hostname != "sports.highfly.to"
+            or not parsed.path.endswith("/manifest.json")
+        ):
+            return ""
+        return f"{manifest_url.rsplit('/manifest.json', 1)[0]}/catalog/sport/sports_football.json"
+
+    async def _async_get_nuvio_events(self) -> list[dict[str, Any]]:
+        """Read public event names only; stream resources are never requested."""
+        catalogue_url = self._nuvio_catalogue_url()
+        if not catalogue_url:
+            return []
+        try:
+            timeout = aiohttp.ClientTimeout(total=10)
+            async with async_get_clientsession(self.hass).get(catalogue_url, timeout=timeout) as response:
+                response.raise_for_status()
+                payload = await response.json(content_type=None)
+        except (aiohttp.ClientError, TimeoutError, ValueError) as err:
+            _LOGGER.warning("Football Hub could not load the configured Nuvio football catalogue: %s", err)
+            return []
+        metas = payload.get("metas", []) if isinstance(payload, dict) else []
+        return [item for item in metas if isinstance(item, dict)]
+
+    @staticmethod
+    def _nuvio_watch_links(matches: list[dict[str, Any]], events: list[dict[str, Any]]) -> dict[str, str]:
+        """Map known Football Hub fixture IDs to uniquely matching Nuvio events."""
+        links: dict[str, str] = {}
+        for match in matches:
+            fixture = (match or {}).get("fixture", {}) or {}
+            teams = (match or {}).get("teams", {}) or {}
+            event = match_nuvio_event(
+                (teams.get("home") or {}).get("name"),
+                (teams.get("away") or {}).get("name"),
+                events,
+            )
+            fixture_id = fixture.get("id")
+            if fixture_id not in (None, "") and event:
+                links[str(fixture_id)] = nuvio_deep_link(event["id"])
+        return links
+
+    @staticmethod
+    def _with_nuvio_watch_links(matches: list[dict[str, Any]], links: dict[str, str]) -> list[dict[str, Any]]:
+        """Attach a UI-only Nuvio link without changing provider cache entries."""
+        enriched = []
+        for match in matches or []:
+            if not isinstance(match, dict):
+                continue
+            fixture_id = str(((match.get("fixture") or {}).get("id") or ""))
+            link = links.get(fixture_id)
+            enriched.append({**match, **({"nuvio_watch_url": link} if link else {})})
+        return enriched
 
     async def async_remove_favourite_club(self, team: str, competition_key: str = "") -> None:
         """Remove a permanent favourite while leaving the viewed club selectable."""
@@ -552,6 +622,8 @@ class FootballHubCoordinator(DataUpdateCoordinator):
             requests.append(
                 ("player_leaderboards", self.api.get_player_leaderboards(league_id, self.season))
             )
+        if self._nuvio_catalogue_url() and self._is_stale("nuvio_events", NUVIO_CATALOGUE_TTL, randomise=False):
+            requests.append(("nuvio_events", self._async_get_nuvio_events()))
 
         # Portal feeds are cached independently and never join the one-minute
         # live loop. They refresh only when their own longer TTL expires.
@@ -670,6 +742,15 @@ class FootballHubCoordinator(DataUpdateCoordinator):
         ]
         if not raw_live:
             raw_live = self._pre_live_matches()
+        nuvio_events = self._cache.get("nuvio_events", []) or []
+        nuvio_links = self._nuvio_watch_links(
+            [*raw_live, *(self._cache.get("fixtures", []) or [])],
+            nuvio_events,
+        )
+        raw_live = self._with_nuvio_watch_links(raw_live, nuvio_links)
+        fixtures_with_nuvio = self._with_nuvio_watch_links(
+            self._cache.get("fixtures", []) or [], nuvio_links
+        )
         live_fixture_ids: list[int] = []
         supported_fixture_id = None
         for item in raw_live:
@@ -840,7 +921,7 @@ class FootballHubCoordinator(DataUpdateCoordinator):
 
         data = {
             "live": raw_live,
-            "fixtures": self._cache.get("fixtures", []),
+            "fixtures": fixtures_with_nuvio,
             "standings": self._cache.get("standings", []),
             "top_scorers": (self._cache.get("player_leaderboards", {}) or {}).get("top_scorers", []),
             "top_assists": (self._cache.get("player_leaderboards", {}) or {}).get("top_assists", []),
@@ -853,7 +934,7 @@ class FootballHubCoordinator(DataUpdateCoordinator):
             "live_statistics": live_details.get(str(primary_fixture_id), {}).get("statistics", []),
             "live_lineups": live_details.get(str(primary_fixture_id), {}).get("lineups", []),
             "live_details": live_details,
-            "selected_match": selected_raw_match or {},
+            "selected_match": self._with_nuvio_watch_links([selected_raw_match], nuvio_links)[0] if selected_raw_match else {},
             "my_club": self.my_club,
             "my_club_team_id": team_id,
             "favourite_clubs": self.favourite_clubs,

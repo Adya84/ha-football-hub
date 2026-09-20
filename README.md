@@ -1,7 +1,7 @@
 # ⚽ Home Assistant Football Hub
 
 [![License](https://img.shields.io/badge/license-Personal%20Use-red.svg)](LICENSE)
-![Version](https://img.shields.io/badge/version-v0.8.1-green)
+![Version](https://img.shields.io/badge/version-v0.8.2--beta1-yellow)
 ![Home Assistant](https://img.shields.io/badge/Home%20Assistant-2024.1%2B-blue)
 ![HACS](https://img.shields.io/badge/HACS-Custom-orange)
 ![Cloud Polling](https://img.shields.io/badge/IoT--Class-Cloud%20Polling-blue)
@@ -12,7 +12,7 @@ It also includes Last Man Standing (LMS) and Acca League tools, with private pla
 
 ---
 
-## Latest release — 0.8.1
+## Latest release — 0.8.2-beta1
 
 ### Live Centre
 
@@ -21,6 +21,7 @@ It also includes Last Man Standing (LMS) and Acca League tools, with private pla
 - Favourite-club matches appear in a dedicated **Your clubs playing now** section.
 - Live headers show the number of current matches, goals and selected matches, plus when the data was last updated.
 - Match alerts, live scores, match minutes, team badges and detailed match views remain available.
+- Optional **Nuvio watch links** can compare public Sports Streams event names with Football Hub fixtures. A Watch in Nuvio button appears only for one exact team match; Football Hub never retrieves, stores or serves stream URLs.
 
 ### Favourite clubs and sensors
 
@@ -75,6 +76,7 @@ After an update, restart Home Assistant and hard-refresh the browser with **Ctrl
 - Starred preferred competitions and favourite-club priority
 - Optional on-page alerts for kick-off, goals, cards, half-time and full-time
 - Match details with timeline, statistics, line-ups, venue, referee and weather where available
+- Optional Nuvio hand-off links for exact Sports Streams football-event matches (requires the add-on to be installed in Nuvio)
 
 ### My Club
 
