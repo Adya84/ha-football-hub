@@ -1,4 +1,4 @@
-const PANEL_VERSION = "0.8.2-beta2";
+const PANEL_VERSION = "0.8.2-beta3";
 // Temporarily paused while fixture schedules are being corrected. Manual email
 // actions remain available to the administrator.
 const LMS_AUTOMATIC_EMAILS_ENABLED = false;
@@ -3855,7 +3855,9 @@ class FootballHubPanel extends HTMLElement {
     todayMatches.forEach((match) => { const key = this._liveCompetitionKey(countryName(match), competitionName(match)); if (!grouped.has(key)) grouped.set(key, []); grouped.get(key).push(match); });
     const groupedMatches = [...grouped.entries()].sort(([a], [b]) => { const [acountry, ac] = a.split("|||"), [bcountry, bc] = b.split("|||"); return Number(isFavouriteCompetition(bcountry, bc)) - Number(isFavouriteCompetition(acountry, ac)) || a.localeCompare(b); }).map(([key, games]) => { const [country, competition] = key.split("|||"); return `<article class="live-schedule-group"><header><div>${this._countryFlag(country, "live-country-flag")}<span>${this._escape(this._displayCountry(country))}</span><strong>${this._escape(competition)}</strong></div><span>${games.length} match${games.length === 1 ? "" : "es"}</span></header><div class="match-list ${this._liveDisplayMode === "compact" ? "compact" : ""}">${games.map((match) => this._matchCard(match, statusGroup(match) === "completed" ? "result" : undefined)).join("")}</div></article>`; }).join("");
     const todaySection = `<section class="section"><div class="section-title-row"><div><span class="eyebrow">TODAY'S WORLDWIDE SCHEDULE</span><h2>Today's fixtures and results</h2></div><span class="pill">${todayMatches.length} of ${allTodayMatches.length} shown</span></div>${groupedMatches || `<div class="empty">No matches are shown. Change the filters above to add them.</div>`}</section>`;
-    const myClubsLive = this._liveFavouriteClubsSection(allLiveMatches);
+    // The club shortcut is still part of the Live page, so it must honour
+    // exactly the same country/competition choices as every other live card.
+    const myClubsLive = this._liveFavouriteClubsSection(matches);
     const leagueTeams = [...new Set((this._attrs("standings").table || [])
       .map((row) => row.team || row.team_name)
       .filter(Boolean))].sort((a, b) => a.localeCompare(b));
@@ -3868,7 +3870,11 @@ class FootballHubPanel extends HTMLElement {
         </select>
       </div>`;
 
-    if (!primary.is_live) {
+    // `live_match` is the provider's primary match and can belong to a
+    // competition the user has explicitly hidden. Do not use it as a fallback
+    // after the selected-match list has correctly filtered it out.
+    const primaryIsVisible = Boolean(primary.is_live) && isVisible(primary);
+    if (!primaryIsVisible) {
       return `
         ${liveFilters}${liveExtras}${myClubsLive}
         <section class="page-card live-control-empty">
@@ -3884,7 +3890,7 @@ class FootballHubPanel extends HTMLElement {
       `;
     }
 
-    const liveMatches = matches.length ? matches : [primary];
+    const liveMatches = matches;
     const matchId = (match, index = 0) => String(match.fixture_id ?? match.id ?? `${match.home_team}-${match.away_team}-${index}`);
     const availableIds = liveMatches.map((match, index) => matchId(match, index));
     if (!availableIds.includes(this._selectedLiveMatch)) this._selectedLiveMatch = "";
