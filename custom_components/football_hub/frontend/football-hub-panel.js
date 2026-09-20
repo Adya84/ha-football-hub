@@ -416,7 +416,13 @@ class FootballHubPanel extends HTMLElement {
 
     const inlineName = iso3Codes[name] || name;
     if (inlineFlags[inlineName]) return inlineFlags[inlineName];
-    const code = codes[name] || iso3Codes[name] || (/^[a-z]{2}$/.test(name) ? name : "");
+    const displayAliases = {
+      "aze": "az", "bih": "ba", "bol": "bo", "arm": "am",
+      "blr": "by", "brn": "bn", "cpv": "cv", "chn": "cn",
+      "irl": "ie", "isr": "il", "mkd": "mk", "nzl": "nz",
+      "rou": "ro", "rus": "ru", "ukr": "ua", "hon": "hn", "idn": "id", "isl": "is", "svk": "sk", "svn": "si", "tha": "th", "tun": "tn", "uzb": "uz", "tza": "tz"
+    };
+    const code = codes[name] || iso3Codes[name] || displayAliases[name] || (/^[a-z]{2}$/.test(name) ? name : "");
 
     if (!code) return `<span class="${className} supporter-flag-fallback">🏳️</span>`;
 
@@ -3847,22 +3853,30 @@ class FootballHubPanel extends HTMLElement {
         this._hiddenLiveCountries.add(migratedCountry);
       }
     });
-    const countryName = (match) => {
-      const raw = this._matchText(match.country_code || match.country || match.league?.country_code || match.league?.country).trim();
+    const normaliseLiveCountry = (value) => {
+      const raw = this._matchText(value).trim();
       if (!raw) return "International";
       const code = raw.toUpperCase();
       if (/^[A-Z]{3,4}$/.test(code)) {
         // League names are not globally unique. Never override the feed's
         // country using a name-only catalogue match (e.g. Premier League).
-        return countryCodes[code] || ({ BLR: "Belarus" })[code] || raw;
+        return countryCodes[code] || ({ BLR: "Belarus", HON: "Honduras", IDN: "Indonesia", ISL: "Iceland", RUS: "Russia", SVK: "Slovakia", SVN: "Slovenia", THA: "Thailand", TUN: "Tunisia", UZB: "Uzbekistan", TZA: "Tanzania" })[code] || raw;
       }
-      return raw;
+      const aliases = {
+        "turkey": "Türkiye", "turkiye": "Türkiye", "türkiye": "Türkiye",
+        "usa": "United States", "united states of america": "United States",
+        "uae": "United Arab Emirates", "republic of ireland": "Ireland",
+        "holland": "Netherlands", "great britain": "United Kingdom", "uk": "United Kingdom"
+      };
+      return aliases[raw.toLowerCase()] || raw;
     };
+    const countryName = (match) => normaliseLiveCountry(match.country_code || match.country || match.league?.country_code || match.league?.country);
     const genderName = (match) => /\b(women|women's|womens|female|feminine|femenina|frauen|dames)\b/i.test(`${competitionName(match)} ${match.home_team || ""} ${match.away_team || ""}`) ? "Women's" : "Men's";
     const competitionCountries = new Map();
     catalogue.forEach((item) => {
+      const country = normaliseLiveCountry(item.country);
       if (!competitionCountries.has(item.name)) competitionCountries.set(item.name, new Set());
-      competitionCountries.get(item.name).add(item.country);
+      competitionCountries.get(item.name).add(country);
     });
     [...allTodayMatches, ...allLiveMatches].forEach((match) => {
       const competition = competitionName(match);
@@ -3871,7 +3885,7 @@ class FootballHubPanel extends HTMLElement {
     });
     const isFavouriteCompetition = (country, competition) => this._favouriteLiveCompetitions.has(this._liveCompetitionKey(country, competition));
     const competitionNames = [...competitionCountries.keys()].sort((a, b) => a.localeCompare(b));
-    const countryNames = [...new Set([...catalogue.map((item) => item.country), ...allTodayMatches.map(countryName), ...allLiveMatches.map(countryName)])].sort((a, b) => a.localeCompare(b));
+    const countryNames = [...new Set([...catalogue.map((item) => normaliseLiveCountry(item.country)), ...allTodayMatches.map(countryName), ...allLiveMatches.map(countryName)])].sort((a, b) => a.localeCompare(b));
     const statusGroup = (match) => ["FT", "AET", "PEN", "CANC", "PST", "ABD", "AWD", "WO"].includes(match.status_short) ? "completed" : ["1H", "HT", "2H", "ET", "BT", "P", "SUSP", "INT", "LIVE"].includes(match.status_short) ? "live" : "upcoming";
     const competitionFilterKey = (match) => this._liveCompetitionKey(countryName(match), competitionName(match));
     const isVisible = (match) => !this._hiddenLiveCompetitions.has(competitionFilterKey(match)) && !this._hiddenLiveCompetitions.has(competitionName(match)) && !this._hiddenLiveCountries.has(countryName(match)) && !this._hiddenLiveGenders.has(genderName(match)) && (this._liveStatusFilter === "all" || statusGroup(match) === this._liveStatusFilter);
