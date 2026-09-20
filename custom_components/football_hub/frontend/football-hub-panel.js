@@ -382,10 +382,10 @@ class FootballHubPanel extends HTMLElement {
       "saudi arabia":"sa", senegal:"sn", serbia:"rs", singapore:"sg",
       slovakia:"sk", slovenia:"si", "south africa":"za", "south korea":"kr",
       korea:"kr", spain:"es", sweden:"se", switzerland:"ch", thailand:"th",
-      tunisia:"tn", turkey:"tr", turkiye:"tr", uganda:"ug", ukraine:"ua",
+      tunisia:"tn", turkey:"tr", turkiye:"tr", tanzania:"tz", uganda:"ug", ukraine:"ua",
       "united arab emirates":"ae", uae:"ae", "united kingdom":"gb",
       uk:"gb", "great britain":"gb", usa:"us", us:"us",
-      "united states":"us", "united states of america":"us",
+      "united states":"us", "united states of america":"us", iran:"ir",
       uruguay:"uy", uzbekistan:"uz", venezuela:"ve", vietnam:"vn", zimbabwe:"zw"
     };
 
@@ -420,11 +420,11 @@ class FootballHubPanel extends HTMLElement {
       "aze": "az", "bih": "ba", "bol": "bo", "arm": "am",
       "blr": "by", "brn": "bn", "cpv": "cv", "chn": "cn",
       "irl": "ie", "isr": "il", "mkd": "mk", "nzl": "nz",
-      "rou": "ro", "rus": "ru", "ukr": "ua", "hon": "hn", "idn": "id", "isl": "is", "svk": "sk", "svn": "si", "tha": "th", "tun": "tn", "uzb": "uz", "tza": "tz"
+      "rou": "ro", "rus": "ru", "ukr": "ua", "hon": "hn", "idn": "id", "isl": "is", "svk": "sk", "svn": "si", "tha": "th", "tun": "tn", "uzb": "uz", "tza": "tz", "irn": "ir", "geo": "ge", "gua": "gt"
     };
     const code = codes[name] || iso3Codes[name] || displayAliases[name] || (/^[a-z]{2}$/.test(name) ? name : "");
 
-    if (!code) return `<span class="${className} supporter-flag-fallback">🏳️</span>`;
+    if (!code) { const symbol = name === "international" ? "🌐" : name === "europe" ? "🇪🇺" : "🏳️"; return `<span class="${className} supporter-flag-fallback">${symbol}</span>`; }
 
     return `<img class="${className}" src="https://flagcdn.com/w160/${code}.png" alt="${this._escape(country || code)} flag" loading="lazy">`;
   }
@@ -4835,7 +4835,6 @@ class FootballHubPanel extends HTMLElement {
         const filters = kind === "country" ? this._hiddenLiveCountries : kind === "gender" ? this._hiddenLiveGenders : this._hiddenLiveCompetitions;
         if (checkbox.checked) filters.delete(value);
         else filters.add(value);
-        if (kind === "competition" && checkbox.checked && value.includes("|||")) filters.delete(value.split("|||").slice(1).join("|||"));
         if (kind === "country") {
           this.shadowRoot.querySelectorAll('[data-live-filter-kind="competition"]').forEach((competitionCheckbox) => {
             const countries = String(competitionCheckbox.dataset.liveFilterCountries || "").split("|");
