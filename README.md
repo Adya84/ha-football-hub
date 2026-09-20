@@ -1,7 +1,7 @@
 # ⚽ Home Assistant Football Hub
 
 [![License](https://img.shields.io/badge/license-Personal%20Use-red.svg)](LICENSE)
-![Version](https://img.shields.io/badge/version-v0.8.2--beta3-yellow)
+![Version](https://img.shields.io/badge/version-v0.8.2--beta4-yellow)
 ![Home Assistant](https://img.shields.io/badge/Home%20Assistant-2024.1%2B-blue)
 ![HACS](https://img.shields.io/badge/HACS-Custom-orange)
 ![Cloud Polling](https://img.shields.io/badge/IoT--Class-Cloud%20Polling-blue)
@@ -12,11 +12,12 @@ It also includes Last Man Standing (LMS) and Acca League tools, with private pla
 
 ---
 
-## Latest release — 0.8.2-beta3
+## Latest release — 0.8.2-beta4
 
 ### Live Centre
 
 - Live filters now apply everywhere: an unchecked competition cannot reappear as the provider's primary match or in the favourite-club live strip.
+- Live alert **Select all** and **Deselect all** now turn the alert options on and off as labelled.
 - Live leagues now show the country flag beside the competition name, including England, Czechia and Cyprus.
 - Favourite competitions can be starred in the **Live** filters. Starred competitions are pinned above other matches when they have live fixtures.
 - Favourite-club matches appear in a dedicated **Your clubs playing now** section.

@@ -1,4 +1,4 @@
-const PANEL_VERSION = "0.8.2-beta3";
+const PANEL_VERSION = "0.8.2-beta4";
 // Temporarily paused while fixture schedules are being corrected. Manual email
 // actions remain available to the administrator.
 const LMS_AUTOMATIC_EMAILS_ENABLED = false;
@@ -2767,6 +2767,16 @@ class FootballHubPanel extends HTMLElement {
     }).catch(() => {});
   }
 
+  _setAllLiveNotifications(enabled) {
+    for (const key of ["kickoff", "goals", "yellowCards", "redCards", "halftime", "fulltime", "sounds", "selectedClubOnly"]) {
+      this._liveNotifications[key] = enabled;
+    }
+    if (enabled) this._enableAlertSounds();
+    localStorage.setItem("football_hub_live_notifications", JSON.stringify(this._liveNotifications));
+    this._saveSharedPreferences();
+    this._render();
+  }
+
   _processLiveNotifications() {
     const enabled = this._liveNotifications || {};
     const matches = this._attrs("matches_today").matches || [];
@@ -4821,17 +4831,8 @@ class FootballHubPanel extends HTMLElement {
     });
     this.shadowRoot.querySelector("#football-hub-refresh")?.addEventListener("click", async (event) => { event.currentTarget.disabled = true; await this._hass?.callService("football_hub", "refresh", { entry_id: this._statusInfo().config_entry_id || "" }).catch(() => {}); setTimeout(() => this._render(), 800); });
     this.shadowRoot.querySelector("#football-hub-test-alert")?.addEventListener("click", () => this._testSelectedLiveAlerts());
-    this.shadowRoot.querySelector("#football-hub-alert-all")?.addEventListener("click", () => {
-      this._mutedLiveAlerts.clear();
-      localStorage.setItem("football_hub_muted_live_alerts", "[]");
-      this._render();
-    });
-    this.shadowRoot.querySelector("#football-hub-alert-none")?.addEventListener("click", () => {
-      const today = this._attrs("matches_today").matches || [];
-      today.forEach((match) => this._mutedLiveAlerts.add(String(match.fixture_id || match.id || `${match.home_team}-${match.away_team}`)));
-      localStorage.setItem("football_hub_muted_live_alerts", JSON.stringify([...this._mutedLiveAlerts]));
-      this._render();
-    });
+    this.shadowRoot.querySelector("#football-hub-alert-all")?.addEventListener("click", () => this._setAllLiveNotifications(true));
+    this.shadowRoot.querySelector("#football-hub-alert-none")?.addEventListener("click", () => this._setAllLiveNotifications(false));
     this.shadowRoot.querySelectorAll("[data-live-match-alert]").forEach((input) => input.addEventListener("change", (event) => {
       event.stopPropagation();
       const matchId = input.dataset.liveMatchAlert;

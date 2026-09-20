@@ -64,3 +64,23 @@ test("an unselected live competition is not restored as the primary match or fav
   assert.doesNotMatch(markup, /country-live-team home">York/);
   assert.doesNotMatch(markup, /live-control-hero/);
 });
+
+test("live alert bulk actions enable and disable every alert option", () => {
+  const panel = makePanel({ primary: {}, liveMatches: [], hiddenCompetitions: [] });
+  panel._liveNotifications = {
+    kickoff: false, goals: false, yellowCards: false, redCards: false,
+    halftime: false, fulltime: false, sounds: false, selectedClubOnly: false,
+  };
+  let saves = 0;
+  let renders = 0;
+  panel._saveSharedPreferences = () => { saves += 1; };
+  panel._render = () => { renders += 1; };
+
+  panel._setAllLiveNotifications(true);
+  assert.ok(Object.values(panel._liveNotifications).every(Boolean));
+
+  panel._setAllLiveNotifications(false);
+  assert.ok(Object.values(panel._liveNotifications).every((enabled) => !enabled));
+  assert.equal(saves, 2);
+  assert.equal(renders, 2);
+});
