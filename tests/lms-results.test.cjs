@@ -326,6 +326,15 @@ test('Live Centre keeps pins country-specific and shows club cards with refresh 
   assert.match(source, /this\._escape\(this\._liveUpdatedAge\(statusInfo\.last_updated\)\)/);
 });
 
+test('live flags convert provider country codes without broken images', () => {
+  const source = fs.readFileSync(path.join(__dirname, '../custom_components/football_hub/frontend/football-hub-panel.js'), 'utf8');
+  assert.match(source, /eng: "england"/);
+  assert.match(source, /cze: "cz"/);
+  assert.match(source, /cyp: "cy"/);
+  assert.match(source, /if \(inlineFlags\[inlineName\]\) return inlineFlags\[inlineName\]/);
+  assert.match(source, /this\._displayCountry\(country\)/);
+});
+
 test('startup removes favourite devices that are no longer saved favourites', () => {
   const source = fs.readFileSync(path.join(__dirname, '../custom_components/football_hub/__init__.py'), 'utf8');
   assert.match(source, /async_cleanup_obsolete_favourite_devices/);

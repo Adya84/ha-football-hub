@@ -383,6 +383,7 @@ class FootballHubPanel extends HTMLElement {
       tun: "tn", aze: "az", bih: "ba", gha: "gh", alb: "al", alg: "dz",
       arm: "am", bfa: "bf", bgr: "bg", bhr: "bh", bol: "bo", bdi: "bi",
       blr: "by", che: "ch", civ: "ci", cmr: "cm", cod: "cd", cog: "cg",
+      cyp: "cy", cze: "cz",
       cri: "cr", cub: "cu", dom: "do", dza: "dz", ecu: "ec", egy: "eg",
       est: "ee", eth: "et", geo: "ge", gtm: "gt", hnd: "hn", hrv: "hr",
       isr: "il", jam: "jm", jor: "jo", ken: "ke", khm: "kh", kwt: "kw",
@@ -394,6 +395,8 @@ class FootballHubPanel extends HTMLElement {
       zwe: "zw"
     };
 
+    const inlineName = iso3Codes[name] || name;
+    if (inlineFlags[inlineName]) return inlineFlags[inlineName];
     const code = codes[name] || iso3Codes[name] || (/^[a-z]{2}$/.test(name) ? name : "");
 
     if (!code) return `<span class="${className} supporter-flag-fallback">🏳️</span>`;
