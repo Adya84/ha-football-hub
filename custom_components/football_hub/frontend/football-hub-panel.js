@@ -420,7 +420,7 @@ class FootballHubPanel extends HTMLElement {
       "aze": "az", "bih": "ba", "bol": "bo", "arm": "am",
       "blr": "by", "brn": "bn", "cpv": "cv", "chn": "cn",
       "irl": "ie", "isr": "il", "mkd": "mk", "nzl": "nz",
-      "rou": "ro", "rus": "ru", "ukr": "ua", "hon": "hn", "idn": "id", "isl": "is"
+      "rou": "ro", "rus": "ru", "ukr": "ua", "hon": "hn", "idn": "id", "isl": "is", "svk": "sk", "svn": "si", "tha": "th", "tun": "tn", "uzb": "uz", "tza": "tz"
     };
     const code = codes[name] || iso3Codes[name] || displayAliases[name] || (/^[a-z]{2}$/.test(name) ? name : "");
 
