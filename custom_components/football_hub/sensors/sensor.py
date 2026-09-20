@@ -2,12 +2,13 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 import re
 
 from homeassistant.components.sensor import SensorEntity
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
+from homeassistant.util import dt as dt_util
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from ..competitions import COMPETITIONS, SEASONS
@@ -467,9 +468,11 @@ class FootballHubMatchesTodaySensor(FootballHubBaseSensor):
 
     @property
     def extra_state_attributes(self):
-        now = datetime.now(timezone.utc)
-        start = int(datetime(now.year, now.month, now.day, tzinfo=timezone.utc).timestamp())
-        end = start + 86400
+        now = dt_util.now()
+        start_local = now.replace(hour=0, minute=0, second=0, microsecond=0)
+        end_local = start_local + timedelta(days=1)
+        start = int(start_local.timestamp())
+        end = int(end_local.timestamp())
         raw = self.coordinator._cache.get("live_feed", []) or []
         matches = [clean_fixture(item) for item in raw if start <= fixture_timestamp(item) < end]
         matches.sort(key=lambda item: item.get("timestamp") or 0)
