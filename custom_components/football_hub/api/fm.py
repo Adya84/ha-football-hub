@@ -14,6 +14,7 @@ from time import monotonic, time
 from typing import Any
 
 import aiohttp
+from homeassistant.util import dt as dt_util
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.helpers.storage import Store
 
@@ -812,7 +813,7 @@ class FMProvider:
 
     async def get_live_feed(self, league_id, season):
         """Return every match in FotMob's worldwide feed for today."""
-        matches = await self._matches_for_date(datetime.now(timezone.utc))
+        matches = await self._matches_for_date(dt_util.now())
         await self._remember_finished_friendlies(matches)
         return matches
 
@@ -860,7 +861,7 @@ class FMProvider:
                     output[fixture_key] = item
 
         # Include today's matches so live/new fixtures are not missed.
-        for item in await self._matches_for_date(datetime.now(timezone.utc)):
+        for item in await self._matches_for_date(dt_util.now()):
             if (item.get("league") or {}).get("id") in (fm_id, str(fm_id)):
                 output[str((item.get("fixture") or {}).get("id"))] = item
 
