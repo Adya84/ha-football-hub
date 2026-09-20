@@ -33,6 +33,15 @@ class NuvioMatchingTests(unittest.TestCase):
 
         self.assertIsNotNone(event)
 
+    def test_common_club_suffix_differences_still_match(self):
+        event = match_nuvio_event(
+            "Querétaro FC",
+            "León",
+            [{"id": "streamed:queretaro-vs-club-leon", "name": "Queretaro vs Club Leon"}],
+        )
+
+        self.assertIsNotNone(event)
+
     def test_ambiguous_or_incomplete_catalogue_never_returns_a_link(self):
         events = [
             {"id": "streamed:one", "name": "Fulham vs Manchester United"},
