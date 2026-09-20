@@ -17,6 +17,7 @@ from homeassistant.helpers.storage import Store
 from ..competitions import COMPETITIONS
 from ..engine import FootballHubEngine
 from ..engine.helpers import clean_fixture, is_finished, is_not_started
+from ..engine.standings import league_table
 from .api import FootballHubAPI
 
 _LOGGER = logging.getLogger(__name__)
@@ -808,13 +809,17 @@ class FootballHubCoordinator(DataUpdateCoordinator):
                 if competition_key == self.competition_key
                 else self._cache.get(f"favourite:{competition_key}:fixtures", [])
             ) or []
-            standings = (
+            raw_standings = (
                 self._cache.get("standings", [])
                 if competition_key == self.competition_key
                 else self._cache.get(f"favourite:{competition_key}:standings", [])
             ) or []
+            standings = league_table(raw_standings)
             favourite_team_id, upcoming, completed = self._team_context(team, fixtures)
-            standing = next((row for row in standings if str((((row or {}).get("team") or {}).get("name") or "")).casefold() == team.casefold()), None)
+            standing = next(
+                (row for row in standings if str(row.get("team") or "").casefold() == team.casefold()),
+                None,
+            )
             live_match = next((item for item in raw_live if team.casefold() in {
                 str((((item or {}).get("teams") or {}).get("home") or {}).get("name") or "").casefold(),
                 str((((item or {}).get("teams") or {}).get("away") or {}).get("name") or "").casefold(),

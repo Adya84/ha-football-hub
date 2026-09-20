@@ -302,6 +302,13 @@ test('favourite club sensors use the normalised home competition cache key', () 
   assert.match(source, /favourite\.get\("home_competition"\) or favourite\.get\("competition"\)/);
 });
 
+test('favourite league position looks through the provider standings table', () => {
+  const source = fs.readFileSync(path.join(__dirname, '../custom_components/football_hub/api/coordinator.py'), 'utf8');
+  assert.match(source, /from \.\.engine\.standings import league_table/);
+  assert.match(source, /standings = league_table\(/);
+  assert.match(source, /row\.get\("team"\).*team\.casefold\(\)/);
+});
+
 test('startup removes favourite devices that are no longer saved favourites', () => {
   const source = fs.readFileSync(path.join(__dirname, '../custom_components/football_hub/__init__.py'), 'utf8');
   assert.match(source, /async_cleanup_obsolete_favourite_devices/);
