@@ -360,8 +360,8 @@ class FootballHubPanel extends HTMLElement {
 
     const codes = {
       albania:"al", algeria:"dz", argentina:"ar", armenia:"am",
-      australia:"au", austria:"at", azerbaijan:"az", bahrain:"bh",
-      belarus:"by", belgium:"be", "bosnia and herzegovina":"ba",
+      australia:"au", austria:"at", azerbaijan:"az", bahrain:"bh", bangladesh:"bd",
+      belarus:"by", belgium:"be", bolivia:"bo", "bosnia and herzegovina":"ba", "bosnia herzegovina":"ba",
       brazil:"br", bulgaria:"bg", burkina:"bf", "burkina faso":"bf",
       cambodia:"kh", cameroon:"cm", canada:"ca", "cape verde":"cv",
       chile:"cl", china:"cn", colombia:"co", "costa rica":"cr",
@@ -378,7 +378,7 @@ class FootballHubPanel extends HTMLElement {
       morocco:"ma", netherlands:"nl", holland:"nl", "new zealand":"nz",
       nigeria:"ng", "north macedonia":"mk", norway:"no", oman:"om",
       panama:"pa", paraguay:"py", peru:"pe", philippines:"ph", poland:"pl",
-      portugal:"pt", "puerto rico":"pr", qatar:"qa", romania:"ro",
+      portugal:"pt", "puerto rico":"pr", qatar:"qa", romania:"ro", russia:"ru",
       "saudi arabia":"sa", senegal:"sn", serbia:"rs", singapore:"sg",
       slovakia:"sk", slovenia:"si", "south africa":"za", "south korea":"kr",
       korea:"kr", spain:"es", sweden:"se", switzerland:"ch", thailand:"th",
