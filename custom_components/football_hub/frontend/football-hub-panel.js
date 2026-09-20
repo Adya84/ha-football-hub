@@ -416,7 +416,13 @@ class FootballHubPanel extends HTMLElement {
 
     const inlineName = iso3Codes[name] || name;
     if (inlineFlags[inlineName]) return inlineFlags[inlineName];
-    const code = codes[name] || iso3Codes[name] || (/^[a-z]{2}$/.test(name) ? name : "");
+    const displayAliases = {
+      "aze": "az", "bih": "ba", "bol": "bo", "arm": "am",
+      "blr": "by", "brn": "bn", "cpv": "cv", "chn": "cn",
+      "irl": "ie", "isr": "il", "mkd": "mk", "nzl": "nz",
+      "rou": "ro", "rus": "ru", "ukr": "ua"
+    };
+    const code = codes[name] || iso3Codes[name] || displayAliases[name] || (/^[a-z]{2}$/.test(name) ? name : "");
 
     if (!code) return `<span class="${className} supporter-flag-fallback">🏳️</span>`;
 
