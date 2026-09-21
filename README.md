@@ -25,7 +25,7 @@ It also includes Last Man Standing (LMS) and Acca League tools, with private pla
 - Favourite-club matches appear in a dedicated **Your clubs playing now** section.
 - Live headers show the number of current matches, goals and selected matches, plus when the data was last updated.
 - Match alerts, live scores, match minutes, team badges and detailed match views remain available.
-- Optional **Nuvio watch links** can compare public Sports Streams event names with Football Hub fixtures. A Watch in Nuvio button appears only for one exact team match; Football Hub never retrieves, stores or serves stream URLs.
+- Optional **Sports Streams watch links** can compare public Sports Streams event names with Football Hub fixtures. A Watch in Stremio button appears only for one exact team match; Football Hub never retrieves, stores or serves stream URLs.
 
 ### Favourite clubs and sensors
 
@@ -80,7 +80,82 @@ After an update, restart Home Assistant and hard-refresh the browser with **Ctrl
 - Starred preferred competitions and favourite-club priority
 - Optional on-page alerts for kick-off, goals, cards, half-time and full-time
 - Match details with timeline, statistics, line-ups, venue, referee and weather where available
-- Optional Nuvio hand-off links for exact Sports Streams football-event matches (requires the add-on to be installed in Nuvio)
+- Optional Sports Streams hand-off links for exact football-event matches (requires Sports Streams to be installed in Stremio)
+
+### Watch live matches with Stremio + Sports Streams
+
+Football Hub can optionally add a **Watch** button beside a live match. Football Hub does not host video or choose a broadcaster. It compares the football fixture with the public event names supplied by the Sports Streams add-on and, when one exact match is found, hands the event over to Stremio so you can choose from the sources that Sports Streams makes available.
+
+> Use streaming services and add-ons only where you have the right to access the content in your country. Availability, source quality and legality are controlled by the third-party service, not Football Hub.
+
+#### 1. Create a Stremio account
+
+1. Install the latest **Stremio** app for your device from [stremio.com/downloads](https://www.stremio.com/downloads), or use Stremio Web.
+2. Open Stremio and create/sign in to your Stremio account.
+3. Stay signed in to the same account in the browser/device you will open from Football Hub. Stremio synchronises installed add-ons across devices on the same account.
+
+#### 2. Configure Sports Streams
+
+1. Open the [Sports Streams configuration page](https://sports.highfly.dev/configure).
+2. Choose the sports and preferences you want. For Football Hub, make sure **Football** is included if you are filtering the catalogue.
+3. Sports Streams currently offers a free tier and optional paid/premium features. A paid account is **not required by Football Hub**; Football Hub only needs a valid Sports Streams manifest URL.
+4. Click **Add to Stremio Web** or **Install in Stremio** to add Sports Streams to your Stremio account.
+5. In Stremio, open **Add-ons** and confirm **Sports Streams** appears as installed.
+
+Sports Streams says its catalogue normally refreshes every 60–120 seconds. If a match has only just started, refresh Stremio/Football Hub before assuming it is unavailable.
+
+#### 3. Copy your Sports Streams manifest URL
+
+Football Hub needs the **raw manifest URL**, not the configure-page address.
+
+1. Return to the [Sports Streams configuration page](https://sports.highfly.dev/configure).
+2. Set your preferences.
+3. Use the **Copy** button on the page. Sports Streams documents this as the way to copy the raw manifest URL.
+4. The copied value should be an HTTPS address ending in **`/manifest.json`**, for example:
+
+   `https://sports.highfly.to/YOUR-TOKEN/manifest.json`
+
+5. **Keep this URL private.** It can contain a personal/configuration token. Do not post it in GitHub issues, screenshots or logs.
+
+If you change your Sports Streams preferences later, copy the newly generated manifest URL and save the new value in Football Hub.
+
+#### 4. Add the manifest to Football Hub
+
+1. Open **Football Hub → Live**.
+2. Open the **Sports Streams (Beta)** settings section.
+3. Paste the complete Sports Streams manifest URL into **Sports Streams manifest URL**.
+4. Press **Save Sports Streams link**.
+5. Press **Refresh** on the Live page, or restart Home Assistant if the catalogue does not update immediately.
+
+Football Hub accepts the Sports Streams HTTPS manifest and uses its football catalogue for event-name matching. It does **not** retrieve or store the underlying video stream URLs.
+
+#### 5. Use the Watch button
+
+When Football Hub finds one exact Sports Streams event for the two teams:
+
+1. A green **Watch** button appears on the compact live-match row.
+2. Press **Watch**.
+3. Stremio Web opens the matched sports event and requests the available sources for that event.
+4. Choose the source you want from Stremio's stream list.
+5. Playback is then handled by Stremio/Sports Streams.
+
+Football Hub deliberately does not choose a particular source. Sports Streams itself recommends trying another source from its stream list if one is buffering or fails.
+
+#### Watch button not appearing?
+
+Check these in order:
+
+1. Make sure the fixture is actually present in Sports Streams.
+2. Confirm Sports Streams is installed in the Stremio account you are using.
+3. Re-copy the manifest URL from Sports Streams and make sure it ends in `/manifest.json`.
+4. In **Football Hub → Live → Sports Streams (Beta)**, save the URL again and refresh the page.
+5. The button only appears when Football Hub can identify **one exact team-v-team event**. Ambiguous or differently named events are intentionally not linked.
+6. If Sports Streams shows no matches, refresh/restart Stremio and try again after a minute or two.
+7. If the correct event opens but a source is wrong, return to the stream list and choose another source. Football Hub only matches the event metadata; it cannot verify the video carried by a third-party source.
+
+#### Privacy and security
+
+The Sports Streams manifest can contain a token in its URL. Treat it like a private credential. Football Hub needs the URL for catalogue matching, but you should redact the token before sharing diagnostics publicly.
 
 ### My Club
 
