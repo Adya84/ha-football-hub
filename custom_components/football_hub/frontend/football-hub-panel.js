@@ -3884,7 +3884,13 @@ class FootballHubPanel extends HTMLElement {
       return aliases[raw.toLowerCase()] || raw;
     };
     const countryName = (match) => normaliseLiveCountry(match.country_code || match.country || match.league?.country_code || match.league?.country);
-    const genderName = (match) => /\b(women|women's|womens|female|feminine|femenina|frauen|dames)\b/i.test(`${competitionName(match)} ${match.home_team || ""} ${match.away_team || ""}`) ? "Women's" : "Men's";
+    const genderName = (match) => {
+      const explicit = String(match.gender || match.league?.gender || match.competition_gender || "").trim().toLowerCase();
+      if (["female", "women", "women's", "womens", "f"].includes(explicit)) return "Women's";
+      if (["male", "men", "men's", "mens", "m"].includes(explicit)) return "Men's";
+      const text = `${competitionName(match)} ${match.home_team || ""} ${match.away_team || ""}`;
+      return /(?:^|[^a-z])(women|women's|womens|woman|female|feminine|femenina|femenino femenino|frauen|damen|dames|femmes|femminile|feminino|feminina|femenil|ladies|girls|wsl|nwsl)(?:[^a-z]|$)/i.test(text) ? "Women's" : "Men's";
+    };
     const competitionCountries = new Map();
     catalogue.forEach((item) => {
       const country = normaliseLiveCountry(item.country);
