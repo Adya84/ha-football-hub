@@ -60,5 +60,11 @@ def match_nuvio_event(home_team: object, away_team: object, events: list[dict[st
 
 
 def nuvio_deep_link(event_id: object) -> str:
-    """Create a Stremio Web details link for a known Sports Streams sport item."""
-    return f"https://web.stremio.com/#/detail/sport/{quote(str(event_id or ''), safe='')}"
+    """Open the Sports Streams event with its streams panel in Stremio Web.
+
+    Stremio's detail deep link accepts both the meta id and video id. Sports
+    Streams uses the same id for its single live-event video, so include it in
+    both positions rather than opening metadata only.
+    """
+    encoded_id = quote(str(event_id or ""), safe="")
+    return f"https://web.stremio.com/#/detail/sport/{encoded_id}/{encoded_id}"
