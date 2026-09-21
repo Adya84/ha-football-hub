@@ -3963,7 +3963,7 @@ class FootballHubPanel extends HTMLElement {
         </section>
         <section class="section">
           <h2>Current live feed</h2>
-          <div class="match-list">${matches.length ? matches.map((m) => this._matchCard(m, "result")).join("") : ""}</div>
+          ${matches.length ? this._liveCompetitionGroups(matches, "") : ""}
         </section>
         ${todaySection}
       `;
