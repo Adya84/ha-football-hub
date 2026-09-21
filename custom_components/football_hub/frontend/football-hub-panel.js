@@ -3363,6 +3363,12 @@ class FootballHubPanel extends HTMLElement {
     const roundText = this._matchText(match.round) || "Fixture";
     const statusLabels = { NS: "Upcoming", TBD: "Time TBC", "1H": "Live · First half", HT: "Half-time", "2H": "Live · Second half", ET: "Extra-time", BT: "Extra-time break", P: "Penalties", FT: "Full-time", AET: "After extra-time", PEN: "After penalties", PST: "Postponed", CANC: "Cancelled", ABD: "Abandoned", SUSP: "Suspended", AWD: "Awarded", WO: "Walkover" };
     const statusText = statusLabels[match.status_short] || this._matchText(match.status) || this._matchText(match.status_short);
+    const liveStatuses = new Set(["LIVE", "1H", "HT", "2H", "ET", "BT", "P", "SUSP", "INT"]);
+    const isLive = liveStatuses.has(String(match.status_short || "").toUpperCase());
+    const elapsedText = match.elapsed !== null && match.elapsed !== undefined && String(match.elapsed).trim()
+      ? `${String(match.elapsed).replace(/'+$/, "")}'`
+      : "";
+    const cardStatusText = isLive && elapsedText ? `Live · ${elapsedText}` : statusText;
     const score = isResult || match.status_short !== "NS"
       ? `<div class="match-score">${this._score(match.home_goals)} <span>–</span> ${this._score(match.away_goals)}</div>`
       : `<div class="match-time">${this._formatDate(match.kickoff)}</div>`;
@@ -3378,7 +3384,7 @@ class FootballHubPanel extends HTMLElement {
         <div class="match-competition"><ha-icon icon="mdi:trophy-outline"></ha-icon><strong>${this._escape(competitionText)}</strong>${matchAlertControl}</div>
         <div class="match-meta">
           <span>${this._escape(roundText)}</span>
-          <span>${this._escape(statusText)}</span>
+          <span>${this._escape(cardStatusText)}</span>
         </div>
         <div class="match-teams">
           <div class="team home">
@@ -3411,7 +3417,13 @@ class FootballHubPanel extends HTMLElement {
     if (!Object.keys(selected).length) return "";
     const competition = this._matchText(selected.league || selected.competition) || "Football";
     const status = this._matchText(selected.status) || this._matchText(selected.status_short) || "Match details";
-    return `<section class="live-centre-card shared-match-details" id="football-hub-match-details"><button type="button" id="match-details-close" class="live-close-match"><ha-icon icon="mdi:arrow-left"></ha-icon> Back to matches</button><div class="live-banner">${this._escape(competition)} · ${this._escape(status)}</div><div class="live-matchup"><div class="live-team">${this._logo(selected.home_logo, selected.home_team, "76")}<h2>${this._escape(selected.home_team || "Home")}</h2></div><div class="score-board"><strong>${this._score(selected.home_goals)} – ${this._score(selected.away_goals)}</strong><span>${this._escape(this._formatDate(selected.kickoff))}</span></div><div class="live-team">${this._logo(selected.away_logo, selected.away_team, "76")}<h2>${this._escape(selected.away_team || "Away")}</h2></div></div><div class="live-details"><span><ha-icon icon="mdi:stadium"></ha-icon>${this._escape(selected.stadium || "Venue to be confirmed")}</span>${selected.city ? `<span><ha-icon icon="mdi:map-marker-outline"></ha-icon>${this._escape(selected.city)}</span>` : ""}${selected.referee ? `<span><ha-icon icon="mdi:whistle"></ha-icon>${this._escape(selected.referee)}</span>` : ""}</div><div class="live-detail-grid"><article class="page-card"><h2>Match timeline</h2>${this._eventRows(selected.events || [])}</article><article class="page-card"><h2>Statistics</h2>${this._statRows(selected.statistics || [], selected)}</article><article class="page-card lineup-panel"><h2>Starting line-ups</h2>${this._lineupCards(selected.lineups || [])}</article></div></section>`;
+    const liveStatuses = new Set(["LIVE", "1H", "HT", "2H", "ET", "BT", "P", "SUSP", "INT"]);
+    const isLive = liveStatuses.has(String(selected.status_short || "").toUpperCase());
+    const elapsed = selected.elapsed !== null && selected.elapsed !== undefined && String(selected.elapsed).trim()
+      ? `${String(selected.elapsed).replace(/'+$/, "")}'`
+      : "";
+    const bannerStatus = isLive ? `LIVE${elapsed ? ` · ${elapsed}` : ""}` : status;
+    return `<section class="live-centre-card shared-match-details" id="football-hub-match-details"><button type="button" id="match-details-close" class="live-close-match"><ha-icon icon="mdi:arrow-left"></ha-icon> Back to matches</button><div class="live-banner">${this._escape(competition)} · ${this._escape(bannerStatus)}</div><div class="live-matchup"><div class="live-team">${this._logo(selected.home_logo, selected.home_team, "76")}<h2>${this._escape(selected.home_team || "Home")}</h2></div><div class="score-board"><strong>${this._score(selected.home_goals)} – ${this._score(selected.away_goals)}</strong><span>${this._escape(this._formatDate(selected.kickoff))}</span></div><div class="live-team">${this._logo(selected.away_logo, selected.away_team, "76")}<h2>${this._escape(selected.away_team || "Away")}</h2></div></div><div class="live-details"><span><ha-icon icon="mdi:stadium"></ha-icon>${this._escape(selected.stadium || "Venue to be confirmed")}</span>${selected.city ? `<span><ha-icon icon="mdi:map-marker-outline"></ha-icon>${this._escape(selected.city)}</span>` : ""}${selected.referee ? `<span><ha-icon icon="mdi:whistle"></ha-icon>${this._escape(selected.referee)}</span>` : ""}</div><div class="live-detail-grid"><article class="page-card"><h2>Match timeline</h2>${this._eventRows(selected.events || [])}</article><article class="page-card"><h2>Statistics</h2>${this._statRows(selected.statistics || [], selected)}</article><article class="page-card lineup-panel"><h2>Starting line-ups</h2>${this._lineupCards(selected.lineups || [])}</article></div></section>`;
   }
 
   _hero() {
