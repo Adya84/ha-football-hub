@@ -3836,12 +3836,13 @@ class FootballHubPanel extends HTMLElement {
           const id = matchId(match, index);
           const minuteValue = String(match.elapsed ?? "").replace(/'+$/, "");
           const minute = minuteValue ? `${minuteValue}'` : (match.status_short || "LIVE");
-          return `<button class="country-live-row ${id === selectedId ? "active" : ""}" data-live-score="${this._escape(id)}">
+          return `<div class="country-live-row ${id === selectedId ? "active" : ""}" role="button" tabindex="0" data-live-score="${this._escape(id)}">
             <span class="country-live-minute">${this._escape(minute)}</span>
             <span class="country-live-team home">${this._escape(match.home_team)}${this._logo(match.home_logo, match.home_team, "24")}</span>
             <strong>${this._score(match.home_goals)}<i>–</i>${this._score(match.away_goals)}</strong>
             <span class="country-live-team away">${this._logo(match.away_logo, match.away_team, "24")}${this._escape(match.away_team)}</span>
-          </button>`;
+            ${match.nuvio_watch_url ? `<a class="compact-watch-button" href="${this._escape(match.nuvio_watch_url)}" target="_blank" rel="noopener noreferrer"><ha-icon icon="mdi:play-circle-outline"></ha-icon> Watch</a>` : ""}
+          </div>`;
         }).join("")}</div>
       </article>`).join("")}</div>`;
   }
@@ -6333,7 +6334,10 @@ class FootballHubPanel extends HTMLElement {
       .live-country-flag { display:inline-block; width:25px; height:16px; flex:0 0 25px; object-fit:cover; border-radius:2px; box-shadow:0 0 0 1px rgba(255,255,255,.18); }
       .supporter-flag-fallback.live-country-flag { display:inline-flex; align-items:center; justify-content:center; font-size:15px; }
       .country-live-group > header span { margin-left:auto; color:#86efac; font-size:.7rem; font-weight:900; text-transform:uppercase; }
-      .country-live-row { width:100%; display:grid; grid-template-columns:56px minmax(150px,1fr) 76px minmax(150px,1fr); align-items:center; gap:12px; min-height:58px; padding:8px 16px; border:0; border-bottom:1px solid rgba(255,255,255,.1); color:#fff; background:transparent; cursor:pointer; font:inherit; }
+      .country-live-row { width:100%; display:grid; grid-template-columns:56px minmax(150px,1fr) 76px minmax(150px,1fr) auto; align-items:center; gap:12px; min-height:58px; padding:8px 16px; border:0; border-bottom:1px solid rgba(255,255,255,.1); color:#fff; background:transparent; cursor:pointer; font:inherit; box-sizing:border-box; }
+      .compact-watch-button { display:inline-flex; align-items:center; gap:5px; padding:6px 9px; border:1px solid rgba(74,222,128,.7); border-radius:9px; color:#86efac; background:rgba(34,197,94,.1); font-size:.7rem; font-weight:900; text-decoration:none; white-space:nowrap; }
+      .compact-watch-button:hover { background:rgba(34,197,94,.2); }
+      .compact-watch-button ha-icon { --mdc-icon-size:17px; }
       .country-live-row:last-child { border-bottom:0; }
       .country-live-row:hover, .country-live-row.active { background:rgba(49,233,129,.1); }
       .country-live-row.active { box-shadow:inset 3px 0 0 var(--fh-cyan); }
