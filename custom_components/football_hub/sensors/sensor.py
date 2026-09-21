@@ -312,7 +312,11 @@ class FootballHubStatusSensor(FootballHubBaseSensor):
     def extra_state_attributes(self):
         competition = self.coordinator.competition
         season = self.entry.data.get("season")
-        last_updated = getattr(self.coordinator, "last_update_success_time", None)
+        # DataUpdateCoordinator does not expose last_update_success_time in
+        # all supported Home Assistant versions.  The status entity itself is
+        # updated on each coordinator refresh, so expose an explicit timestamp
+        # generated when these attributes are refreshed.
+        last_updated = dt_util.now()
         return {
             "competition": competition.get("name"),
             "competition_key": self.coordinator.competition_key,
