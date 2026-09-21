@@ -473,8 +473,21 @@ class FootballHubMatchesTodaySensor(FootballHubBaseSensor):
         end_local = start_local + timedelta(days=1)
         start = int(start_local.timestamp())
         end = int(end_local.timestamp())
-        raw = self.coordinator._cache.get("live_feed", []) or []
-        matches = [clean_fixture(item) for item in raw if start <= fixture_timestamp(item) < end]
+        # Use coordinator data rather than the raw provider cache so optional
+        # enrichments (such as Nuvio watch links) reach the Live page.
+        raw = (self.coordinator.data or {}).get("live", []) or []
+        # coordinator.data["live"] can contain only in-play/pre-live matches;
+        # retain the full local-day feed as the source and merge enrichment by fixture id.
+        day_raw = self.coordinator._cache.get("live_feed", []) or []
+        enriched = {
+            str((((item or {}).get("fixture") or {}).get("id") or "")): item
+            for item in raw if isinstance(item, dict)
+        }
+        source = [
+            enriched.get(str((((item or {}).get("fixture") or {}).get("id") or "")), item)
+            for item in day_raw
+        ]
+        matches = [clean_fixture(item) for item in source if start <= fixture_timestamp(item) < end]
         matches.sort(key=lambda item: item.get("timestamp") or 0)
         return {"total_today": len(matches), "matches": limit_items(matches, 500)}
 
