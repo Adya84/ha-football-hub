@@ -3396,7 +3396,7 @@ class FootballHubPanel extends HTMLElement {
           <span>${this._escape(venueText)}</span>
           <span>${this._escape(match.city || "")}</span>
         </div>` : ""}
-        ${allowSharedDetails && hasDetails ? `<div class="match-actions"><button type="button" class="match-details-button" data-match-details="${this._escape(matchAlertId)}"><ha-icon icon="mdi:chart-box-outline"></ha-icon> Match details</button>${match.nuvio_watch_url ? `<a class="match-details-button nuvio-watch-button" href="${this._escape(match.nuvio_watch_url)}" target="_blank" rel="noopener noreferrer"><ha-icon icon="mdi:play-circle-outline"></ha-icon> Watch in Nuvio</a>` : ""}</div>` : ""}
+        ${allowSharedDetails && hasDetails ? `<div class="match-actions"><button type="button" class="match-details-button" data-match-details="${this._escape(matchAlertId)}"><ha-icon icon="mdi:chart-box-outline"></ha-icon> Match details</button>${match.nuvio_watch_url ? `<button type="button" class="match-details-button nuvio-watch-button" data-nuvio-watch="${this._escape(match.nuvio_watch_url)}"><ha-icon icon="mdi:play-circle-outline"></ha-icon> Watch in Nuvio</button>` : ""}</div>` : ""}
       </article>
     `;
   }
@@ -4871,6 +4871,15 @@ class FootballHubPanel extends HTMLElement {
       this._saveSharedPreferences();
       this._render();
     });
+    this.shadowRoot.querySelectorAll("[data-nuvio-watch]").forEach((button) => button.addEventListener("click", (event) => {
+      event.preventDefault();
+      const url = button.dataset.nuvioWatch;
+      if (!url) return;
+      // Do not use target=_blank for custom app protocols: Chromium can open
+      // a blank tab and leave the deep link in its address bar instead of
+      // handing it cleanly to the registered Nuvio application.
+      window.location.href = url;
+    }));
     this.shadowRoot.querySelector("#football-hub-refresh")?.addEventListener("click", async (event) => { event.currentTarget.disabled = true; await this._hass?.callService("football_hub", "refresh", { entry_id: this._statusInfo().config_entry_id || "" }).catch(() => {}); setTimeout(() => this._render(), 800); });
     this.shadowRoot.querySelector("#football-hub-test-alert")?.addEventListener("click", () => this._testSelectedLiveAlerts());
     this.shadowRoot.querySelector("#football-hub-alert-all")?.addEventListener("click", () => this._setAllLiveNotifications(true));
