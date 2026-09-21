@@ -60,5 +60,5 @@ def match_nuvio_event(home_team: object, away_team: object, events: list[dict[st
 
 
 def nuvio_deep_link(event_id: object) -> str:
-    """Create Nuvio's documented details-page URL for a known sport item."""
-    return f"nuvio://meta?type=sport&id={quote(str(event_id or ''), safe='')}"
+    """Create a Stremio Web details link for a known Sports Streams sport item."""
+    return f"https://web.stremio.com/#/detail/sport/{quote(str(event_id or ''), safe='')}"
