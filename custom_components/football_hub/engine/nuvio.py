@@ -60,5 +60,12 @@ def match_nuvio_event(home_team: object, away_team: object, events: list[dict[st
 
 
 def nuvio_deep_link(event_id: object) -> str:
-    """Create a Stremio Web details link for a known Sports Streams sport item."""
-    return f"https://web.stremio.com/#/detail/sport/{quote(str(event_id or ''), safe='')}"
+    """Open the Sports Streams event with its available streams visible in Stremio Web.
+
+    Stremio opens the stream list when both the meta id and video id are supplied.
+    Sports Streams uses the event id as the single live-event video id. Explicitly
+    disable autoplay so the user chooses a source rather than Football Hub selecting
+    or starting one.
+    """
+    encoded_id = quote(str(event_id or ""), safe="")
+    return f"https://web.stremio.com/#/detail/sport/{encoded_id}/{encoded_id}?autoPlay=false"
