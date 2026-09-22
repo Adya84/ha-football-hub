@@ -223,9 +223,10 @@ test("overview offers GitHub star and share actions", () => {
   assert.match(markup, /Star us on GitHub/);
   assert.match(markup, /id="share-football-hub"/);
   assert.match(markup, /Share with friends/);
+  assert.ok(markup.indexOf("overview-community") < markup.indexOf("dashboard-grid"));
 });
 
-test("release identifiers use the custom-sidebar beta version", () => {
+test("release identifiers use the current stable version", () => {
   const source = fs.readFileSync(path.join(__dirname, "../custom_components/football_hub/frontend/football-hub-panel.js"), "utf8");
-  assert.match(source, /const PANEL_VERSION = "0\.8\.4-beta\.5"/);
+  assert.match(source, /const PANEL_VERSION = "0\.8\.4"/);
 });

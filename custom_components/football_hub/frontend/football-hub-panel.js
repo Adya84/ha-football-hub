@@ -1,4 +1,4 @@
-const PANEL_VERSION = "0.8.4-beta.5";
+const PANEL_VERSION = "0.8.4";
 // Temporarily paused while fixture schedules are being corrected. Manual email
 // actions remain available to the administrator.
 const LMS_AUTOMATIC_EMAILS_ENABLED = false;
@@ -3659,6 +3659,11 @@ class FootballHubPanel extends HTMLElement {
     });
 
     return `
+      <section class="overview-community page-card">
+        <ha-icon icon="mdi:github"></ha-icon>
+        <div><strong>Enjoying Football Hub?</strong><span>Star the project or share it with friends to help it grow.</span></div>
+        <div class="overview-community-actions"><a href="${FOOTBALL_HUB_GITHUB_URL}" target="_blank" rel="noopener noreferrer"><ha-icon icon="mdi:star-outline"></ha-icon> Star us on GitHub</a><button type="button" id="share-football-hub"><ha-icon icon="mdi:share-variant-outline"></ha-icon> Share with friends</button></div>
+      </section>
       <section class="dashboard-grid mock-dashboard">
         <article class="feature-card next-card">
           <div class="card-heading">
@@ -3735,11 +3740,6 @@ class FootballHubPanel extends HTMLElement {
         <span class="overview-beer-icon">🍺</span>
         <div><strong>Enjoying Football Hub?</strong><span>Help support its development and buy me a beer.</span></div>
         <a href="https://paypal.me/graffidoodle" target="_blank" rel="noopener noreferrer">Buy me a beer</a>
-      </section>
-      <section class="overview-community page-card">
-        <ha-icon icon="mdi:github"></ha-icon>
-        <div><strong>Enjoying Football Hub?</strong><span>Star the project or share it with friends to help it grow.</span></div>
-        <div class="overview-community-actions"><a href="${FOOTBALL_HUB_GITHUB_URL}" target="_blank" rel="noopener noreferrer"><ha-icon icon="mdi:star-outline"></ha-icon> Star us on GitHub</a><button type="button" id="share-football-hub"><ha-icon icon="mdi:share-variant-outline"></ha-icon> Share with friends</button></div>
       </section>
     `;
   }
@@ -5910,7 +5910,7 @@ class FootballHubPanel extends HTMLElement {
         font-weight: 800;
         text-decoration: none;
       }
-      .overview-community { display:flex; align-items:center; gap:16px; margin-top:14px; border-color:rgba(0,183,255,.34); }
+      .overview-community { display:flex; align-items:center; gap:16px; margin-bottom:18px; border-color:rgba(0,183,255,.34); }
       .overview-community > ha-icon { --mdc-icon-size:34px; color:var(--fh-cyan); }
       .overview-community > div:not(.overview-community-actions) { display:flex; flex:1; min-width:0; flex-direction:column; gap:4px; }
       .overview-community > div span { color:rgba(235,245,255,.75); }
