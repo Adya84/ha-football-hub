@@ -176,3 +176,30 @@ test("malformed or empty sidebar visibility restores all optional tabs", () => {
   assert.equal(panel._isSidebarTabVisible("fixtures"), true);
   assert.equal(panel._isSidebarTabVisible("overview"), true);
 });
+
+test("nav omits hidden optional tabs but keeps overview and settings", () => {
+  const panel = makePanel({ primary: {}, liveMatches: [], hiddenCompetitions: [] });
+  panel._visibleSidebarTabs = new Set(["live"]);
+  panel._activeTab = "overview";
+
+  const markup = panel._nav();
+
+  assert.match(markup, /data-tab="overview"/);
+  assert.match(markup, /data-tab="live"/);
+  assert.match(markup, /data-tab="settings"/);
+  assert.doesNotMatch(markup, /data-tab="last-man-standing"/);
+  assert.doesNotMatch(markup, /data-tab="double-pick-league"/);
+});
+
+test("hiding the active LMS tab returns to overview", () => {
+  const panel = makePanel({ primary: {}, liveMatches: [], hiddenCompetitions: [] });
+  panel._visibleSidebarTabs = new Set(["last-man-standing"]);
+  panel._activeTab = "last-man-standing";
+  let renders = 0;
+  panel._render = () => { renders += 1; };
+
+  panel._setSidebarTabVisible("last-man-standing", false);
+
+  assert.equal(panel._activeTab, "overview");
+  assert.equal(renders, 1);
+});

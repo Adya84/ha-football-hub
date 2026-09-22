@@ -3584,7 +3584,7 @@ class FootballHubPanel extends HTMLElement {
 
     return `
       <nav class="tabs">
-        ${tabs
+        ${tabs.filter(([id]) => this._isSidebarTabVisible(id))
           .map(
             ([id, icon, label]) => `
               <button data-tab="${id}" class="${this._activeTab === id ? "active" : ""}">
@@ -4599,6 +4599,12 @@ class FootballHubPanel extends HTMLElement {
     const providerMode = String(status.provider_mode || "Unknown")
       .replace(/fotmob/gi, "FM")
       .replace(/espn/gi, "FM");
+    const sidebarTabs = [
+      ["live", this._t("live")], ["my-club", this._t("myClub")], ["fixtures", this._t("fixtures")],
+      ["results", this._t("results")], ["table", this._t("table")], ["players", this._t("players")],
+      ["cups", "Cups"], ["last-man-standing", "LMS"], ["double-pick-league", "Acca League"],
+      ["news", "News"], ["tv-guide", "TV Guide"], ["transfers", "Transfers"], ["supporters", this._t("supporters")],
+    ];
 
     return `
       <section class="page-heading">
@@ -4619,6 +4625,13 @@ class FootballHubPanel extends HTMLElement {
           <div><span>Panel build</span><strong>${PANEL_VERSION}</strong></div>
           <div><span>Entity prefix</span><strong class="mono">${this._escape(this._selectedPrefix || "None")}</strong></div>
         </article>
+      </section>
+      <section class="page-card sidebar-customisation">
+        <div class="sidebar-customisation-heading"><div><span class="eyebrow">YOUR FOOTBALL HUB</span><h2>Customise sidebar</h2></div><button type="button" id="reset-sidebar-tabs">Show all tabs</button></div>
+        <p>Choose which features appear in the sidebar. Hiding one does not remove its data or settings.</p>
+        <div class="sidebar-tab-grid">
+          ${sidebarTabs.map(([id, label]) => `<label><input type="checkbox" data-sidebar-tab-toggle="${id}" ${this._isSidebarTabVisible(id) ? "checked" : ""}><span>${this._escape(label)}</span></label>`).join("")}
+        </div>
       </section>
     `;
   }
@@ -4872,6 +4885,10 @@ class FootballHubPanel extends HTMLElement {
     this.shadowRoot.querySelector("#my-club-add")?.addEventListener("click", () => {
       this._setMyClub(this.shadowRoot.querySelector("#my-club-select")?.value);
     });
+    this.shadowRoot.querySelectorAll("[data-sidebar-tab-toggle]").forEach((checkbox) => {
+      checkbox.addEventListener("change", () => this._setSidebarTabVisible(checkbox.dataset.sidebarTabToggle, checkbox.checked));
+    });
+    this.shadowRoot.querySelector("#reset-sidebar-tabs")?.addEventListener("click", () => this._resetSidebarTabs());
     this.shadowRoot.querySelectorAll(".favourite-club-remove").forEach((button) => {
       button.addEventListener("click", () => this._removeFavouriteClub(button.dataset.team, button.dataset.competition));
     });
@@ -6665,6 +6682,13 @@ class FootballHubPanel extends HTMLElement {
 
       .settings-list span { color: var(--secondary-text-color); }
       .mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: .78rem; overflow-wrap: anywhere; }
+      .sidebar-customisation { margin-top: 18px; }
+      .sidebar-customisation-heading { display:flex; align-items:center; justify-content:space-between; gap:16px; }
+      .sidebar-customisation h2 { margin:4px 0 0; }
+      .sidebar-customisation > p { color:var(--secondary-text-color); margin:12px 0 16px; }
+      .sidebar-tab-grid { display:grid; grid-template-columns:repeat(auto-fit, minmax(160px, 1fr)); gap:10px; }
+      .sidebar-tab-grid label { display:flex; align-items:center; gap:8px; padding:11px 12px; border:1px solid var(--fh-border); border-radius:11px; background:rgba(255,255,255,.045); cursor:pointer; font-weight:750; }
+      .sidebar-tab-grid input { width:18px; height:18px; accent-color:var(--primary-color); }
 
       .notice {
         color: var(--secondary-text-color);
@@ -6715,6 +6739,7 @@ class FootballHubPanel extends HTMLElement {
       .app-shell.view-mobile .cup-overview > .stat-card { grid-column:span 12; }
       .app-shell.view-mobile .dashboard-grid > *, .app-shell.view-mobile .stat-card, .app-shell.view-mobile .feature-card, .app-shell.view-mobile .list-card { margin-bottom:12px; }
       .app-shell.view-mobile .two-column, .app-shell.view-mobile .three-column, .app-shell.view-mobile .match-list, .app-shell.view-mobile .lineup-grid, .app-shell.view-mobile .supporter-grid, .app-shell.view-mobile .support-summary, .app-shell.view-mobile .support-benefits { grid-template-columns:1fr; }
+      .app-shell.view-mobile .sidebar-customisation-heading { align-items:flex-start; flex-direction:column; }
       .app-shell.view-mobile .cup-overview .cup-fixtures-card .match-list { grid-template-columns:1fr; }
       .app-shell.view-mobile .page-card { padding:15px; border-radius:16px; }
       .app-shell.view-mobile .page-heading { align-items:flex-start; flex-direction:column; gap:10px; }
