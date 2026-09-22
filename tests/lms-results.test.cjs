@@ -300,7 +300,7 @@ test('the panel cache-busting version matches the integration release', () => {
 test('Nuvio watch links are optional external actions and retain safe link attributes', () => {
   const source = fs.readFileSync(path.join(__dirname, '../custom_components/football_hub/frontend/football-hub-panel.js'), 'utf8');
   assert.match(source, /match\.nuvio_watch_url/);
-  assert.match(source, /Watch in Nuvio/);
+  assert.match(source, /Watch in Stremio/);
   assert.match(source, /rel="noopener noreferrer"/);
   assert.match(source, /nuvio-manifest-url/);
 });

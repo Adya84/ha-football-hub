@@ -22,7 +22,11 @@ class NuvioMatchingTests(unittest.TestCase):
         )
 
         self.assertEqual(event, {"id": "streamed:fulham-vs-manchester-united", "name": "Fulham vs Manchester United"})
-        self.assertEqual(nuvio_deep_link(event["id"]), "nuvio://meta?type=sport&id=streamed%3Afulham-vs-manchester-united")
+        self.assertEqual(
+            nuvio_deep_link(event["id"]),
+            "https://web.stremio.com/#/detail/sport/streamed%3Afulham-vs-manchester-united/"
+            "streamed%3Afulham-vs-manchester-united?autoPlay=false",
+        )
 
     def test_reversed_fixture_sides_are_supported(self):
         event = match_nuvio_event(

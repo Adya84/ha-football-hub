@@ -1,4 +1,4 @@
-const PANEL_VERSION = "0.8.2";
+const PANEL_VERSION = "0.8.4-beta.1";
 // Temporarily paused while fixture schedules are being corrected. Manual email
 // actions remain available to the administrator.
 const LMS_AUTOMATIC_EMAILS_ENABLED = false;
@@ -86,6 +86,8 @@ class FootballHubPanel extends HTMLElement {
     this._liveTimezone = localStorage.getItem("football_hub_live_timezone") || "local";
     this._nuvioManifestUrl = "";
     this._liveFiltersOpen = localStorage.getItem("football_hub_live_filters_open") !== "false";
+    try { this._openLiveFilterCountries = new Set(JSON.parse(localStorage.getItem("football_hub_open_live_filter_countries") || "[]")); }
+    catch (_error) { this._openLiveFilterCountries = new Set(); }
     try { this._favouriteLiveCompetitions = new Set(JSON.parse(localStorage.getItem("football_hub_favourite_live_competitions") || "[]")); }
     catch (_error) { this._favouriteLiveCompetitions = new Set(); }
     try { this._liveNotifications = { kickoff: false, goals: false, yellowCards: false, redCards: false, halftime: false, fulltime: false, sounds: false, selectedClubOnly: false, ...JSON.parse(localStorage.getItem("football_hub_live_notifications") || "{}") }; }
@@ -3917,7 +3919,9 @@ class FootballHubPanel extends HTMLElement {
     const countryCompetitionFilters = countryNames.filter((country) => !search || country.toLowerCase().includes(search) || competitionNames.some((competition) => competitionCountries.get(competition)?.has(country) && competition.toLowerCase().includes(search))).map((country) => {
       const competitions = competitionNames.filter((competition) => competitionCountries.get(competition)?.has(country) && (!search || country.toLowerCase().includes(search) || competition.toLowerCase().includes(search)));
       const countryChecked = !this._hiddenLiveCountries.has(country);
-      return `<details class="country-filter-tree"><summary><label><input type="checkbox" data-live-filter-kind="country" data-live-filter-value="${this._escape(country)}" ${countryChecked ? "checked" : ""}>${this._countryFlag(country, "live-country-flag")}<strong>${this._escape(this._displayCountry(country))}</strong></label><span>${competitions.length} competitions</span></summary><div class="live-filter-options">${competitions.map((competition) => { const key = this._liveCompetitionKey(country, competition); return `<label class="${isFavouriteCompetition(country, competition) ? "favourite" : ""}"><input type="checkbox" data-live-filter-kind="competition" data-live-filter-value="${this._escape(key)}" data-live-filter-countries="${this._escape(country)}" ${this._hiddenLiveCompetitions.has(key) ? "" : "checked"}><span>${this._escape(competition)}</span><button type="button" data-live-favourite="${this._escape(key)}" title="Pin competition">${isFavouriteCompetition(country, competition) ? "★" : "☆"}</button></label>`; }).join("")}</div></details>`;
+      const expanded = this._openLiveFilterCountries?.has(country);
+      const controls = expanded ? `<div class="live-filter-options">${competitions.map((competition) => { const key = this._liveCompetitionKey(country, competition); return `<label class="${isFavouriteCompetition(country, competition) ? "favourite" : ""}"><input type="checkbox" data-live-filter-kind="competition" data-live-filter-value="${this._escape(key)}" data-live-filter-countries="${this._escape(country)}" ${this._hiddenLiveCompetitions.has(key) ? "" : "checked"}><span>${this._escape(competition)}</span><button type="button" data-live-favourite="${this._escape(key)}" title="Pin competition">${isFavouriteCompetition(country, competition) ? "★" : "☆"}</button></label>`; }).join("")}</div>` : "";
+      return `<details class="country-filter-tree" data-live-filter-country="${this._escape(country)}" ${expanded ? "open" : ""}><summary><label><input type="checkbox" data-live-filter-kind="country" data-live-filter-value="${this._escape(country)}" ${countryChecked ? "checked" : ""}>${this._countryFlag(country, "live-country-flag")}<strong>${this._escape(this._displayCountry(country))}</strong></label><span>${competitions.length} competitions</span></summary>${controls}</details>`;
     }).join("");
     const selectedCompetitionCount = [...competitionCountries.entries()].reduce((total, [competition, countries]) => total + [...countries].filter((country) => !this._hiddenLiveCountries.has(country) && !this._hiddenLiveCompetitions.has(`${country}|||${competition}`) && !this._hiddenLiveCompetitions.has(competition)).length, 0);
     const liveFilters = `${toolbar}<details id="live-filter-panel" class="page-card live-competition-filter live-filter-panel" ${this._liveFiltersOpen ? "open" : ""}><summary><div><span class="eyebrow">MATCH FILTERS</span><h2>Countries and competitions</h2></div><span class="live-filter-summary-count">${selectedCompetitionCount} selected ${filterActions("all")} <ha-icon icon="mdi:chevron-down"></ha-icon></span></summary><div class="live-filter-panel-body"><p>Expand a country to choose its leagues and cups. Favourites are pinned first and settings synchronise through Home Assistant.</p><div class="live-filter-groups"><details open><summary>Men's and women's football</summary><div class="live-filter-options">${filterChecks(["Men's", "Women's"], "gender", this._hiddenLiveGenders)}</div></details>${countryCompetitionFilters}</div></div></details>`;
@@ -4615,6 +4619,7 @@ class FootballHubPanel extends HTMLElement {
 
   _render() {
     if (!this.shadowRoot) return;
+    const liveScrollTop = this._activeTab === "live" && Number.isFinite(window.scrollY) ? window.scrollY : 0;
 
     this.shadowRoot.innerHTML = `
       <style>${this._styles()}</style>
@@ -4629,6 +4634,7 @@ class FootballHubPanel extends HTMLElement {
 
     // Preserve every expandable section across sensor updates and re-renders.
     this.shadowRoot.querySelectorAll("details").forEach((details, index) => {
+      if (details.dataset.liveFilterCountry) return;
       const country = details.querySelector('summary [data-live-filter-kind="country"]')?.dataset.liveFilterValue;
       const heading = details.querySelector("summary strong, summary h2")?.textContent || details.querySelector("summary")?.textContent || "";
       const identity = details.id
@@ -4640,6 +4646,19 @@ class FootballHubPanel extends HTMLElement {
       if (saved !== null) details.open = saved === "true";
       details.addEventListener("toggle", () => localStorage.setItem(storageKey, String(details.open)));
     });
+    this.shadowRoot.querySelectorAll("[data-live-filter-country]").forEach((details) => {
+      details.addEventListener("toggle", () => {
+        const country = details.dataset.liveFilterCountry;
+        if (!country) return;
+        if (details.open) this._openLiveFilterCountries.add(country);
+        else this._openLiveFilterCountries.delete(country);
+        localStorage.setItem("football_hub_open_live_filter_countries", JSON.stringify([...this._openLiveFilterCountries]));
+        this._render();
+      });
+    });
+    if (liveScrollTop > 0 && typeof window.scrollTo === "function") {
+      requestAnimationFrame(() => window.scrollTo(0, liveScrollTop));
+    }
 
     // Show the scheduled fixture time until kick-off, then Live; only final
     // games show Through/Out.

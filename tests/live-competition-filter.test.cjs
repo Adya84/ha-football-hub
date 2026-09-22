@@ -4,7 +4,7 @@ const fs = require("node:fs");
 const path = require("node:path");
 const vm = require("node:vm");
 
-function makePanel({ primary, liveMatches, hiddenCompetitions, favouriteClubs = [] }) {
+function makePanel({ primary, liveMatches, hiddenCompetitions, favouriteClubs = [], providerCatalogue = [], openCountries = [] }) {
   let Panel;
   vm.runInNewContext(
     fs.readFileSync(path.join(__dirname, "../custom_components/football_hub/frontend/football-hub-panel.js"), "utf8"),
@@ -29,6 +29,7 @@ function makePanel({ primary, liveMatches, hiddenCompetitions, favouriteClubs = 
   panel._liveDisplayMode = "cards";
   panel._liveTimezone = "local";
   panel._liveFiltersOpen = false;
+  panel._openLiveFilterCountries = new Set(openCountries);
   panel._liveNotifications = {};
   panel._nuvioManifestUrl = "";
   panel._selectedLiveMatch = "";
@@ -37,7 +38,7 @@ function makePanel({ primary, liveMatches, hiddenCompetitions, favouriteClubs = 
     live_match: primary,
     live_matches: { matches: liveMatches },
     matches_today: { matches: [] },
-    competition_catalogue: { competitions: [] },
+    competition_catalogue: { competitions: providerCatalogue },
     standings: { table: [] },
   }[name] || {});
   panel._statusInfo = () => ({ favourite_clubs: favouriteClubs, state: "Online", last_updated: Date.now() });
@@ -63,6 +64,24 @@ test("an unselected live competition is not restored as the primary match or fav
   assert.doesNotMatch(markup, /York v Rochdale/);
   assert.doesNotMatch(markup, /country-live-team home">York/);
   assert.doesNotMatch(markup, /live-control-hero/);
+});
+
+test("closed countries defer their competition controls until opened", () => {
+  const panel = makePanel({
+    primary: {},
+    liveMatches: [],
+    hiddenCompetitions: [],
+    openCountries: ["England"],
+    providerCatalogue: [
+      { country: "England", name: "English Test Division" },
+      { country: "Denmark", name: "Danish Test Division" },
+    ],
+  });
+
+  const markup = panel._livePage();
+
+  assert.match(markup, /English Test Division/);
+  assert.doesNotMatch(markup, /Danish Test Division/);
 });
 
 test("live alert bulk actions enable and disable every alert option", () => {
