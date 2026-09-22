@@ -25,6 +25,7 @@ const OPTIONAL_SIDEBAR_TABS = new Set([
   "last-man-standing", "double-pick-league", "news", "tv-guide", "transfers", "supporters",
 ]);
 const SIDEBAR_TABS_STORAGE_KEY = "football_hub_visible_sidebar_tabs";
+const FOOTBALL_HUB_GITHUB_URL = "https://github.com/Adya84/ha-football-hub";
 
 class FootballHubPanel extends HTMLElement {
   constructor() {
@@ -2798,6 +2799,24 @@ class FootballHubPanel extends HTMLElement {
     this._render();
   }
 
+  async _shareFootballHub() {
+    const shareData = {
+      title: "Football Hub for Home Assistant",
+      text: "Check out Football Hub for Home Assistant.",
+      url: FOOTBALL_HUB_GITHUB_URL,
+    };
+    try {
+      if (typeof navigator !== "undefined" && typeof navigator.share === "function") {
+        await navigator.share(shareData);
+        return;
+      }
+    } catch (error) {
+      if (error?.name === "AbortError") return;
+    }
+    if (await this._copyText(FOOTBALL_HUB_GITHUB_URL)) window.alert("Football Hub link copied. Share it with your friends.");
+    else window.prompt("Copy this Football Hub link:", FOOTBALL_HUB_GITHUB_URL);
+  }
+
   _hydrateSharedPreferences() {
     if (this._prefsHydrated) return;
     const prefs = this._statusInfo().ui_preferences;
@@ -3715,6 +3734,11 @@ class FootballHubPanel extends HTMLElement {
         <span class="overview-beer-icon">🍺</span>
         <div><strong>Enjoying Football Hub?</strong><span>Help support its development and buy me a beer.</span></div>
         <a href="https://paypal.me/graffidoodle" target="_blank" rel="noopener noreferrer">Buy me a beer</a>
+      </section>
+      <section class="overview-community page-card">
+        <ha-icon icon="mdi:github"></ha-icon>
+        <div><strong>Enjoying Football Hub?</strong><span>Star the project or share it with friends to help it grow.</span></div>
+        <div class="overview-community-actions"><a href="${FOOTBALL_HUB_GITHUB_URL}" target="_blank" rel="noopener noreferrer"><ha-icon icon="mdi:star-outline"></ha-icon> Star us on GitHub</a><button type="button" id="share-football-hub"><ha-icon icon="mdi:share-variant-outline"></ha-icon> Share with friends</button></div>
       </section>
     `;
   }
@@ -4889,6 +4913,7 @@ class FootballHubPanel extends HTMLElement {
       checkbox.addEventListener("change", () => this._setSidebarTabVisible(checkbox.dataset.sidebarTabToggle, checkbox.checked));
     });
     this.shadowRoot.querySelector("#reset-sidebar-tabs")?.addEventListener("click", () => this._resetSidebarTabs());
+    this.shadowRoot.querySelector("#share-football-hub")?.addEventListener("click", () => this._shareFootballHub());
     this.shadowRoot.querySelectorAll(".favourite-club-remove").forEach((button) => {
       button.addEventListener("click", () => this._removeFavouriteClub(button.dataset.team, button.dataset.competition));
     });
@@ -5884,6 +5909,13 @@ class FootballHubPanel extends HTMLElement {
         font-weight: 800;
         text-decoration: none;
       }
+      .overview-community { display:flex; align-items:center; gap:16px; margin-top:14px; border-color:rgba(0,183,255,.34); }
+      .overview-community > ha-icon { --mdc-icon-size:34px; color:var(--fh-cyan); }
+      .overview-community > div:not(.overview-community-actions) { display:flex; flex:1; min-width:0; flex-direction:column; gap:4px; }
+      .overview-community > div span { color:rgba(235,245,255,.75); }
+      .overview-community-actions { display:flex; flex-wrap:wrap; gap:9px; }
+      .overview-community-actions a, .overview-community-actions button { display:inline-flex; align-items:center; justify-content:center; gap:7px; min-height:42px; padding:9px 13px; border:1px solid rgba(0,183,255,.48); border-radius:11px; color:#dff7ff; background:rgba(0,126,190,.18); font:inherit; font-size:.82rem; font-weight:850; text-decoration:none; cursor:pointer; }
+      .overview-community-actions a { border-color:rgba(255,214,72,.5); color:#fff4b0; background:rgba(255,193,7,.13); }
 
       .feature-card, .stat-card, .list-card, .page-card, .live-centre-card {
         background: rgba(255,255,255,0.08) !important;
@@ -6805,6 +6837,9 @@ class FootballHubPanel extends HTMLElement {
         .hero-actions { justify-content: flex-start; }
         .overview-beer { align-items: flex-start; flex-wrap: wrap; }
         .overview-beer a { width: 100%; text-align: center; }
+        .overview-community { align-items:flex-start; flex-wrap:wrap; }
+        .overview-community-actions { width:100%; }
+        .overview-community-actions a, .overview-community-actions button { flex:1 1 190px; }
         .competition-picker { width: 100%; align-items: stretch; flex-direction: column; }
         .competition-picker select { width: 100%; max-width: none; }
         .cups-picker, .cup-grid { grid-template-columns: 1fr; }

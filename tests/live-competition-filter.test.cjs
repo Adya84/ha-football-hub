@@ -203,3 +203,13 @@ test("hiding the active LMS tab returns to overview", () => {
   assert.equal(panel._activeTab, "overview");
   assert.equal(renders, 1);
 });
+
+test("overview offers GitHub star and share actions", () => {
+  const panel = makePanel({ primary: {}, liveMatches: [], hiddenCompetitions: [] });
+  const markup = panel._overview();
+
+  assert.match(markup, /href="https:\/\/github\.com\/Adya84\/ha-football-hub"/);
+  assert.match(markup, /Star us on GitHub/);
+  assert.match(markup, /id="share-football-hub"/);
+  assert.match(markup, /Share with friends/);
+});
