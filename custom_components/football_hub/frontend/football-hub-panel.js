@@ -20,6 +20,11 @@ const FULL_COMPETITION_CATALOGUE = {
   "United States": ["MLS", "USL Championship", "USL League One", "MLS Next Pro", "NISA", "NWSL", "US Open Cup", "USL Cup", "NWSL Challenge Cup"],
   Europe: ["UEFA Champions League", "UEFA Europa League", "UEFA Conference League"],
 };
+const OPTIONAL_SIDEBAR_TABS = new Set([
+  "live", "my-club", "fixtures", "results", "table", "players", "cups",
+  "last-man-standing", "double-pick-league", "news", "tv-guide", "transfers", "supporters",
+]);
+const SIDEBAR_TABS_STORAGE_KEY = "football_hub_visible_sidebar_tabs";
 
 class FootballHubPanel extends HTMLElement {
   constructor() {
@@ -58,6 +63,8 @@ class FootballHubPanel extends HTMLElement {
     this._activeTab = ["overview", "live", "fixtures", "results", "table", "players", "my-club", "cups", "last-man-standing", "double-pick-league", "news", "tv-guide", "transfers", "supporters", "settings"].includes(savedTab)
       ? savedTab
       : "overview";
+    this._loadSidebarVisibility();
+    if (!this._isSidebarTabVisible(this._activeTab)) this._activeTab = "overview";
     this._selectedFixtureTeam = localStorage.getItem("football_hub_fixture_team") || "__all__";
     this._fixturePage = 0;
     this._selectedLiveMatch = "";
@@ -2757,6 +2764,38 @@ class FootballHubPanel extends HTMLElement {
       state: status?.state || "Unavailable",
       ...status?.attributes,
     };
+  }
+
+  _loadSidebarVisibility() {
+    try {
+      const saved = JSON.parse(localStorage.getItem(SIDEBAR_TABS_STORAGE_KEY) || "null");
+      this._visibleSidebarTabs = Array.isArray(saved)
+        ? new Set(saved.filter((id) => OPTIONAL_SIDEBAR_TABS.has(id)))
+        : new Set(OPTIONAL_SIDEBAR_TABS);
+      if (!this._visibleSidebarTabs.size) this._visibleSidebarTabs = new Set(OPTIONAL_SIDEBAR_TABS);
+    } catch (_error) {
+      this._visibleSidebarTabs = new Set(OPTIONAL_SIDEBAR_TABS);
+    }
+  }
+
+  _isSidebarTabVisible(id) {
+    return id === "overview" || id === "settings" || this._visibleSidebarTabs?.has(id);
+  }
+
+  _setSidebarTabVisible(id, visible) {
+    if (!OPTIONAL_SIDEBAR_TABS.has(id)) return;
+    if (!this._visibleSidebarTabs) this._visibleSidebarTabs = new Set(OPTIONAL_SIDEBAR_TABS);
+    if (visible) this._visibleSidebarTabs.add(id);
+    else this._visibleSidebarTabs.delete(id);
+    localStorage.setItem(SIDEBAR_TABS_STORAGE_KEY, JSON.stringify([...this._visibleSidebarTabs]));
+    if (!this._isSidebarTabVisible(this._activeTab)) this._activeTab = "overview";
+    this._render();
+  }
+
+  _resetSidebarTabs() {
+    this._visibleSidebarTabs = new Set(OPTIONAL_SIDEBAR_TABS);
+    localStorage.removeItem(SIDEBAR_TABS_STORAGE_KEY);
+    this._render();
   }
 
   _hydrateSharedPreferences() {

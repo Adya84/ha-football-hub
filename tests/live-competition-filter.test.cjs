@@ -154,3 +154,25 @@ test("match filter bulk actions select and clear countries, competitions and gen
   assert.deepEqual([...panel._hiddenLiveGenders], ["Men's"]);
   assert.ok(inputs.every((input) => !input.checked));
 });
+
+test("sidebar visibility accepts supported stored tabs and falls back safely", () => {
+  const panel = makePanel({ primary: {}, liveMatches: [], hiddenCompetitions: [], localValues: {
+    football_hub_visible_sidebar_tabs: JSON.stringify(["live", "last-man-standing", "not-a-tab"]),
+  }});
+  panel._loadSidebarVisibility();
+
+  assert.equal(panel._isSidebarTabVisible("live"), true);
+  assert.equal(panel._isSidebarTabVisible("last-man-standing"), true);
+  assert.equal(panel._isSidebarTabVisible("fixtures"), false);
+  assert.equal(panel._isSidebarTabVisible("overview"), true);
+});
+
+test("malformed or empty sidebar visibility restores all optional tabs", () => {
+  const panel = makePanel({ primary: {}, liveMatches: [], hiddenCompetitions: [], localValues: {
+    football_hub_visible_sidebar_tabs: "not-json",
+  }});
+  panel._loadSidebarVisibility();
+
+  assert.equal(panel._isSidebarTabVisible("fixtures"), true);
+  assert.equal(panel._isSidebarTabVisible("overview"), true);
+});
