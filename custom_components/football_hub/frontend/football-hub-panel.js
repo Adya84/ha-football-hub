@@ -1,4 +1,4 @@
-const PANEL_VERSION = "0.8.4-beta.1";
+const PANEL_VERSION = "0.8.4-beta.2";
 // Temporarily paused while fixture schedules are being corrected. Manual email
 // actions remain available to the administrator.
 const LMS_AUTOMATIC_EMAILS_ENABLED = false;
@@ -3921,7 +3921,7 @@ class FootballHubPanel extends HTMLElement {
       const countryChecked = !this._hiddenLiveCountries.has(country);
       const expanded = this._openLiveFilterCountries?.has(country);
       const controls = expanded ? `<div class="live-filter-options">${competitions.map((competition) => { const key = this._liveCompetitionKey(country, competition); return `<label class="${isFavouriteCompetition(country, competition) ? "favourite" : ""}"><input type="checkbox" data-live-filter-kind="competition" data-live-filter-value="${this._escape(key)}" data-live-filter-countries="${this._escape(country)}" ${this._hiddenLiveCompetitions.has(key) ? "" : "checked"}><span>${this._escape(competition)}</span><button type="button" data-live-favourite="${this._escape(key)}" title="Pin competition">${isFavouriteCompetition(country, competition) ? "★" : "☆"}</button></label>`; }).join("")}</div>` : "";
-      return `<details class="country-filter-tree" data-live-filter-country="${this._escape(country)}" ${expanded ? "open" : ""}><summary><label><input type="checkbox" data-live-filter-kind="country" data-live-filter-value="${this._escape(country)}" ${countryChecked ? "checked" : ""}>${this._countryFlag(country, "live-country-flag")}<strong>${this._escape(this._displayCountry(country))}</strong></label><span>${competitions.length} competitions</span></summary>${controls}</details>`;
+      return `<details class="country-filter-tree" data-live-filter-country="${this._escape(country)}" ${expanded ? "open" : ""}><summary><label><input type="checkbox" data-live-filter-kind="country" data-live-filter-value="${this._escape(country)}" ${countryChecked ? "checked" : ""}>${this._countryFlag(country, "live-country-flag")}<strong>${this._escape(this._displayCountry(country))}</strong></label><span class="country-filter-summary"><span>${competitions.length} competitions</span><button type="button" class="country-filter-open" data-live-filter-open-country="${this._escape(country)}" aria-expanded="${expanded ? "true" : "false"}">${expanded ? "Hide" : "Show leagues"}</button></span></summary>${controls}</details>`;
     }).join("");
     const selectedCompetitionCount = [...competitionCountries.entries()].reduce((total, [competition, countries]) => total + [...countries].filter((country) => !this._hiddenLiveCountries.has(country) && !this._hiddenLiveCompetitions.has(`${country}|||${competition}`) && !this._hiddenLiveCompetitions.has(competition)).length, 0);
     const liveFilters = `${toolbar}<details id="live-filter-panel" class="page-card live-competition-filter live-filter-panel" ${this._liveFiltersOpen ? "open" : ""}><summary><div><span class="eyebrow">MATCH FILTERS</span><h2>Countries and competitions</h2></div><span class="live-filter-summary-count">${selectedCompetitionCount} selected ${filterActions("all")} <ha-icon icon="mdi:chevron-down"></ha-icon></span></summary><div class="live-filter-panel-body"><p>Expand a country to choose its leagues and cups. Favourites are pinned first and settings synchronise through Home Assistant.</p><div class="live-filter-groups"><details open><summary>Men's and women's football</summary><div class="live-filter-options">${filterChecks(["Men's", "Women's"], "gender", this._hiddenLiveGenders)}</div></details>${countryCompetitionFilters}</div></div></details>`;
@@ -4617,9 +4617,28 @@ class FootballHubPanel extends HTMLElement {
     }
   }
 
+  _liveScrollPositions() {
+    if (this._activeTab !== "live") return [];
+    const positions = [];
+    const add = (element) => {
+      if (!element || positions.some(([saved]) => saved === element)) return;
+      const top = Number(element.scrollTop);
+      if (Number.isFinite(top) && top > 0) positions.push([element, top]);
+    };
+    if (typeof document !== "undefined") add(document.scrollingElement);
+    let element = this;
+    while (element) {
+      add(element);
+      const parent = element.parentElement || element.parentNode;
+      if (!parent || parent === element) break;
+      element = parent.host || parent;
+    }
+    return positions;
+  }
+
   _render() {
     if (!this.shadowRoot) return;
-    const liveScrollTop = this._activeTab === "live" && Number.isFinite(window.scrollY) ? window.scrollY : 0;
+    const liveScrollPositions = this._liveScrollPositions();
 
     this.shadowRoot.innerHTML = `
       <style>${this._styles()}</style>
@@ -4656,9 +4675,19 @@ class FootballHubPanel extends HTMLElement {
         this._render();
       });
     });
-    if (liveScrollTop > 0 && typeof window.scrollTo === "function") {
-      requestAnimationFrame(() => window.scrollTo(0, liveScrollTop));
-    }
+    this.shadowRoot.querySelectorAll("[data-live-filter-open-country]").forEach((button) => {
+      button.addEventListener("click", (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        const details = button.closest("[data-live-filter-country]");
+        if (details) details.open = !details.open;
+      });
+    });
+    if (liveScrollPositions.length && typeof requestAnimationFrame === "function") requestAnimationFrame(() => {
+      liveScrollPositions.forEach(([element, top]) => {
+        if (element && element.isConnected !== false) element.scrollTop = top;
+      });
+    });
 
     // Show the scheduled fixture time until kick-off, then Live; only final
     // games show Through/Out.
@@ -6259,6 +6288,8 @@ class FootballHubPanel extends HTMLElement {
       .live-filter-options label button { border: 0; background: transparent; color: #f6c344; font-size: 1.15rem; padding: 0 2px; }
       .country-filter-tree > summary { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
       .country-filter-tree > summary label { display: flex; align-items: center; gap: 9px; }
+      .country-filter-summary { display: flex; align-items: center; justify-content: flex-end; gap: 10px; }
+      .country-filter-open { white-space: nowrap; padding: 6px 9px; font-size: .76rem; }
       .live-schedule-group { margin: 15px 0 24px; }
       .live-schedule-group > header { display: flex; align-items: end; justify-content: space-between; padding: 11px 14px; border-left: 4px solid var(--primary-color); background: rgba(255,255,255,.055); border-radius: 8px; }
       .live-schedule-group > header div { display: grid; gap: 2px; }

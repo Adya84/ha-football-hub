@@ -82,6 +82,17 @@ test("closed countries defer their competition controls until opened", () => {
 
   assert.match(markup, /English Test Division/);
   assert.doesNotMatch(markup, /Danish Test Division/);
+  assert.match(markup, /data-live-filter-open-country="Denmark"/);
+});
+
+test("live rendering retains the Home Assistant scroll container position", () => {
+  const panel = makePanel({ primary: {}, liveMatches: [], hiddenCompetitions: [] });
+  panel._activeTab = "live";
+  const scroller = { scrollTop: 240, parentElement: null, parentNode: null };
+  Object.defineProperty(panel, "parentElement", { value: scroller });
+  Object.defineProperty(panel, "parentNode", { value: scroller });
+
+  assert.equal(panel._liveScrollPositions().map(([, top]) => top).join(","), "240");
 });
 
 test("live alert bulk actions enable and disable every alert option", () => {
