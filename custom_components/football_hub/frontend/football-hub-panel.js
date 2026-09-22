@@ -1,4 +1,4 @@
-const PANEL_VERSION = "0.8.4-beta.3";
+const PANEL_VERSION = "0.8.4-beta.4";
 // Temporarily paused while fixture schedules are being corrected. Manual email
 // actions remain available to the administrator.
 const LMS_AUTOMATIC_EMAILS_ENABLED = false;
@@ -349,6 +349,12 @@ class FootballHubPanel extends HTMLElement {
           <path d="M14 24c5-7 8-11 15-11 4 0 7 1 10 3l4-4 1 6 6 1-5 4 2 7-7-3-4 5-3-6-8 2 2-6-6-3z" fill="#d30731"/>
         </svg>
       `,
+      europe: `
+        <svg class="${className}" viewBox="0 0 60 36" role="img" aria-label="Europe flag">
+          <rect width="60" height="36" fill="#003399"/>
+          <g fill="#ffcc00"><circle cx="30" cy="7" r="1.7"/><circle cx="38" cy="9" r="1.7"/><circle cx="44" cy="14" r="1.7"/><circle cx="46" cy="18" r="1.7"/><circle cx="44" cy="23" r="1.7"/><circle cx="38" cy="28" r="1.7"/><circle cx="30" cy="29" r="1.7"/><circle cx="22" cy="28" r="1.7"/><circle cx="16" cy="23" r="1.7"/><circle cx="14" cy="18" r="1.7"/><circle cx="16" cy="14" r="1.7"/><circle cx="22" cy="9" r="1.7"/></g>
+        </svg>
+      `,
       "northern ireland": `
         <svg class="${className}" viewBox="0 0 60 36" role="img" aria-label="Northern Ireland flag">
           <rect width="60" height="36" fill="#ffffff"/>
@@ -368,7 +374,7 @@ class FootballHubPanel extends HTMLElement {
       cambodia:"kh", cameroon:"cm", canada:"ca", "cape verde":"cv",
       chile:"cl", china:"cn", colombia:"co", "costa rica":"cr",
       croatia:"hr", cuba:"cu", cyprus:"cy",
-      czechia:"cz", "czech republic":"cz", denmark:"dk",
+      czechia:"cz", "czech republic":"cz", denmark:"dk", "faroe islands":"fo",
       "dominican republic":"do", ecuador:"ec", egypt:"eg", estonia:"ee",
       "el salvador":"sv", finland:"fi", france:"fr", georgia:"ge",
       germany:"de", ghana:"gh", greece:"gr", guatemala:"gt", honduras:"hn",
@@ -2757,16 +2763,23 @@ class FootballHubPanel extends HTMLElement {
     if (this._prefsHydrated) return;
     const prefs = this._statusInfo().ui_preferences;
     if (!prefs || typeof prefs !== "object" || !Object.keys(prefs).length) return;
-    this._hiddenLiveCountries = new Set(prefs.hiddenCountries || []);
-    this._hiddenLiveCompetitions = new Set(prefs.hiddenCompetitions || []);
-    this._hiddenLiveGenders = new Set(prefs.hiddenGenders || []);
-    this._favouriteLiveCompetitions = new Set(prefs.favouriteCompetitions || []);
-    this._liveDisplayMode = prefs.displayMode || this._liveDisplayMode;
-    this._liveStatusFilter = prefs.statusFilter || this._liveStatusFilter;
-    this._liveTimezone = prefs.timezone || this._liveTimezone;
+    const hasLocalLiveSettings = [
+      "football_hub_hidden_live_countries", "football_hub_hidden_live_competitions", "football_hub_hidden_live_genders",
+      "football_hub_favourite_live_competitions", "football_hub_live_display_mode", "football_hub_live_status_filter",
+      "football_hub_live_timezone", "football_hub_live_filters_open", "football_hub_live_notifications",
+    ].some((key) => localStorage.getItem(key) !== null);
+    if (!hasLocalLiveSettings) {
+      this._hiddenLiveCountries = new Set(prefs.hiddenCountries || []);
+      this._hiddenLiveCompetitions = new Set(prefs.hiddenCompetitions || []);
+      this._hiddenLiveGenders = new Set(prefs.hiddenGenders || []);
+      this._favouriteLiveCompetitions = new Set(prefs.favouriteCompetitions || []);
+      this._liveDisplayMode = prefs.displayMode || this._liveDisplayMode;
+      this._liveStatusFilter = prefs.statusFilter || this._liveStatusFilter;
+      this._liveTimezone = prefs.timezone || this._liveTimezone;
+      if (typeof prefs.filtersOpen === "boolean") this._liveFiltersOpen = prefs.filtersOpen;
+      this._liveNotifications = { ...this._liveNotifications, ...(prefs.notifications || {}) };
+    }
     this._nuvioManifestUrl = typeof prefs.nuvioManifestUrl === "string" ? prefs.nuvioManifestUrl : this._nuvioManifestUrl;
-    if (typeof prefs.filtersOpen === "boolean") this._liveFiltersOpen = prefs.filtersOpen;
-    this._liveNotifications = { ...this._liveNotifications, ...(prefs.notifications || {}) };
     if (prefs.doublePickGame && typeof prefs.doublePickGame === "object") this._doublePickGame = prefs.doublePickGame;
     this._prefsHydrated = true;
   }

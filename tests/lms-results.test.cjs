@@ -338,6 +338,12 @@ test('live country names used by the filter render a real flag instead of the fa
   }
 });
 
+test('Faroe Islands and Europe use dedicated flags in Live filters', () => {
+  const { panel } = setup('private');
+  assert.match(panel._countryFlag('Faroe Islands', 'live-country-flag'), /flagcdn\.com\/w160\/fo\.png/);
+  assert.match(panel._countryFlag('Europe', 'live-country-flag'), /<svg/);
+});
+
 test('Live Centre keeps pins country-specific and shows club cards with refresh age', () => {
   const source = fs.readFileSync(path.join(__dirname, '../custom_components/football_hub/frontend/football-hub-panel.js'), 'utf8');
   assert.match(source, /_liveCompetitionKey\(country, competition\)/);

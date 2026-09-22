@@ -4,14 +4,14 @@ const fs = require("node:fs");
 const path = require("node:path");
 const vm = require("node:vm");
 
-function makePanel({ primary, liveMatches, hiddenCompetitions, favouriteClubs = [], providerCatalogue = [], openCountries = [] }) {
+function makePanel({ primary, liveMatches, hiddenCompetitions, favouriteClubs = [], providerCatalogue = [], openCountries = [], localValues = {} }) {
   let Panel;
   vm.runInNewContext(
     fs.readFileSync(path.join(__dirname, "../custom_components/football_hub/frontend/football-hub-panel.js"), "utf8"),
     {
       HTMLElement: class {},
       customElements: { get: () => false, define: (_name, value) => { Panel = value; } },
-      localStorage: { getItem: () => null, setItem() {} },
+      localStorage: { getItem: (key) => Object.hasOwn(localValues, key) ? localValues[key] : null, setItem() {} },
       queueMicrotask() {},
       console,
       window: { confirm: () => true, alert() {} },
@@ -92,6 +92,20 @@ test("live rendering never forces the user back to a saved scroll position", () 
 
   assert.doesNotMatch(source, /liveScrollPositions/);
   assert.doesNotMatch(source, /scrollTop = top/);
+});
+
+test("a local women's filter is not overwritten by an old shared preference", () => {
+  const panel = makePanel({
+    primary: {}, liveMatches: [], hiddenCompetitions: [],
+    localValues: { football_hub_hidden_live_genders: "[\"Women's\"]" },
+  });
+  panel._prefsHydrated = false;
+  panel._hiddenLiveGenders = new Set(["Women's"]);
+  panel._statusInfo = () => ({ ui_preferences: { hiddenGenders: [] } });
+
+  panel._hydrateSharedPreferences();
+
+  assert.deepEqual([...panel._hiddenLiveGenders], ["Women's"]);
 });
 
 test("live alert bulk actions enable and disable every alert option", () => {
