@@ -3020,6 +3020,7 @@ class FootballHubPanel extends HTMLElement {
   }
 
   _setTab(tab) {
+    if (!this._isSidebarTabVisible(tab)) tab = "overview";
     if (tab === "live" && this._activeTab !== "live") {
       this._selectedLiveMatch = "";
       localStorage.removeItem("football_hub_live_match");

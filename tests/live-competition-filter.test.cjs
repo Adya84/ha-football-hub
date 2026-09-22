@@ -204,6 +204,17 @@ test("hiding the active LMS tab returns to overview", () => {
   assert.equal(renders, 1);
 });
 
+test("hidden tabs cannot be opened through an overview shortcut", () => {
+  const panel = makePanel({ primary: {}, liveMatches: [], hiddenCompetitions: [] });
+  panel._visibleSidebarTabs = new Set(["live"]);
+  panel._activeTab = "overview";
+  panel._render = () => {};
+
+  panel._setTab("table");
+
+  assert.equal(panel._activeTab, "overview");
+});
+
 test("overview offers GitHub star and share actions", () => {
   const panel = makePanel({ primary: {}, liveMatches: [], hiddenCompetitions: [] });
   const markup = panel._overview();
