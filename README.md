@@ -1,7 +1,7 @@
 # ⚽ Home Assistant Football Hub
 
 [![License](https://img.shields.io/badge/license-Personal%20Use-red.svg)](LICENSE)
-![Version](https://img.shields.io/badge/version-v0.8.3-brightgreen)
+![Version](https://img.shields.io/badge/version-v0.8.4--beta.5-brightgreen)
 ![Home Assistant](https://img.shields.io/badge/Home%20Assistant-2024.1%2B-blue)
 ![HACS](https://img.shields.io/badge/HACS-Custom-orange)
 ![Cloud Polling](https://img.shields.io/badge/IoT--Class-Cloud%20Polling-blue)
@@ -12,41 +12,12 @@ It also includes Last Man Standing (LMS) and Acca League tools, with private pla
 
 ---
 
-## Latest release — 0.8.3
+## Latest release — 0.8.4-beta.5
 
-### Live Centre
-
-- Live filters now apply everywhere: an unchecked competition cannot reappear as the provider's primary match or in the favourite-club live strip.
-- Live match-filter **Select all** and **Clear all** now control every country, competition and gender, including any old saved exclusions.
-- Country flags now resolve both provider codes and full country names across the Live filters.
-- Live alert **Select all** and **Deselect all** now turn the alert options on and off as labelled.
-- Live leagues now show the country flag beside the competition name, including England, Czechia and Cyprus.
-- Favourite competitions can be starred in the **Live** filters. Starred competitions are pinned above other matches when they have live fixtures.
-- Favourite-club matches appear in a dedicated **Your clubs playing now** section.
-- Live headers show the number of current matches, goals and selected matches, plus when the data was last updated.
-- Match alerts, live scores, match minutes, team badges and detailed match views remain available.
-- Optional **Sports Streams watch links** can compare public Sports Streams event names with Football Hub fixtures. A Watch in Stremio button appears only for one exact team match; Football Hub never retrieves, stores or serves stream URLs.
-
-### Favourite clubs and sensors
-
-- Each selected favourite club creates one clean Home Assistant device with its current sensors.
-- Removing a favourite club also removes that club's Football Hub sensors and device data.
-- Old duplicated favourite-club devices are cleaned up automatically.
-- Favourite-club fixture, result, live-score and league-position sensors have improved cache recovery.
-
-### Last Man Standing and Acca League
-
-- LMS players are grouped into **Live now**, **To play**, **Through** and **Eliminated** sections.
-- Only a finished fixture can mark a player **Through** or **Out**. Live games show their score and minute; future games show their fixture date and kick-off time.
-- Buy-backs are saved atomically, restore the player correctly, retain the original team as used and show **Paid back · Round 1** on LMS pages and standings.
-- Secure LMS pick links include grouped round fixtures, local kick-off times and a fixture count such as `England · 10 games`.
-- Acca League payer corrections stay saved when a new round begins, while keeping the organiser's configured round fee.
-
-### Reliability
-
-- Fixed a panel error that could cause a black screen for some users.
-- Prevents large football-data attributes from being written unnecessarily to Home Assistant's recorder database.
-- Corrects stale LMS outcomes using the completed fixture selected for that round.
+- **Customise sidebar:** Show or hide each optional Football Hub tab independently from Settings. Overview always remains available, and hiding a tab never removes its data, sensors or saved settings.
+- **No LMS or Acca changes:** The new controls only hide sidebar buttons. LMS and Acca League games, links, emails, records and services continue exactly as before.
+- **Help Football Hub grow:** The Overview page now includes **Star us on GitHub** and **Share with friends**. Sharing opens the device share menu where available, otherwise copies the project link.
+- **Local-only preferences:** Sidebar choices are stored in the browser, so changing them does not call Home Assistant services or reload football data.
 
 ---
 
