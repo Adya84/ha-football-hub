@@ -1,4 +1,4 @@
-const PANEL_VERSION = "0.8.4-beta.2";
+const PANEL_VERSION = "0.8.4-beta.3";
 // Temporarily paused while fixture schedules are being corrected. Manual email
 // actions remain available to the administrator.
 const LMS_AUTOMATIC_EMAILS_ENABLED = false;
@@ -2791,7 +2791,6 @@ class FootballHubPanel extends HTMLElement {
     }
     if (enabled) this._enableAlertSounds();
     localStorage.setItem("football_hub_live_notifications", JSON.stringify(this._liveNotifications));
-    this._saveSharedPreferences();
     this._render();
   }
 
@@ -2812,7 +2811,6 @@ class FootballHubPanel extends HTMLElement {
     localStorage.setItem("football_hub_hidden_live_countries", JSON.stringify([...this._hiddenLiveCountries]));
     localStorage.setItem("football_hub_hidden_live_competitions", JSON.stringify([...this._hiddenLiveCompetitions]));
     localStorage.setItem("football_hub_hidden_live_genders", JSON.stringify([...this._hiddenLiveGenders]));
-    this._saveSharedPreferences();
     this._render();
   }
 
@@ -3921,7 +3919,7 @@ class FootballHubPanel extends HTMLElement {
       const countryChecked = !this._hiddenLiveCountries.has(country);
       const expanded = this._openLiveFilterCountries?.has(country);
       const controls = expanded ? `<div class="live-filter-options">${competitions.map((competition) => { const key = this._liveCompetitionKey(country, competition); return `<label class="${isFavouriteCompetition(country, competition) ? "favourite" : ""}"><input type="checkbox" data-live-filter-kind="competition" data-live-filter-value="${this._escape(key)}" data-live-filter-countries="${this._escape(country)}" ${this._hiddenLiveCompetitions.has(key) ? "" : "checked"}><span>${this._escape(competition)}</span><button type="button" data-live-favourite="${this._escape(key)}" title="Pin competition">${isFavouriteCompetition(country, competition) ? "★" : "☆"}</button></label>`; }).join("")}</div>` : "";
-      return `<details class="country-filter-tree" data-live-filter-country="${this._escape(country)}" ${expanded ? "open" : ""}><summary><label><input type="checkbox" data-live-filter-kind="country" data-live-filter-value="${this._escape(country)}" ${countryChecked ? "checked" : ""}>${this._countryFlag(country, "live-country-flag")}<strong>${this._escape(this._displayCountry(country))}</strong></label><span class="country-filter-summary"><span>${competitions.length} competitions</span><button type="button" class="country-filter-open" data-live-filter-open-country="${this._escape(country)}" aria-expanded="${expanded ? "true" : "false"}">${expanded ? "Hide" : "Show leagues"}</button></span></summary>${controls}</details>`;
+      return `<section class="country-filter-tree" data-live-filter-country="${this._escape(country)}"><div class="country-filter-row"><label><input type="checkbox" data-live-filter-kind="country" data-live-filter-value="${this._escape(country)}" ${countryChecked ? "checked" : ""}>${this._countryFlag(country, "live-country-flag")}<strong>${this._escape(this._displayCountry(country))}</strong></label><span class="country-filter-summary"><span>${competitions.length} competitions</span><button type="button" class="country-filter-open" data-live-filter-open-country="${this._escape(country)}" aria-expanded="${expanded ? "true" : "false"}">${expanded ? "Hide" : "Show leagues"}</button></span></div>${controls}</section>`;
     }).join("");
     const selectedCompetitionCount = [...competitionCountries.entries()].reduce((total, [competition, countries]) => total + [...countries].filter((country) => !this._hiddenLiveCountries.has(country) && !this._hiddenLiveCompetitions.has(`${country}|||${competition}`) && !this._hiddenLiveCompetitions.has(competition)).length, 0);
     const liveFilters = `${toolbar}<details id="live-filter-panel" class="page-card live-competition-filter live-filter-panel" ${this._liveFiltersOpen ? "open" : ""}><summary><div><span class="eyebrow">MATCH FILTERS</span><h2>Countries and competitions</h2></div><span class="live-filter-summary-count">${selectedCompetitionCount} selected ${filterActions("all")} <ha-icon icon="mdi:chevron-down"></ha-icon></span></summary><div class="live-filter-panel-body"><p>Expand a country to choose its leagues and cups. Favourites are pinned first and settings synchronise through Home Assistant.</p><div class="live-filter-groups"><details open><summary>Men's and women's football</summary><div class="live-filter-options">${filterChecks(["Men's", "Women's"], "gender", this._hiddenLiveGenders)}</div></details>${countryCompetitionFilters}</div></div></details>`;
@@ -4617,28 +4615,8 @@ class FootballHubPanel extends HTMLElement {
     }
   }
 
-  _liveScrollPositions() {
-    if (this._activeTab !== "live") return [];
-    const positions = [];
-    const add = (element) => {
-      if (!element || positions.some(([saved]) => saved === element)) return;
-      const top = Number(element.scrollTop);
-      if (Number.isFinite(top) && top > 0) positions.push([element, top]);
-    };
-    if (typeof document !== "undefined") add(document.scrollingElement);
-    let element = this;
-    while (element) {
-      add(element);
-      const parent = element.parentElement || element.parentNode;
-      if (!parent || parent === element) break;
-      element = parent.host || parent;
-    }
-    return positions;
-  }
-
   _render() {
     if (!this.shadowRoot) return;
-    const liveScrollPositions = this._liveScrollPositions();
 
     this.shadowRoot.innerHTML = `
       <style>${this._styles()}</style>
@@ -4665,27 +4643,16 @@ class FootballHubPanel extends HTMLElement {
       if (saved !== null) details.open = saved === "true";
       details.addEventListener("toggle", () => localStorage.setItem(storageKey, String(details.open)));
     });
-    this.shadowRoot.querySelectorAll("[data-live-filter-country]").forEach((details) => {
-      details.addEventListener("toggle", () => {
-        const country = details.dataset.liveFilterCountry;
-        if (!country) return;
-        if (details.open) this._openLiveFilterCountries.add(country);
-        else this._openLiveFilterCountries.delete(country);
-        localStorage.setItem("football_hub_open_live_filter_countries", JSON.stringify([...this._openLiveFilterCountries]));
-        this._render();
-      });
-    });
     this.shadowRoot.querySelectorAll("[data-live-filter-open-country]").forEach((button) => {
       button.addEventListener("click", (event) => {
         event.preventDefault();
         event.stopPropagation();
-        const details = button.closest("[data-live-filter-country]");
-        if (details) details.open = !details.open;
-      });
-    });
-    if (liveScrollPositions.length && typeof requestAnimationFrame === "function") requestAnimationFrame(() => {
-      liveScrollPositions.forEach(([element, top]) => {
-        if (element && element.isConnected !== false) element.scrollTop = top;
+        const country = button.dataset.liveFilterOpenCountry;
+        if (!country) return;
+        if (this._openLiveFilterCountries.has(country)) this._openLiveFilterCountries.delete(country);
+        else this._openLiveFilterCountries.add(country);
+        localStorage.setItem("football_hub_open_live_filter_countries", JSON.stringify([...this._openLiveFilterCountries]));
+        this._render();
       });
     });
 
@@ -4927,7 +4894,6 @@ class FootballHubPanel extends HTMLElement {
         }
         const storageKey = kind === "country" ? "football_hub_hidden_live_countries" : kind === "gender" ? "football_hub_hidden_live_genders" : "football_hub_hidden_live_competitions";
         localStorage.setItem(storageKey, JSON.stringify([...filters]));
-        this._saveSharedPreferences();
         this._render();
       });
     });
@@ -4938,13 +4904,13 @@ class FootballHubPanel extends HTMLElement {
       requestAnimationFrame(() => { const input = this.shadowRoot.querySelector("#live-filter-search"); input?.focus(); input?.setSelectionRange(input.value.length, input.value.length); });
     });
     this.shadowRoot.querySelector("#live-filter-panel")?.addEventListener("toggle", (event) => {
+      if (this._liveFiltersOpen === event.currentTarget.open) return;
       this._liveFiltersOpen = event.currentTarget.open;
       localStorage.setItem("football_hub_live_filters_open", String(this._liveFiltersOpen));
-      this._saveSharedPreferences();
     });
-    this.shadowRoot.querySelector("#live-status-filter")?.addEventListener("change", (event) => { this._liveStatusFilter = event.target.value; localStorage.setItem("football_hub_live_status_filter", this._liveStatusFilter); this._saveSharedPreferences(); this._render(); });
-    this.shadowRoot.querySelector("#live-display-mode")?.addEventListener("change", (event) => { this._liveDisplayMode = event.target.value; localStorage.setItem("football_hub_live_display_mode", this._liveDisplayMode); this._saveSharedPreferences(); this._render(); });
-    this.shadowRoot.querySelector("#live-timezone")?.addEventListener("change", (event) => { this._liveTimezone = event.target.value; localStorage.setItem("football_hub_live_timezone", this._liveTimezone); this._saveSharedPreferences(); this._render(); });
+    this.shadowRoot.querySelector("#live-status-filter")?.addEventListener("change", (event) => { this._liveStatusFilter = event.target.value; localStorage.setItem("football_hub_live_status_filter", this._liveStatusFilter); this._render(); });
+    this.shadowRoot.querySelector("#live-display-mode")?.addEventListener("change", (event) => { this._liveDisplayMode = event.target.value; localStorage.setItem("football_hub_live_display_mode", this._liveDisplayMode); this._render(); });
+    this.shadowRoot.querySelector("#live-timezone")?.addEventListener("change", (event) => { this._liveTimezone = event.target.value; localStorage.setItem("football_hub_live_timezone", this._liveTimezone); this._render(); });
     this.shadowRoot.querySelector("#save-nuvio-manifest")?.addEventListener("click", () => {
       this._nuvioManifestUrl = this.shadowRoot.querySelector("#nuvio-manifest-url")?.value.trim() || "";
       this._saveSharedPreferences();
@@ -4962,9 +4928,9 @@ class FootballHubPanel extends HTMLElement {
       localStorage.setItem("football_hub_muted_live_alerts", JSON.stringify([...this._mutedLiveAlerts]));
       this._render();
     }));
-    this.shadowRoot.querySelectorAll("[data-live-favourite]").forEach((button) => button.addEventListener("click", (event) => { event.preventDefault(); event.stopPropagation(); const name = button.dataset.liveFavourite; if (this._favouriteLiveCompetitions.has(name)) this._favouriteLiveCompetitions.delete(name); else this._favouriteLiveCompetitions.add(name); localStorage.setItem("football_hub_favourite_live_competitions", JSON.stringify([...this._favouriteLiveCompetitions])); this._saveSharedPreferences(); this._render(); }));
-    this.shadowRoot.querySelectorAll("[data-live-filter-action]").forEach((button) => button.addEventListener("click", (event) => { event.preventDefault(); const target = button.dataset.liveFilterTarget; const checked = button.dataset.liveFilterAction === "all"; if (target === "all") { this._setAllLiveFilters(checked); return; } this.shadowRoot.querySelectorAll(`[data-live-filter-kind="${target}"]`).forEach((input) => { input.checked = checked; const filters = target === "country" ? this._hiddenLiveCountries : target === "gender" ? this._hiddenLiveGenders : this._hiddenLiveCompetitions; if (checked) filters.delete(input.dataset.liveFilterValue); else filters.add(input.dataset.liveFilterValue); }); localStorage.setItem(target === "country" ? "football_hub_hidden_live_countries" : target === "gender" ? "football_hub_hidden_live_genders" : "football_hub_hidden_live_competitions", JSON.stringify([...(target === "country" ? this._hiddenLiveCountries : target === "gender" ? this._hiddenLiveGenders : this._hiddenLiveCompetitions)])); this._saveSharedPreferences(); this._render(); }));
-    this.shadowRoot.querySelectorAll("[data-live-notification]").forEach((input) => input.addEventListener("change", async () => { this._liveNotifications[input.dataset.liveNotification] = input.checked; if (input.dataset.liveNotification === "sounds" && input.checked) this._enableAlertSounds(); if (input.checked && "Notification" in window && Notification.permission === "default") await Notification.requestPermission(); localStorage.setItem("football_hub_live_notifications", JSON.stringify(this._liveNotifications)); this._saveSharedPreferences(); }));
+    this.shadowRoot.querySelectorAll("[data-live-favourite]").forEach((button) => button.addEventListener("click", (event) => { event.preventDefault(); event.stopPropagation(); const name = button.dataset.liveFavourite; if (this._favouriteLiveCompetitions.has(name)) this._favouriteLiveCompetitions.delete(name); else this._favouriteLiveCompetitions.add(name); localStorage.setItem("football_hub_favourite_live_competitions", JSON.stringify([...this._favouriteLiveCompetitions])); this._render(); }));
+    this.shadowRoot.querySelectorAll("[data-live-filter-action]").forEach((button) => button.addEventListener("click", (event) => { event.preventDefault(); const target = button.dataset.liveFilterTarget; const checked = button.dataset.liveFilterAction === "all"; if (target === "all") { this._setAllLiveFilters(checked); return; } this.shadowRoot.querySelectorAll(`[data-live-filter-kind="${target}"]`).forEach((input) => { input.checked = checked; const filters = target === "country" ? this._hiddenLiveCountries : target === "gender" ? this._hiddenLiveGenders : this._hiddenLiveCompetitions; if (checked) filters.delete(input.dataset.liveFilterValue); else filters.add(input.dataset.liveFilterValue); }); localStorage.setItem(target === "country" ? "football_hub_hidden_live_countries" : target === "gender" ? "football_hub_hidden_live_genders" : "football_hub_hidden_live_competitions", JSON.stringify([...(target === "country" ? this._hiddenLiveCountries : target === "gender" ? this._hiddenLiveGenders : this._hiddenLiveCompetitions)])); this._render(); }));
+    this.shadowRoot.querySelectorAll("[data-live-notification]").forEach((input) => input.addEventListener("change", async () => { this._liveNotifications[input.dataset.liveNotification] = input.checked; if (input.dataset.liveNotification === "sounds" && input.checked) this._enableAlertSounds(); if (input.checked && "Notification" in window && Notification.permission === "default") await Notification.requestPermission(); localStorage.setItem("football_hub_live_notifications", JSON.stringify(this._liveNotifications)); }));
 
     this.shadowRoot.querySelectorAll("[data-transfer-view]").forEach((button) => {
       button.addEventListener("click", () => {
@@ -6286,10 +6252,11 @@ class FootballHubPanel extends HTMLElement {
       .live-filter-actions button { padding: 4px 7px; font-size: .7rem; }
       .live-filter-options label.favourite { border-color: #f6c344; background: rgba(246,195,68,.10); }
       .live-filter-options label button { border: 0; background: transparent; color: #f6c344; font-size: 1.15rem; padding: 0 2px; }
-      .country-filter-tree > summary { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
-      .country-filter-tree > summary label { display: flex; align-items: center; gap: 9px; }
+      .country-filter-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+      .country-filter-row label { display: flex; align-items: center; gap: 9px; }
       .country-filter-summary { display: flex; align-items: center; justify-content: flex-end; gap: 10px; }
       .country-filter-open { white-space: nowrap; padding: 6px 9px; font-size: .76rem; }
+      .country-filter-tree > .live-filter-options { max-height: none; overflow: visible; }
       .live-schedule-group { margin: 15px 0 24px; }
       .live-schedule-group > header { display: flex; align-items: end; justify-content: space-between; padding: 11px 14px; border-left: 4px solid var(--primary-color); background: rgba(255,255,255,.055); border-radius: 8px; }
       .live-schedule-group > header div { display: grid; gap: 2px; }

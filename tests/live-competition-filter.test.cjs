@@ -83,16 +83,15 @@ test("closed countries defer their competition controls until opened", () => {
   assert.match(markup, /English Test Division/);
   assert.doesNotMatch(markup, /Danish Test Division/);
   assert.match(markup, /data-live-filter-open-country="Denmark"/);
+  assert.doesNotMatch(markup, /<details class="country-filter-tree"/);
+  assert.match(markup, /class="country-filter-row"/);
 });
 
-test("live rendering retains the Home Assistant scroll container position", () => {
-  const panel = makePanel({ primary: {}, liveMatches: [], hiddenCompetitions: [] });
-  panel._activeTab = "live";
-  const scroller = { scrollTop: 240, parentElement: null, parentNode: null };
-  Object.defineProperty(panel, "parentElement", { value: scroller });
-  Object.defineProperty(panel, "parentNode", { value: scroller });
+test("live rendering never forces the user back to a saved scroll position", () => {
+  const source = fs.readFileSync(path.join(__dirname, "../custom_components/football_hub/frontend/football-hub-panel.js"), "utf8");
 
-  assert.equal(panel._liveScrollPositions().map(([, top]) => top).join(","), "240");
+  assert.doesNotMatch(source, /liveScrollPositions/);
+  assert.doesNotMatch(source, /scrollTop = top/);
 });
 
 test("live alert bulk actions enable and disable every alert option", () => {
@@ -111,7 +110,7 @@ test("live alert bulk actions enable and disable every alert option", () => {
 
   panel._setAllLiveNotifications(false);
   assert.ok(Object.values(panel._liveNotifications).every((enabled) => !enabled));
-  assert.equal(saves, 2);
+  assert.equal(saves, 0);
   assert.equal(renders, 2);
 });
 
