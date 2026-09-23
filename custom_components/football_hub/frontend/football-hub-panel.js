@@ -1,4 +1,4 @@
-const PANEL_VERSION = "0.8.6-beta.12";
+const PANEL_VERSION = "0.8.6-beta.13";
 // Temporarily paused while fixture schedules are being corrected. Manual email
 // actions remain available to the administrator.
 const LMS_AUTOMATIC_EMAILS_ENABLED = false;
@@ -5773,7 +5773,7 @@ class FootballHubPanel extends HTMLElement {
       }
 
       .hero {
-        min-height: 190px;
+        min-height: 270px;
         padding: 34px clamp(18px, 4vw, 56px) 28px;
         display: flex;
         align-items: flex-end;
@@ -5866,23 +5866,23 @@ class FootballHubPanel extends HTMLElement {
         align-items: center;
         justify-content: center;
         gap: 3px;
-        width: 118px;
-        height: 118px;
-        min-height: 118px;
+        width: 128px;
+        height: 128px;
+        min-height: 128px;
         padding: 10px;
         border: 2px solid #00b7ff;
         border-radius: 50%;
         color: #f8fafc;
-        background: linear-gradient(rgba(2,9,20,.24), rgba(2,9,20,.48)), url("/football_hub/football-hub-logo.png?v=0.4.0") center/cover;
+        background: linear-gradient(rgba(2,9,20,.08), rgba(2,9,20,.28)), url("/football_hub/football-hub-logo.png?v=0.4.0") 50% 16%/250% auto;
         text-decoration: none;
         box-shadow: inset 0 0 0 5px rgba(0,183,255,.12), 0 7px 0 #020617, 0 12px 22px rgba(0,0,0,.35);
         transition: transform .18s ease, filter .18s ease;
       }
 
       .header-beer-link:hover { transform: translateY(-3px) rotate(-4deg); filter:brightness(1.08); }
-      .beer-copy { position:relative; z-index:1; display:flex; flex-direction:column; align-items:center; gap:3px; width:84px; padding:7px 5px; border:1px solid rgba(255,255,255,.32); border-radius:12px; background:rgba(2,9,20,.68); box-shadow:0 3px 10px rgba(0,0,0,.35); line-height:1; text-align:center; }
-      .beer-copy small { color:#8ee5ff; font-size:.58rem; font-weight:900; letter-spacing:.08em; text-transform:uppercase; }
-      .beer-label { max-width:82px; color:#fff; font-size: .72rem; font-weight: 900; line-height:1.1; }
+      .beer-copy { position:relative; z-index:1; display:flex; flex-direction:column; align-items:center; gap:3px; width:106px; line-height:1; text-align:center; text-shadow:0 2px 4px #020617,0 0 9px #020617; }
+      .beer-copy small { color:#b9efff; font-size:.62rem; font-weight:900; letter-spacing:.08em; text-transform:uppercase; }
+      .beer-label { max-width:106px; color:#fff; font-size: .78rem; font-weight: 900; line-height:1.1; }
 
       .competition-picker {
         display: flex;
@@ -7106,7 +7106,7 @@ class FootballHubPanel extends HTMLElement {
       .app-shell.view-desktop .hero p { margin-top:5px; font-size:.78rem; }
       .hero-brand { display:flex; align-items:center; gap:14px; }
       .app-shell.view-desktop .hero-brand { margin-left:clamp(60px,7vw,130px); }
-      .brand-ball { display:grid; width:128px; height:128px; flex:0 0 auto; place-items:center; border:2px solid #00b7ff; border-radius:50%; background:radial-gradient(circle,#122b45,#020914 68%); box-shadow:0 0 28px rgba(0,183,255,.5),inset 0 0 18px rgba(0,183,255,.28); }
+      .brand-ball { display:grid; width:190px; height:190px; flex:0 0 auto; place-items:center; border:2px solid #00b7ff; border-radius:50%; background:radial-gradient(circle,#122b45,#020914 68%); box-shadow:0 0 28px rgba(0,183,255,.5),inset 0 0 18px rgba(0,183,255,.28); }
       .brand-ball img { width:100%; height:100%; display:block; object-fit:cover; border-radius:50%; }
       .app-shell.view-desktop .panel-back-button { min-width:auto; margin:0 12px 0 0; padding:8px; }
       .app-shell.view-desktop .panel-back-button span { display:none; }
@@ -7226,7 +7226,10 @@ class FootballHubPanel extends HTMLElement {
         .app-shell.view-desktop { display:block; }
         .app-shell.view-desktop .hero { min-height:auto; }
         .app-shell.view-desktop .hero-brand { margin-left:0; }
-        .brand-ball { width:74px; height:74px; }
+        .brand-ball, .header-beer-link { width:74px; height:74px; min-height:74px; }
+        .header-beer-link .beer-copy { width:58px; padding:4px 3px; gap:1px; }
+        .header-beer-link .beer-copy small { font-size:.42rem; letter-spacing:.04em; }
+        .header-beer-link .beer-label { max-width:56px; font-size:.53rem; }
         .app-shell.view-desktop .panel-back-button { position:static; }
         .app-shell.view-desktop .tabs { position:sticky; top:0; flex-direction:row; overflow-x:auto; border-right:0; border-bottom:1px solid rgba(0,183,255,.28); }
         .app-shell.view-desktop .tabs button { width:auto; min-width:max-content; }
