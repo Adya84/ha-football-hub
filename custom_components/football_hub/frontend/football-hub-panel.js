@@ -1,4 +1,4 @@
-const PANEL_VERSION = "0.8.6-beta.10";
+const PANEL_VERSION = "0.8.6-beta.11";
 // Temporarily paused while fixture schedules are being corrected. Manual email
 // actions remain available to the administrator.
 const LMS_AUTOMATIC_EMAILS_ENABLED = false;
@@ -3647,6 +3647,7 @@ class FootballHubPanel extends HTMLElement {
               : ""
           }
           <a class="header-beer-link" href="https://paypal.me/graffidoodle" target="_blank" rel="noopener noreferrer" title="Donate to Football Hub" aria-label="Donate to Football Hub">
+            <ha-icon class="donation-ball-icon" icon="mdi:soccer" aria-hidden="true"></ha-icon>
             <span class="beer-copy"><small>Keep us in play</small><span class="beer-label">Shoot us a donation</span></span>
           </a>
         </div>
@@ -5870,19 +5871,19 @@ class FootballHubPanel extends HTMLElement {
         height: 118px;
         min-height: 118px;
         padding: 10px;
-        border: 3px solid #f8fafc;
+        border: 2px solid rgba(148, 163, 184, .75);
         border-radius: 50%;
-        color: #061729;
-        background: #e5e7eb;
+        color: #f8fafc;
+        background: radial-gradient(circle at 30% 25%, #334155, #071827 68%);
         text-decoration: none;
-        box-shadow: 0 6px 0 #0f172a, 0 12px 22px rgba(0,0,0,.3);
+        box-shadow: inset 0 0 0 5px rgba(255,255,255,.035), 0 7px 0 #020617, 0 12px 22px rgba(0,0,0,.35);
         transition: transform .18s ease, filter .18s ease;
       }
 
-      .header-beer-link::before { content:"⚽"; position:absolute; z-index:0; inset:0; display:grid; place-items:center; font-size:7.4rem; line-height:1; opacity:.34; filter:grayscale(1) contrast(1.15); }
       .header-beer-link:hover { transform: translateY(-3px) rotate(-4deg); filter:brightness(1.08); }
+      .donation-ball-icon { position:absolute; z-index:0; width:88px; height:88px; color:rgba(226,232,240,.23); }
       .beer-copy { position:relative; z-index:1; display:flex; flex-direction:column; align-items:center; gap:2px; line-height:1; text-align:center; }
-      .beer-copy small { color:#334155; font-size:.58rem; font-weight:900; letter-spacing:.1em; text-transform:uppercase; }
+      .beer-copy small { color:#cbd5e1; font-size:.58rem; font-weight:900; letter-spacing:.1em; text-transform:uppercase; }
       .beer-label { max-width:82px; font-size: .72rem; font-weight: 900; line-height:1.1; }
 
       .competition-picker {
