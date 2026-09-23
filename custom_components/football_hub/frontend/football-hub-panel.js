@@ -1,4 +1,4 @@
-const PANEL_VERSION = "0.8.5";
+const PANEL_VERSION = "0.8.6-beta.1";
 // Temporarily paused while fixture schedules are being corrected. Manual email
 // actions remain available to the administrator.
 const LMS_AUTOMATIC_EMAILS_ENABLED = false;
@@ -92,6 +92,9 @@ class FootballHubPanel extends HTMLElement {
     this._liveDisplayMode = localStorage.getItem("football_hub_live_display_mode") || "cards";
     this._liveStatusFilter = localStorage.getItem("football_hub_live_status_filter") || "all";
     this._liveTimezone = localStorage.getItem("football_hub_live_timezone") || "local";
+    this._liveControlsOpen = localStorage.getItem("football_hub_live_controls_open") === "true";
+    this._liveAlertsOpen = localStorage.getItem("football_hub_live_alerts_open") === "true";
+    this._liveDiagnosticsOpen = localStorage.getItem("football_hub_live_diagnostics_open") === "true";
     this._nuvioManifestUrl = "";
     this._liveFiltersOpen = localStorage.getItem("football_hub_live_filters_open") !== "false";
     try { this._openLiveFilterCountries = new Set(JSON.parse(localStorage.getItem("football_hub_open_live_filter_countries") || "[]")); }
@@ -4047,7 +4050,7 @@ class FootballHubPanel extends HTMLElement {
     const search = this._liveFilterSearch.trim().toLowerCase();
     const filterChecks = (items, kind, hidden) => items.filter((name) => !search || name.toLowerCase().includes(search)).map((name) => `<label><input type="checkbox" data-live-filter-kind="${kind}" data-live-filter-value="${this._escape(name)}" ${hidden.has(name) ? "" : "checked"}><span>${this._escape(name)}</span></label>`).join("");
     const filterActions = (kind) => `<span class="live-filter-actions"><button type="button" data-live-filter-action="all" data-live-filter-target="${kind}">Select all</button><button type="button" data-live-filter-action="none" data-live-filter-target="${kind}">Clear all</button></span>`;
-    const toolbar = `<section class="page-card live-toolbar"><label>Search filters<input id="live-filter-search" type="search" value="${this._escape(this._liveFilterSearch)}" placeholder="Country, league, cup or club"></label><label>Matches<select id="live-status-filter"><option value="all" ${this._liveStatusFilter === "all" ? "selected" : ""}>All today</option><option value="upcoming" ${this._liveStatusFilter === "upcoming" ? "selected" : ""}>Upcoming only</option><option value="live" ${this._liveStatusFilter === "live" ? "selected" : ""}>Live only</option><option value="completed" ${this._liveStatusFilter === "completed" ? "selected" : ""}>Completed only</option></select></label><label>Display<select id="live-display-mode"><option value="cards" ${this._liveDisplayMode === "cards" ? "selected" : ""}>Cards</option><option value="compact" ${this._liveDisplayMode === "compact" ? "selected" : ""}>Compact list</option></select></label><label>Timezone<select id="live-timezone"><option value="local" ${this._liveTimezone === "local" ? "selected" : ""}>Home Assistant / device</option><option value="Europe/London" ${this._liveTimezone === "Europe/London" ? "selected" : ""}>UK</option><option value="UTC" ${this._liveTimezone === "UTC" ? "selected" : ""}>UTC</option><option value="Europe/Paris" ${this._liveTimezone === "Europe/Paris" ? "selected" : ""}>Central Europe</option><option value="America/New_York" ${this._liveTimezone === "America/New_York" ? "selected" : ""}>US Eastern</option></select></label><button type="button" id="football-hub-refresh"><ha-icon icon="mdi:refresh"></ha-icon> Refresh</button></section>`;
+    const toolbar = `<details id="live-controls-panel" class="page-card live-controls-panel" ${this._liveControlsOpen ? "open" : ""}><summary><span><ha-icon icon="mdi:tune-variant"></ha-icon> Match controls</span><small>Search, display and timezone</small></summary><div class="live-toolbar"><label>Search filters<input id="live-filter-search" type="search" value="${this._escape(this._liveFilterSearch)}" placeholder="Country, league, cup or club"></label><label>Matches<select id="live-status-filter"><option value="all" ${this._liveStatusFilter === "all" ? "selected" : ""}>All today</option><option value="upcoming" ${this._liveStatusFilter === "upcoming" ? "selected" : ""}>Upcoming only</option><option value="live" ${this._liveStatusFilter === "live" ? "selected" : ""}>Live only</option><option value="completed" ${this._liveStatusFilter === "completed" ? "selected" : ""}>Completed only</option></select></label><label>Display<select id="live-display-mode"><option value="cards" ${this._liveDisplayMode === "cards" ? "selected" : ""}>Cards</option><option value="compact" ${this._liveDisplayMode === "compact" ? "selected" : ""}>Compact list</option></select></label><label>Timezone<select id="live-timezone"><option value="local" ${this._liveTimezone === "local" ? "selected" : ""}>Home Assistant / device</option><option value="Europe/London" ${this._liveTimezone === "Europe/London" ? "selected" : ""}>UK</option><option value="UTC" ${this._liveTimezone === "UTC" ? "selected" : ""}>UTC</option><option value="Europe/Paris" ${this._liveTimezone === "Europe/Paris" ? "selected" : ""}>Central Europe</option><option value="America/New_York" ${this._liveTimezone === "America/New_York" ? "selected" : ""}>US Eastern</option></select></label><button type="button" id="football-hub-refresh"><ha-icon icon="mdi:refresh"></ha-icon> Refresh</button></div></details>`;
     const countryCompetitionFilters = countryNames.filter((country) => !search || country.toLowerCase().includes(search) || competitionNames.some((competition) => competitionCountries.get(competition)?.has(country) && competition.toLowerCase().includes(search))).map((country) => {
       const competitions = competitionNames.filter((competition) => competitionCountries.get(competition)?.has(country) && (!search || country.toLowerCase().includes(search) || competition.toLowerCase().includes(search)));
       const countryChecked = !this._hiddenLiveCountries.has(country);
@@ -4060,7 +4063,7 @@ class FootballHubPanel extends HTMLElement {
     const statusInfo = this._statusInfo();
     const notifyChecks = [["kickoff", "Kickoff"], ["goals", "Goals"], ["yellowCards", "Yellow cards"], ["redCards", "Red cards"], ["halftime", "Half-time"], ["fulltime", "Full-time"], ["sounds", "Alert sounds"], ["selectedClubOnly", "Selected club only"]].map(([key, label]) => `<label><input type="checkbox" data-live-notification="${key}" ${this._liveNotifications[key] ? "checked" : ""}><span>${label}</span></label>`).join("");
     const nuvioSettings = `<details class="page-card nuvio-settings"><summary><span><ha-icon icon="mdi:play-circle-outline"></ha-icon> Sports Streams <small>Beta</small></span><span>${this._nuvioManifestUrl ? "Configured" : "Optional"}</span></summary><div><p>Paste your Sports Streams manifest. Football Hub compares public event names only and shows a Watch in Stremio button only when one exact match is found. Playback opens in Stremio Web.</p><label>Sports Streams manifest URL<input id="nuvio-manifest-url" type="url" value="${this._escape(this._nuvioManifestUrl)}" placeholder="https://sports.highfly.to/.../manifest.json"></label><button type="button" id="save-nuvio-manifest">Save Sports Streams link</button></div></details>`;
-    const liveExtras = `<section class="live-utility-grid compact"><article class="page-card live-alerts-compact"><header><div><span class="eyebrow">MATCH ALERTS</span><strong>Goal and match notifications</strong></div><div class="live-alert-actions"><button id="football-hub-alert-all" type="button">Select all events</button><button id="football-hub-alert-none" type="button">Deselect all events</button><button id="football-hub-test-alert" type="button">Test alert</button></div></header><small class="live-alert-status">${this._escape(this._browserAlertStatus())}</small><div class="live-alert-options">${notifyChecks}</div><div class="live-alert-actions match-alert-bulk-actions"><button id="football-hub-match-alert-all" type="button">Select all matches</button><button id="football-hub-match-alert-none" type="button">Deselect non-favourites</button></div><small class="live-alert-status">Favourite-club matches start selected. Use a match checkbox to override one match.</small></article><article class="page-card live-diagnostics compact"><header><span class="eyebrow">DATA STATUS</span><strong>${this._escape(statusInfo.state)}</strong></header><div><span>Matches</span><strong>${allTodayMatches.length}</strong></div><div><span>Live</span><strong>${allLiveMatches.length}</strong></div><div><span>Competitions</span><strong>${competitionNames.length}</strong></div><div><span>Updated</span><strong>${this._escape(this._liveUpdatedAge(statusInfo.last_updated))}</strong></div></article></section>${nuvioSettings}`;
+    const liveExtras = `<section class="live-utility-grid compact"><details id="live-alert-panel" class="page-card live-alerts-compact" ${this._liveAlertsOpen ? "open" : ""}><summary><span><span class="eyebrow">MATCH ALERTS</span><strong>Goal and match notifications</strong></span><ha-icon icon="mdi:chevron-down"></ha-icon></summary><div class="live-alert-panel-body"><header><small class="live-alert-status">${this._escape(this._browserAlertStatus())}</small><div class="live-alert-actions"><button id="football-hub-alert-all" type="button">Select all events</button><button id="football-hub-alert-none" type="button">Deselect all events</button><button id="football-hub-test-alert" type="button">Test alert</button></div></header><div class="live-alert-options">${notifyChecks}</div><div class="live-alert-actions match-alert-bulk-actions"><button id="football-hub-match-alert-all" type="button">Select all matches</button><button id="football-hub-match-alert-none" type="button">Deselect non-favourites</button></div><small class="live-alert-status">Favourite-club matches start selected. Use a match checkbox to override one match.</small></div></details><details id="live-diagnostics-panel" class="page-card live-diagnostics compact" ${this._liveDiagnosticsOpen ? "open" : ""}><summary><span class="eyebrow">DATA STATUS</span><strong>${this._escape(statusInfo.state)}</strong></summary><div class="live-diagnostics-panel-body"><div><span>Matches</span><strong>${allTodayMatches.length}</strong></div><div><span>Live</span><strong>${allLiveMatches.length}</strong></div><div><span>Competitions</span><strong>${competitionNames.length}</strong></div><div><span>Updated</span><strong>${this._escape(this._liveUpdatedAge(statusInfo.last_updated))}</strong></div></div></details></section>${nuvioSettings}`;
     const grouped = new Map();
     todayMatches.forEach((match) => { const key = this._liveCompetitionKey(countryName(match), competitionName(match)); if (!grouped.has(key)) grouped.set(key, []); grouped.get(key).push(match); });
     const groupedMatches = [...grouped.entries()].sort(([a], [b]) => { const [acountry, ac] = a.split("|||"), [bcountry, bc] = b.split("|||"); return Number(isFavouriteCompetition(bcountry, bc)) - Number(isFavouriteCompetition(acountry, ac)) || a.localeCompare(b); }).map(([key, games]) => {
@@ -5059,6 +5062,12 @@ class FootballHubPanel extends HTMLElement {
       if (this._liveFiltersOpen === event.currentTarget.open) return;
       this._liveFiltersOpen = event.currentTarget.open;
       localStorage.setItem("football_hub_live_filters_open", String(this._liveFiltersOpen));
+    });
+    [["#live-controls-panel", "_liveControlsOpen", "football_hub_live_controls_open"], ["#live-alert-panel", "_liveAlertsOpen", "football_hub_live_alerts_open"], ["#live-diagnostics-panel", "_liveDiagnosticsOpen", "football_hub_live_diagnostics_open"]].forEach(([selector, property, storageKey]) => {
+      this.shadowRoot.querySelector(selector)?.addEventListener("toggle", (event) => {
+        this[property] = event.currentTarget.open;
+        localStorage.setItem(storageKey, String(this[property]));
+      });
     });
     this.shadowRoot.querySelector("#live-status-filter")?.addEventListener("change", (event) => { this._liveStatusFilter = event.target.value; localStorage.setItem("football_hub_live_status_filter", this._liveStatusFilter); this._render(); });
     this.shadowRoot.querySelector("#live-display-mode")?.addEventListener("change", (event) => { this._liveDisplayMode = event.target.value; localStorage.setItem("football_hub_live_display_mode", this._liveDisplayMode); this._render(); });
@@ -6398,7 +6407,12 @@ class FootballHubPanel extends HTMLElement {
       .live-filter-options label { display: flex; align-items: center; gap: 7px; padding: 8px 10px; border: 1px solid rgba(255,255,255,.15); border-radius: 11px; cursor: pointer; background: rgba(255,255,255,.05); }
       .live-filter-options input { width: 18px; height: 18px; accent-color: var(--primary-color); }
       @media (max-width: 760px) { .live-competition-filter, .live-filter-panel-body { grid-template-columns: 1fr; } }
-      .live-toolbar { display: grid; grid-template-columns: minmax(200px,1.5fr) repeat(3,minmax(140px,.8fr)) auto; gap: 12px; align-items: end; margin: 20px 0; }
+      .live-controls-panel { margin:20px 0; }
+      .live-controls-panel > summary, .live-alerts-compact > summary, .live-diagnostics.compact > summary { display:flex; align-items:center; justify-content:space-between; gap:12px; cursor:pointer; list-style:none; }
+      .live-controls-panel > summary::-webkit-details-marker, .live-alerts-compact > summary::-webkit-details-marker, .live-diagnostics.compact > summary::-webkit-details-marker { display:none; }
+      .live-controls-panel > summary > span { display:flex; align-items:center; gap:8px; font-weight:800; }
+      .live-controls-panel > summary small { color:var(--secondary-text-color); }
+      .live-toolbar { display: grid; grid-template-columns: minmax(200px,1.5fr) repeat(3,minmax(140px,.8fr)) auto; gap: 12px; align-items: end; padding-top:14px; }
       .live-toolbar label { display: grid; gap: 6px; color: var(--secondary-text-color); font-size: .78rem; }
       .live-toolbar input, .live-toolbar select, .fixture-filter input, .live-picker-control input { min-height: 42px; border-radius: 10px; padding: 8px 11px; border: 1px solid rgba(255,255,255,.18); background: var(--card-background-color); color: var(--primary-text-color); }
       .live-toolbar > button { min-height: 42px; display: flex; align-items: center; justify-content: center; gap: 7px; }
@@ -6439,6 +6453,14 @@ class FootballHubPanel extends HTMLElement {
       .live-utility-grid.compact .page-card { padding:11px 14px; border-radius:14px; }
       .live-utility-grid.compact header { display:flex; align-items:center; justify-content:space-between; gap:12px; margin-bottom:8px; }
       .live-utility-grid.compact header .eyebrow { margin:0; }
+      .live-alerts-compact > summary > span { display:grid; gap:2px; }
+      .live-alerts-compact > summary strong { font-size:.9rem; }
+      .live-alerts-compact > summary > ha-icon { transition:transform .2s ease; }
+      .live-alerts-compact[open] > summary > ha-icon { transform:rotate(180deg); }
+      .live-alert-panel-body { padding-top:12px; }
+      .live-diagnostics.compact > summary { min-height:28px; }
+      .live-diagnostics.compact > summary strong { font-size:.85rem; }
+      .live-diagnostics-panel-body { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:6px 12px; padding-top:10px; }
       .live-alert-options { display:flex; flex-wrap:wrap; gap:6px 14px; }
       .live-alert-options label { display:flex; align-items:center; gap:5px; font-size:.76rem; }
       .live-alert-status { display:block; margin:-2px 0 9px; color:var(--secondary-text-color); }
@@ -6458,13 +6480,11 @@ class FootballHubPanel extends HTMLElement {
       @keyframes football-hub-alert-in { from { opacity:0; transform:translateY(-8px); } }
       @keyframes football-hub-goal-flash { 0% { opacity:0; transform:scale(.94); background:#b7ffc8; box-shadow:0 0 0 0 rgba(125,255,155,1); } 45% { opacity:1; transform:scale(1.025); background:#63ff89; box-shadow:0 0 38px 16px rgba(82,255,120,.95); } 100% { transform:scale(1); background:linear-gradient(135deg,rgba(20,130,67,.96),rgba(4,47,25,.98)); box-shadow:0 0 20px 5px rgba(82,255,120,.56); } }
       @keyframes football-hub-goal-glow { 0%,100% { box-shadow:0 0 16px 3px rgba(82,255,120,.38); } 50% { box-shadow:0 0 30px 9px rgba(82,255,120,.82); } }
-      .live-diagnostics.compact { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:6px 12px; }
-      .live-diagnostics.compact header { grid-column:1/-1; margin-bottom:0; }
       .live-diagnostics.compact > div { display:flex; flex-direction:column; gap:2px; padding:4px 0; border:0; font-size:.72rem; }
       .live-diagnostics.compact > div strong { white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
       .fixture-filter > div { display: flex; gap: 8px; margin-top: 7px; }
       @media (max-width: 1050px) { .live-toolbar { grid-template-columns: 1fr 1fr; } }
-      @media (max-width: 700px) { .live-toolbar, .live-utility-grid, .live-utility-grid.compact { grid-template-columns: 1fr; } .live-diagnostics.compact { grid-template-columns:repeat(2,minmax(0,1fr)); } }
+      @media (max-width: 700px) { .live-toolbar, .live-utility-grid, .live-utility-grid.compact { grid-template-columns: 1fr; } .live-diagnostics-panel-body { grid-template-columns:repeat(2,minmax(0,1fr)); } }
 
       .match-teams {
         display: grid;
