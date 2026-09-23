@@ -24,9 +24,17 @@ It also includes Last Man Standing (LMS) and Acca League tools, with private pla
 
 ## Latest release — 0.8.5
 
-- **Per-match alerts:** Every Live match can be enabled or disabled independently, while favourite-club matches begin enabled automatically.
-- **Bulk controls:** Select all enables every match; Deselect non-favourites preserves favourite-club match alerts.
-- **Event controls:** Choose the alert types you want, including goals, kick-off, cards, half-time and full-time.
+### Live Centre notifications
+
+Every match now has its own notification checkbox, so you can follow only the fixtures that matter to you. Favourite-club matches start selected automatically.
+
+| Control | What it does |
+| --- | --- |
+| **Select all matches** | Turns notifications on for every listed match. |
+| **Deselect non-favourites** | Turns off manually selected matches while keeping favourite-club matches enabled. |
+| **Event controls** | Choose the alert types: goals, kick-off, cards, half-time and full-time. |
+
+**Find it:** Open **Football Hub → Live Centre → Match Alerts**. Use the individual match checkbox to override one fixture.
 
 ---
 
