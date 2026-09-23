@@ -332,7 +332,7 @@ test("header beer link has a visible support label", () => {
   const source = fs.readFileSync(path.join(__dirname, "../custom_components/football_hub/frontend/football-hub-panel.js"), "utf8");
 
   assert.doesNotMatch(source, /class="beer-icon" aria-hidden="true">🍺<\/span>/);
-  assert.match(source, /<span class="beer-copy"><small>Keep us in play<\/small><span class="beer-label">Shoot us a donation<\/span><\/span>/);
+  assert.match(source, /<span class="beer-copy"><small>Keep us in play<\/small><span class="beer-label"><b>SHOOT<\/b> us a donation<\/span><\/span>/);
 });
 
 test("Live Centre refreshes its update-age label between feed updates", () => {
@@ -359,11 +359,11 @@ test("Live update bar owns the connection status while the beer link uses the he
   assert.match(source, /\.brand-ball \{ display:grid; width:190px; height:190px;/);
   assert.match(source, /\.brand-ball, \.header-beer-link \{ width:74px; height:74px; min-height:74px; \}/);
   assert.match(source, /url\("\/football_hub\/football-hub-logo\.png\?v=0\.4\.0"\) 50% 16%\/250% auto/);
-  assert.match(source, /\.beer-copy \{ position:relative; z-index:1;/);
+  assert.match(source, /\.beer-copy \{ position:absolute; z-index:1; top:calc\(100% \+ 8px\);/);
   assert.match(source, /\.beer-copy \{[^}]*align-items:center;[^}]*text-align:center;/);
 });
 
 test("release identifiers use the current stable version", () => {
   const source = fs.readFileSync(path.join(__dirname, "../custom_components/football_hub/frontend/football-hub-panel.js"), "utf8");
-  assert.match(source, /const PANEL_VERSION = "0\.8\.6-beta\.13"/);
+  assert.match(source, /const PANEL_VERSION = "0\.8\.6-beta\.14"/);
 });
