@@ -356,10 +356,11 @@ test("Live update bar owns the connection status while the beer link uses the he
   assert.doesNotMatch(source, /<\/a>\s*<span class="connection/);
   assert.match(source, /\.header-beer-link \{[\s\S]*width: 118px;[\s\S]*border-radius: 50%;/);
   assert.match(source, /\.header-beer-link::before \{ content:"⚽"/);
+  assert.match(source, /\.beer-copy \{ position:relative; z-index:1;/);
   assert.match(source, /\.beer-copy \{[^}]*align-items:center;[^}]*text-align:center;/);
 });
 
 test("release identifiers use the current stable version", () => {
   const source = fs.readFileSync(path.join(__dirname, "../custom_components/football_hub/frontend/football-hub-panel.js"), "utf8");
-  assert.match(source, /const PANEL_VERSION = "0\.8\.6-beta\.9"/);
+  assert.match(source, /const PANEL_VERSION = "0\.8\.6-beta\.10"/);
 });
