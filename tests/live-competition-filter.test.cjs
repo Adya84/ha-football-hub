@@ -66,6 +66,20 @@ test("an unselected live competition is not restored as the primary match or fav
   assert.doesNotMatch(markup, /live-control-hero/);
 });
 
+test("Live Centre fallback shows the number of visible live matches", () => {
+  const panel = makePanel({
+    primary: {},
+    liveMatches: [blockedMatch],
+    hiddenCompetitions: [],
+  });
+  panel._enabledLiveAlerts = new Set();
+  panel._mutedLiveAlerts = new Set();
+
+  const markup = panel._livePage();
+
+  assert.match(markup, /<div class="live-count"><strong>1<\/strong><span>Live now<\/span><\/div>/);
+});
+
 test("closed countries defer their competition controls until opened", () => {
   const panel = makePanel({
     primary: {},
@@ -299,5 +313,5 @@ test("overview offers GitHub star and share actions", () => {
 
 test("release identifiers use the current stable version", () => {
   const source = fs.readFileSync(path.join(__dirname, "../custom_components/football_hub/frontend/football-hub-panel.js"), "utf8");
-  assert.match(source, /const PANEL_VERSION = "0\.8\.6-beta\.1"/);
+  assert.match(source, /const PANEL_VERSION = "0\.8\.6-beta\.2"/);
 });

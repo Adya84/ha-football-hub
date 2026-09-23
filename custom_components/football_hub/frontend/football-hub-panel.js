@@ -1,4 +1,4 @@
-const PANEL_VERSION = "0.8.6-beta.1";
+const PANEL_VERSION = "0.8.6-beta.2";
 // Temporarily paused while fixture schedules are being corrected. Manual email
 // actions remain available to the administrator.
 const LMS_AUTOMATIC_EMAILS_ENABLED = false;
@@ -3579,6 +3579,9 @@ class FootballHubPanel extends HTMLElement {
       country: status.country,
       key: status.competition_key,
     };
+    const liveFeed = Array.isArray(this._attrs("live_matches").matches) ? this._attrs("live_matches").matches : [];
+    const liveNow = liveFeed.filter((match) => ["1H", "HT", "2H", "ET", "BT", "P", "SUSP", "INT", "LIVE"].includes(String(match.status_short || "").toUpperCase())).length;
+    const liveStatus = this._activeTab === "live" ? `<div class="hero-live-status"><span class="connection ${String(status.state).toLowerCase() === "online" ? "online" : ""}"><span class="dot"></span>${this._escape(status.state)}</span><b>${liveNow} live</b><small>${this._escape(this._liveUpdatedAge(status.last_updated))}</small></div>` : "";
 
     const options = prefixes
       .map((prefix) => {
@@ -3606,6 +3609,7 @@ class FootballHubPanel extends HTMLElement {
     )}</p></div></div>
         </div>
         <div class="hero-actions">
+          ${liveStatus}
           <label class="view-mode-picker language-picker"><span>${this._t("language")}</span><select id="language-select" aria-label="Language">
             <option value="en" ${this._language === "en" ? "selected" : ""}>English</option><option value="es" ${this._language === "es" ? "selected" : ""}>Español</option><option value="de" ${this._language === "de" ? "selected" : ""}>Deutsch</option><option value="it" ${this._language === "it" ? "selected" : ""}>Italiano</option><option value="fr" ${this._language === "fr" ? "selected" : ""}>Français</option><option value="nl" ${this._language === "nl" ? "selected" : ""}>Nederlands</option><option value="pt" ${this._language === "pt" ? "selected" : ""}>Português</option><option value="tr" ${this._language === "tr" ? "selected" : ""}>Türkçe</option>
           </select></label>
@@ -4105,7 +4109,7 @@ class FootballHubPanel extends HTMLElement {
         <section class="page-card live-control-empty">
           <div><span class="live-kicker">⚽ MATCHDAY CONTROL ROOM</span><h2>Live Centre</h2><p>The feed updates automatically when a match begins.</p></div>
           ${teamOptions()}
-          <div class="live-count"><strong>0</strong><span>Live now</span></div>
+          <div class="live-count"><strong>${matches.length}</strong><span>Live now</span></div>
         </section>
         <section class="section">
           <h2>Current live feed</h2>
@@ -4778,6 +4782,12 @@ class FootballHubPanel extends HTMLElement {
       </div>
       <aside id="football-hub-live-alerts" class="football-hub-live-alerts" aria-live="polite"></aside>
     `;
+
+    // Keep the detailed country and competition chooser with the rest of the
+    // Match controls, rather than giving it its own full-width row.
+    const liveControls = this.shadowRoot.querySelector("#live-controls-panel");
+    const liveFilterPanel = this.shadowRoot.querySelector("#live-filter-panel");
+    if (liveControls && liveFilterPanel) liveControls.append(liveFilterPanel);
 
     // Preserve every expandable section across sensor updates and re-renders.
     this.shadowRoot.querySelectorAll("details").forEach((details, index) => {
@@ -5823,6 +5833,10 @@ class FootballHubPanel extends HTMLElement {
         justify-content: flex-end;
       }
 
+      .hero-live-status { display:flex; align-items:center; gap:9px; padding:8px 10px; border:1px solid rgba(134,239,172,.22); border-radius:12px; background:rgba(255,255,255,.05); font-size:.72rem; white-space:nowrap; }
+      .hero-live-status b { color:#86efac; font-size:.82rem; }
+      .hero-live-status small { color:var(--secondary-text-color); }
+
       .header-beer-link {
         display: inline-grid;
         width: 40px;
@@ -6450,6 +6464,7 @@ class FootballHubPanel extends HTMLElement {
       .live-utility-grid p { color: var(--secondary-text-color); }
       .live-diagnostics > div { display: flex; justify-content: space-between; gap: 12px; padding: 7px 0; border-bottom: 1px solid rgba(255,255,255,.08); }
       .live-utility-grid.compact { grid-template-columns:minmax(0,1.35fr) minmax(300px,.65fr); gap:10px; margin:8px 0 14px; }
+      .live-diagnostics.compact { display:none; }
       .live-utility-grid.compact .page-card { padding:11px 14px; border-radius:14px; }
       .live-utility-grid.compact header { display:flex; align-items:center; justify-content:space-between; gap:12px; margin-bottom:8px; }
       .live-utility-grid.compact header .eyebrow { margin:0; }
