@@ -5860,7 +5860,7 @@ class FootballHubPanel extends HTMLElement {
       .header-beer-link {
         display: inline-flex;
         position: relative;
-        overflow: hidden;
+        overflow: visible;
         isolation: isolate;
         align-items: center;
         justify-content: center;
@@ -5868,12 +5868,12 @@ class FootballHubPanel extends HTMLElement {
         height: 128px;
         min-height: 128px;
         padding: 10px;
-        border: 2px solid #00b7ff;
+        border: 0;
         border-radius: 50%;
         color: #f8fafc;
         background: linear-gradient(rgba(2,9,20,.08), rgba(2,9,20,.28)), url("/football_hub/football-hub-logo.png?v=0.4.0") 50% 16%/250% auto;
         text-decoration: none;
-        box-shadow: inset 0 0 0 5px rgba(0,183,255,.12), 0 7px 0 #020617, 0 12px 22px rgba(0,0,0,.35);
+        box-shadow: none;
         transition: transform .18s ease, filter .18s ease;
       }
 

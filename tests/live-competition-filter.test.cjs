@@ -356,6 +356,7 @@ test("Live update bar owns the connection status while the beer link uses the he
   assert.doesNotMatch(source, /<\/a>\s*<span class="connection/);
   assert.match(source, /<\/div><\/div>\s*<\/div>\s*<div class="hero-actions">[\s\S]*class="header-beer-link"/);
   assert.match(source, /\.header-beer-link \{[\s\S]*width: 128px;[\s\S]*height: 128px;[\s\S]*border-radius: 50%;/);
+  assert.match(source, /\.header-beer-link \{[\s\S]*overflow: visible;[\s\S]*border: 0;[\s\S]*box-shadow: none;/);
   assert.match(source, /\.brand-ball \{ display:grid; width:190px; height:190px;/);
   assert.match(source, /\.brand-ball, \.header-beer-link \{ width:74px; height:74px; min-height:74px; \}/);
   assert.match(source, /url\("\/football_hub\/football-hub-logo\.png\?v=0\.4\.0"\) 50% 16%\/250% auto/);
