@@ -348,7 +348,15 @@ test("Online connection dot is green", () => {
   assert.match(source, /\.connection\.online \.dot \{\s*background: #86efac;/);
 });
 
+test("Live update bar owns the connection status while the beer link uses the header space", () => {
+  const source = fs.readFileSync(path.join(__dirname, "../custom_components/football_hub/frontend/football-hub-panel.js"), "utf8");
+
+  assert.match(source, /hero-live-status"><span class="connection/);
+  assert.doesNotMatch(source, /<\/a>\s*<span class="connection/);
+  assert.match(source, /\.header-beer-link \{[\s\S]*min-height: 48px;/);
+});
+
 test("release identifiers use the current stable version", () => {
   const source = fs.readFileSync(path.join(__dirname, "../custom_components/football_hub/frontend/football-hub-panel.js"), "utf8");
-  assert.match(source, /const PANEL_VERSION = "0\.8\.6-beta\.4"/);
+  assert.match(source, /const PANEL_VERSION = "0\.8\.6-beta\.5"/);
 });

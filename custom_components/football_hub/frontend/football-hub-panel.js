@@ -1,4 +1,4 @@
-const PANEL_VERSION = "0.8.6-beta.4";
+const PANEL_VERSION = "0.8.6-beta.5";
 // Temporarily paused while fixture schedules are being corrected. Manual email
 // actions remain available to the administrator.
 const LMS_AUTOMATIC_EMAILS_ENABLED = false;
@@ -3594,7 +3594,7 @@ class FootballHubPanel extends HTMLElement {
     };
     const liveFeed = Array.isArray(this._attrs("live_matches").matches) ? this._attrs("live_matches").matches : [];
     const liveNow = liveFeed.filter((match) => ["1H", "HT", "2H", "ET", "BT", "P", "SUSP", "INT", "LIVE"].includes(String(match.status_short || "").toUpperCase())).length;
-    const liveStatus = this._activeTab === "live" ? `<div class="hero-live-status"><b>${liveNow} live</b><small>${this._escape(this._liveUpdatedAge(status.last_updated))}</small></div>` : "";
+    const liveStatus = this._activeTab === "live" ? `<div class="hero-live-status"><span class="connection ${String(status.state).toLowerCase() === "online" ? "online" : ""}"><span class="dot"></span>${this._escape(status.state)}</span><b>${liveNow} live</b><small>${this._escape(this._liveUpdatedAge(status.last_updated))}</small></div>` : "";
 
     const options = prefixes
       .map((prefix) => {
@@ -3650,9 +3650,6 @@ class FootballHubPanel extends HTMLElement {
             <span class="beer-icon">🍺</span>
             <span class="beer-label">Buy me a beer</span>
           </a>
-          <span class="connection ${String(status.state).toLowerCase() === "online" ? "online" : ""}">
-            <span class="dot"></span>${this._escape(status.state)}
-          </span>
         </div>
       </header>
     `;
@@ -5857,6 +5854,7 @@ class FootballHubPanel extends HTMLElement {
       }
 
       .hero-live-status { display:flex; align-items:center; gap:9px; padding:8px 10px; border:1px solid rgba(134,239,172,.22); border-radius:12px; background:rgba(255,255,255,.05); font-size:.72rem; white-space:nowrap; }
+      .hero-live-status .connection { padding:0; border:0; background:transparent; font-size:.72rem; }
       .hero-live-status b { color:#86efac; font-size:.82rem; }
       .hero-live-status small { color:var(--secondary-text-color); }
 
@@ -5864,8 +5862,8 @@ class FootballHubPanel extends HTMLElement {
         display: inline-flex;
         align-items: center;
         gap: 7px;
-        min-height: 40px;
-        padding: 0 12px;
+        min-height: 48px;
+        padding: 0 17px;
         border: 1px solid rgba(255, 214, 72, .45);
         border-radius: 999px;
         color: white;
@@ -5875,8 +5873,8 @@ class FootballHubPanel extends HTMLElement {
       }
 
       .header-beer-link:hover { transform: translateY(-2px); background: rgba(255, 193, 7, .24); }
-      .beer-icon { font-size: 1.25rem; line-height: 1; }
-      .beer-label { font-size: .76rem; font-weight: 800; white-space: nowrap; }
+      .beer-icon { font-size: 1.45rem; line-height: 1; }
+      .beer-label { font-size: .9rem; font-weight: 900; white-space: nowrap; }
 
       .competition-picker {
         display: flex;
