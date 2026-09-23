@@ -359,13 +359,13 @@ test("Live update bar owns the connection status while the beer link uses the he
   assert.match(source, /\.header-beer-link \{[\s\S]*overflow: visible;[\s\S]*border: 0;[\s\S]*box-shadow: none;/);
   assert.match(source, /\.brand-ball \{ display:grid; width:190px; height:190px;/);
   assert.match(source, /\.brand-ball, \.header-beer-link \{ width:74px; height:74px; min-height:74px; \}/);
-  assert.match(source, /url\("\/football_hub\/football-hub-logo\.png\?v=0\.4\.0"\) 50% 28%\/260% auto/);
+  assert.match(source, /background: url\("\/football_hub\/football-hub-logo\.png\?v=0\.4\.0"\) 50% 28%\/260% auto;/);
   assert.match(source, /\.donation-kicker \{ bottom:calc\(100% \+ 10px\);/);
   assert.match(source, /\.beer-copy \{ top:calc\(100% \+ 10px\); \}/);
-  assert.match(source, /\.donation-kicker, \.beer-copy \{[^}]*border:0;[^}]*background:transparent;[^}]*font-family:Impact,"Arial Black",sans-serif;[^}]*text-align:center;/);
+  assert.match(source, /\.donation-kicker, \.beer-copy \{[^}]*border:0;[^}]*background:transparent;[^}]*font-family:var\(--paper-font-body1_-_font-family,system-ui,sans-serif\);[^}]*text-align:center;[^}]*text-shadow:none;/);
 });
 
 test("release identifiers use the current stable version", () => {
   const source = fs.readFileSync(path.join(__dirname, "../custom_components/football_hub/frontend/football-hub-panel.js"), "utf8");
-  assert.match(source, /const PANEL_VERSION = "0\.8\.6-beta\.16"/);
+  assert.match(source, /const PANEL_VERSION = "0\.8\.6-beta\.17"/);
 });
