@@ -1,4 +1,4 @@
-const PANEL_VERSION = "0.8.6-beta.8";
+const PANEL_VERSION = "0.8.6-beta.9";
 // Temporarily paused while fixture schedules are being corrected. Manual email
 // actions remain available to the administrator.
 const LMS_AUTOMATIC_EMAILS_ENABLED = false;
@@ -3646,9 +3646,8 @@ class FootballHubPanel extends HTMLElement {
               ? `<select id="competition-select" aria-label="Competition">${options}</select>`
               : ""
           }
-          <a class="header-beer-link" href="https://paypal.me/graffidoodle" target="_blank" rel="noopener noreferrer" title="Buy me a beer" aria-label="Buy me a beer">
-            <span class="beer-icon" aria-hidden="true">🍺</span>
-            <span class="beer-copy"><small>Donate</small><span class="beer-label">Shoot us a donation</span></span>
+          <a class="header-beer-link" href="https://paypal.me/graffidoodle" target="_blank" rel="noopener noreferrer" title="Donate to Football Hub" aria-label="Donate to Football Hub">
+            <span class="beer-copy"><small>Keep us in play</small><span class="beer-label">Shoot us a donation</span></span>
           </a>
         </div>
       </header>
@@ -5882,7 +5881,6 @@ class FootballHubPanel extends HTMLElement {
 
       .header-beer-link::before { content:"⚽"; position:absolute; z-index:-1; inset:0; display:grid; place-items:center; font-size:7.4rem; line-height:1; opacity:.34; filter:grayscale(1) contrast(1.15); }
       .header-beer-link:hover { transform: translateY(-3px) rotate(-4deg); filter:brightness(1.08); }
-      .beer-icon { font-size: 1.25rem; line-height: 1; }
       .beer-copy { display:flex; flex-direction:column; align-items:center; gap:2px; line-height:1; text-align:center; }
       .beer-copy small { color:#334155; font-size:.58rem; font-weight:900; letter-spacing:.1em; text-transform:uppercase; }
       .beer-label { max-width:82px; font-size: .72rem; font-weight: 900; line-height:1.1; }
