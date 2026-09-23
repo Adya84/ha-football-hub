@@ -1,4 +1,4 @@
-const PANEL_VERSION = "0.8.6-beta.5";
+const PANEL_VERSION = "0.8.6-beta.7";
 // Temporarily paused while fixture schedules are being corrected. Manual email
 // actions remain available to the administrator.
 const LMS_AUTOMATIC_EMAILS_ENABLED = false;
@@ -3648,7 +3648,7 @@ class FootballHubPanel extends HTMLElement {
           }
           <a class="header-beer-link" href="https://paypal.me/graffidoodle" target="_blank" rel="noopener noreferrer" title="Buy me a beer" aria-label="Buy me a beer">
             <span class="beer-icon">🍺</span>
-            <span class="beer-label">Buy me a beer</span>
+            <span class="beer-copy"><small>Donate</small><span class="beer-label">Buy me a beer</span></span>
           </a>
         </div>
       </header>
@@ -5874,6 +5874,8 @@ class FootballHubPanel extends HTMLElement {
 
       .header-beer-link:hover { transform: translateY(-2px); background: rgba(255, 193, 7, .24); }
       .beer-icon { font-size: 1.45rem; line-height: 1; }
+      .beer-copy { display:flex; flex-direction:column; align-items:flex-start; gap:1px; line-height:1; }
+      .beer-copy small { color:#ffe69a; font-size:.62rem; font-weight:800; letter-spacing:.1em; text-transform:uppercase; }
       .beer-label { font-size: .9rem; font-weight: 900; white-space: nowrap; }
 
       .competition-picker {

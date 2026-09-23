@@ -331,7 +331,7 @@ test("overview offers GitHub star and share actions", () => {
 test("header beer link has a visible support label", () => {
   const source = fs.readFileSync(path.join(__dirname, "../custom_components/football_hub/frontend/football-hub-panel.js"), "utf8");
 
-  assert.match(source, /<span class="beer-label">Buy me a beer<\/span>/);
+  assert.match(source, /<span class="beer-copy"><small>Donate<\/small><span class="beer-label">Buy me a beer<\/span><\/span>/);
 });
 
 test("Live Centre refreshes its update-age label between feed updates", () => {
@@ -358,5 +358,5 @@ test("Live update bar owns the connection status while the beer link uses the he
 
 test("release identifiers use the current stable version", () => {
   const source = fs.readFileSync(path.join(__dirname, "../custom_components/football_hub/frontend/football-hub-panel.js"), "utf8");
-  assert.match(source, /const PANEL_VERSION = "0\.8\.6-beta\.5"/);
+  assert.match(source, /const PANEL_VERSION = "0\.8\.6-beta\.7"/);
 });
