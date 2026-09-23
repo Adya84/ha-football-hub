@@ -128,6 +128,63 @@ test("live alert bulk actions enable and disable every alert option", () => {
   assert.equal(renders, 2);
 });
 
+test("favourite matches remain selected when all match alerts are deselected", () => {
+  const favourite = { fixture_id: "favourite-match", home_team: "Arsenal", away_team: "Chelsea" };
+  const otherMatch = { fixture_id: "other-match", home_team: "Everton", away_team: "Leeds" };
+  const panel = makePanel({
+    primary: {}, liveMatches: [favourite, otherMatch], hiddenCompetitions: [],
+    favouriteClubs: [{ team: "Arsenal" }],
+  });
+  panel._enabledLiveAlerts = new Set();
+  panel._mutedLiveAlerts = new Set();
+
+  assert.equal(panel._isLiveMatchAlertEnabled(favourite), true);
+  assert.equal(panel._isLiveMatchAlertEnabled(otherMatch), false);
+
+  panel._setAllLiveMatchAlerts([favourite, otherMatch], true);
+  assert.equal(panel._isLiveMatchAlertEnabled(otherMatch), true);
+
+  panel._setAllLiveMatchAlerts([favourite, otherMatch], false);
+  assert.equal(panel._isLiveMatchAlertEnabled(favourite), true);
+  assert.equal(panel._isLiveMatchAlertEnabled(otherMatch), false);
+});
+
+test("Live Centre renders an alert checkbox for every live match", () => {
+  const match = { ...blockedMatch, fixture_id: "live-checkbox", id: "live-checkbox" };
+  const panel = makePanel({ primary: {}, liveMatches: [match], hiddenCompetitions: [] });
+  panel._enabledLiveAlerts = new Set();
+  panel._mutedLiveAlerts = new Set();
+
+  const markup = panel._livePage();
+
+  assert.match(markup, /data-live-match-alert="live-checkbox"/);
+});
+
+test("an enabled id-only match sends notifications using its selected alert setting", () => {
+  const match = {
+    id: "provider-only-id", status_short: "2H", home_team: "Everton", away_team: "Leeds",
+    home_goals: 1, away_goals: 0, events: [],
+  };
+  const panel = makePanel({
+    primary: {}, liveMatches: [match], hiddenCompetitions: [],
+    localValues: {
+      football_hub_notification_match_states: JSON.stringify({
+        "provider-only-id": { status: "2H", home: 0, away: 0, cards: [] },
+      }),
+    },
+  });
+  panel._enabledLiveAlerts = new Set(["provider-only-id"]);
+  panel._mutedLiveAlerts = new Set();
+  panel._liveNotifications = { goals: true };
+  const attrs = panel._attrs;
+  panel._attrs = (name) => name === "matches_today" ? { matches: [match] } : attrs(name);
+  panel._showLiveAlert = (...args) => { panel._observedAlert = args; };
+
+  panel._processLiveNotifications();
+
+  assert.deepEqual(panel._observedAlert, ["Goal update", "Everton 1–0 Leeds", "goal"]);
+});
+
 test("match filter bulk actions select and clear countries, competitions and genders together", () => {
   const panel = makePanel({ primary: {}, liveMatches: [], hiddenCompetitions: [] });
   panel._hiddenLiveCountries = new Set(["England"]);
@@ -228,5 +285,5 @@ test("overview offers GitHub star and share actions", () => {
 
 test("release identifiers use the current stable version", () => {
   const source = fs.readFileSync(path.join(__dirname, "../custom_components/football_hub/frontend/football-hub-panel.js"), "utf8");
-  assert.match(source, /const PANEL_VERSION = "0\.8\.4"/);
+  assert.match(source, /const PANEL_VERSION = "0\.8\.5-beta\.1"/);
 });

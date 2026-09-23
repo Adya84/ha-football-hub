@@ -1,7 +1,7 @@
 # ⚽ Home Assistant Football Hub
 
 [![License](https://img.shields.io/badge/license-Personal%20Use-red.svg)](LICENSE)
-![Version](https://img.shields.io/badge/version-v0.8.4-brightgreen)
+![Version](https://img.shields.io/badge/version-v0.8.5--beta.1-brightgreen)
 ![Home Assistant](https://img.shields.io/badge/Home%20Assistant-2024.1%2B-blue)
 ![HACS](https://img.shields.io/badge/HACS-Custom-orange)
 ![Cloud Polling](https://img.shields.io/badge/IoT--Class-Cloud%20Polling-blue)
@@ -12,13 +12,11 @@ It also includes Last Man Standing (LMS) and Acca League tools, with private pla
 
 ---
 
-## Latest release — 0.8.4
+## Latest release — 0.8.5-beta.1
 
-- **Customise sidebar:** Show or hide each optional Football Hub tab independently from Settings. Overview always remains available, and hiding a tab never removes its data, sensors or saved settings.
-- **No LMS or Acca changes:** The new controls only hide sidebar buttons. LMS and Acca League games, links, emails, records and services continue exactly as before.
-- **Help Football Hub grow:** **Star us on GitHub** and **Share with friends** now appear at the top of Overview. Sharing opens the device share menu where available, otherwise copies the project link.
-- **Local-only preferences:** Sidebar choices are stored in the browser, so changing them does not call Home Assistant services or reload football data.
-- **Live reliability:** Country filters open without trapping page scrolling or repeatedly saving preferences. Selected men's and women's filters survive refreshes, and country flags cover Faroe Islands and Europe.
+- **Per-match alerts:** Every Live match can be enabled or disabled independently, while favourite-club matches begin enabled automatically.
+- **Bulk controls:** Select all enables every match; Deselect non-favourites preserves favourite-club match alerts.
+- **Event controls:** Choose the alert types you want, including goals, kick-off, cards, half-time and full-time.
 
 ---
 
