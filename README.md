@@ -1,7 +1,7 @@
 # ⚽ Home Assistant Football Hub
 
 [![License](https://img.shields.io/badge/license-Personal%20Use-red.svg)](LICENSE)
-![Version](https://img.shields.io/badge/version-v0.8.5-brightgreen)
+![Version](https://img.shields.io/badge/version-v0.8.6-brightgreen)
 ![Home Assistant](https://img.shields.io/badge/Home%20Assistant-2024.1%2B-blue)
 ![HACS](https://img.shields.io/badge/HACS-Custom-orange)
 ![Cloud Polling](https://img.shields.io/badge/IoT--Class-Cloud%20Polling-blue)
@@ -22,11 +22,15 @@ It also includes Last Man Standing (LMS) and Acca League tools, with private pla
 
 ---
 
-## Latest release — 0.8.5
+## Latest release — 0.8.6
 
-### Live Centre notifications
+### Live Centre improvements
 
-Every match now has its own notification checkbox, so you can follow only the fixtures that matter to you. Favourite-club matches start selected automatically.
+The Live Centre is now quicker to scan and easier to tailor. Match filters and optional controls can be collapsed when you are not using them, leaving more room for the matches themselves.
+
+### Match notifications
+
+Every live match has its own notification checkbox, so you can follow only the fixtures that matter to you. Favourite-club matches start selected automatically, but you can manually change any one match.
 
 | Control | What it does |
 | --- | --- |
@@ -35,6 +39,10 @@ Every match now has its own notification checkbox, so you can follow only the fi
 | **Event controls** | Choose the alert types: goals, kick-off, cards, half-time and full-time. |
 
 **Find it:** Open **Football Hub → Live Centre → Match Alerts**. Use the individual match checkbox to override one fixture.
+
+### Live status and refresh information
+
+The Live Centre displays a clear Online/Offline state, number of live games and a refresh-age timer in the update strip. The connection dot is green while Football Hub is online and red when it is offline. Live fixtures also show an in-match status badge, such as **LIVE**, **Half-time**, **Full-time** or **Extra time**.
 
 ---
 
@@ -54,6 +62,8 @@ Every match now has its own notification checkbox, so you can follow only the fi
 ### HACS
 
 Use the **Quick install — HACS** steps above. HACS keeps the integration in `config/custom_components/football_hub` and offers future updates from its **Updates** page.
+
+> To install the current stable version, choose the normal download option in HACS. Pre-release builds are not required for Football Hub 0.8.6.
 
 ### Manual installation
 
@@ -101,6 +111,9 @@ After any update, hard-refresh the Football Hub browser page with **Ctrl+F5** (W
 - Country flags, match timers, goals, cards, substitutions and score updates
 - Starred preferred competitions and favourite-club priority
 - Optional on-page alerts for kick-off, goals, cards, half-time and full-time
+- Individual match notification selection, plus Select all matches and Deselect non-favourites controls
+- A green LIVE badge during play, plus clear half-time, full-time and extra-time states
+- Online/offline status, live-match count and an update-age timer
 - Match details with timeline, statistics, line-ups, venue, referee and weather where available
 - Optional Sports Streams hand-off links for exact football-event matches (requires Sports Streams to be installed in Stremio)
 
