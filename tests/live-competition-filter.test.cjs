@@ -80,6 +80,16 @@ test("Live Centre fallback shows the number of visible live matches", () => {
   assert.match(markup, /<div class="live-count"><strong>1<\/strong><span>Live now<\/span><\/div>/);
 });
 
+test("live match cards show a glowing LIVE timer pill", () => {
+  const source = fs.readFileSync(path.join(__dirname, "../custom_components/football_hub/frontend/football-hub-panel.js"), "utf8");
+
+  assert.match(source, /class="live-match-pill"><i><\/i>LIVE/);
+  assert.match(source, /HT: "HALF TIME", ET: "EXTRA TIME", BT: "EXTRA TIME BREAK", P: "PENALTIES", FT: "FULL TIME"/);
+  assert.match(source, /class="match-state-pill/);
+  assert.match(source, /@keyframes live-match-glow/);
+  assert.match(source, /prefers-reduced-motion: reduce/);
+});
+
 test("closed countries defer their competition controls until opened", () => {
   const panel = makePanel({
     primary: {},
@@ -340,5 +350,5 @@ test("Online connection dot is green", () => {
 
 test("release identifiers use the current stable version", () => {
   const source = fs.readFileSync(path.join(__dirname, "../custom_components/football_hub/frontend/football-hub-panel.js"), "utf8");
-  assert.match(source, /const PANEL_VERSION = "0\.8\.6-beta\.3"/);
+  assert.match(source, /const PANEL_VERSION = "0\.8\.6-beta\.4"/);
 });

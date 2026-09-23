@@ -1,4 +1,4 @@
-const PANEL_VERSION = "0.8.6-beta.3";
+const PANEL_VERSION = "0.8.6-beta.4";
 // Temporarily paused while fixture schedules are being corrected. Manual email
 // actions remain available to the administrator.
 const LMS_AUTOMATIC_EMAILS_ENABLED = false;
@@ -3501,10 +3501,18 @@ class FootballHubPanel extends HTMLElement {
     const statusText = statusLabels[match.status_short] || this._matchText(match.status) || this._matchText(match.status_short);
     const liveStatuses = new Set(["LIVE", "1H", "HT", "2H", "ET", "BT", "P", "SUSP", "INT"]);
     const isLive = liveStatuses.has(String(match.status_short || "").toUpperCase());
+    const matchStatus = String(match.status_short || "").toUpperCase();
     const elapsedText = match.elapsed !== null && match.elapsed !== undefined && String(match.elapsed).trim()
       ? `${String(match.elapsed).replace(/'+$/, "")}'`
       : "";
-    const cardStatusText = isLive && elapsedText ? `Live · ${elapsedText}` : statusText;
+    const cardStatusText = isLive && elapsedText ? `LIVE · ${elapsedText}` : statusText;
+    const statePillLabels = { HT: "HALF TIME", ET: "EXTRA TIME", BT: "EXTRA TIME BREAK", P: "PENALTIES", FT: "FULL TIME", AET: "FULL TIME", PEN: "FULL TIME" };
+    const statePill = statePillLabels[matchStatus];
+    const cardStatus = statePill
+      ? `<span class="match-state-pill ${matchStatus === "FT" || matchStatus === "AET" || matchStatus === "PEN" ? "finished" : "paused"}">${this._escape(statePill)}</span>`
+      : isLive
+      ? `<span class="live-match-pill"><i></i>LIVE${elapsedText ? ` · ${this._escape(elapsedText)}` : ""}</span>`
+      : `<span>${this._escape(cardStatusText)}</span>`;
     const score = isResult || match.status_short !== "NS"
       ? `<div class="match-score">${this._score(match.home_goals)} <span>–</span> ${this._score(match.away_goals)}</div>`
       : `<div class="match-time">${this._formatDate(match.kickoff)}</div>`;
@@ -3520,7 +3528,7 @@ class FootballHubPanel extends HTMLElement {
         <div class="match-competition"><ha-icon icon="mdi:trophy-outline"></ha-icon><strong>${this._escape(competitionText)}</strong>${matchAlertControl}</div>
         <div class="match-meta">
           <span>${this._escape(roundText)}</span>
-          <span>${this._escape(cardStatusText)}</span>
+          ${cardStatus}
         </div>
         <div class="match-teams">
           <div class="team home">
@@ -6401,6 +6409,12 @@ class FootballHubPanel extends HTMLElement {
         color: var(--secondary-text-color);
         font-size: .76rem;
       }
+      .live-match-pill { display:inline-flex; align-items:center; gap:6px; padding:5px 8px; border:1px solid rgba(134,239,172,.58); border-radius:999px; color:#dcfce7; background:rgba(34,197,94,.18); font-size:.68rem; font-weight:900; letter-spacing:.06em; line-height:1; animation:live-match-glow 1.35s ease-in-out infinite; }
+      .live-match-pill i { display:block; width:6px; height:6px; border-radius:50%; background:#86efac; box-shadow:0 0 8px #86efac; }
+      .match-state-pill { display:inline-flex; align-items:center; padding:5px 8px; border:1px solid rgba(251,191,36,.58); border-radius:999px; color:#fef3c7; background:rgba(245,158,11,.16); font-size:.68rem; font-weight:900; letter-spacing:.06em; line-height:1; }
+      .match-state-pill.finished { border-color:rgba(255,255,255,.24); color:var(--secondary-text-color); background:rgba(255,255,255,.07); }
+      @keyframes live-match-glow { 50% { border-color:rgba(134,239,172,.95); background:rgba(34,197,94,.36); box-shadow:0 0 15px rgba(74,222,128,.35); } }
+      @media (prefers-reduced-motion: reduce) { .live-match-pill { animation:none; } }
       .match-competition {
         display: flex;
         align-items: center;
