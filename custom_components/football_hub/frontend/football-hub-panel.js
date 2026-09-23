@@ -1,4 +1,4 @@
-const PANEL_VERSION = "0.8.5-beta.1";
+const PANEL_VERSION = "0.8.5";
 // Temporarily paused while fixture schedules are being corrected. Manual email
 // actions remain available to the administrator.
 const LMS_AUTOMATIC_EMAILS_ENABLED = false;
