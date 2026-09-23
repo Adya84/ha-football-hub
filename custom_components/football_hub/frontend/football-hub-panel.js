@@ -1,4 +1,4 @@
-const PANEL_VERSION = "0.8.6-beta.15";
+const PANEL_VERSION = "0.8.6-beta.16";
 // Temporarily paused while fixture schedules are being corrected. Manual email
 // actions remain available to the administrator.
 const LMS_AUTOMATIC_EMAILS_ENABLED = false;
@@ -5865,25 +5865,25 @@ class FootballHubPanel extends HTMLElement {
         isolation: isolate;
         align-items: center;
         justify-content: center;
-        width: 128px;
-        height: 128px;
-        min-height: 128px;
+        width: 112px;
+        height: 112px;
+        min-height: 112px;
         padding: 10px;
         border: 0;
         border-radius: 50%;
         color: #f8fafc;
-        background: linear-gradient(rgba(2,9,20,.06), rgba(2,9,20,.20)), url("/football_hub/football-hub-logo.png?v=0.4.0") 50% 23%/330% auto;
+        background: linear-gradient(rgba(2,9,20,.04), rgba(2,9,20,.14)), url("/football_hub/football-hub-logo.png?v=0.4.0") 50% 28%/260% auto;
         text-decoration: none;
         box-shadow: none;
         transition: transform .18s ease, filter .18s ease;
       }
 
       .header-beer-link:hover { transform: translateY(-3px) rotate(-4deg); filter:brightness(1.08); }
-      .donation-kicker, .beer-copy { position:absolute; z-index:1; left:50%; width:max-content; min-width:154px; padding:7px 11px; transform:translateX(-50%); border:1px solid rgba(83,205,255,.55); border-radius:11px; background:rgba(1,17,33,.96); box-shadow:0 5px 14px rgba(0,0,0,.42); line-height:1; text-align:center; }
-      .donation-kicker { bottom:calc(100% + 10px); color:#b9efff; font-size:.68rem; font-weight:900; letter-spacing:.09em; text-transform:uppercase; }
+      .donation-kicker, .beer-copy { position:absolute; z-index:1; left:50%; width:max-content; padding:0; transform:translateX(-50%); border:0; background:transparent; box-shadow:none; font-family:Impact,"Arial Black",sans-serif; line-height:1; text-align:center; text-shadow:0 2px 5px #020617,0 0 8px #020617; }
+      .donation-kicker { bottom:calc(100% + 10px); color:#b9efff; font-size:.78rem; font-weight:900; letter-spacing:.055em; text-transform:uppercase; }
       .beer-copy { top:calc(100% + 10px); }
-      .beer-label { color:#fff; font-size: .88rem; font-weight: 850; letter-spacing:.02em; line-height:1; white-space:nowrap; }
-      .beer-label b { color:#63dcff; font-weight:950; letter-spacing:.07em; }
+      .beer-label { color:#fff; font-size:1.02rem; font-weight:900; letter-spacing:.03em; line-height:1; white-space:nowrap; }
+      .beer-label b { color:#63dcff; font-weight:950; letter-spacing:.08em; }
 
       .competition-picker {
         display: flex;
