@@ -188,6 +188,13 @@ test("Live Centre keeps optional controls collapsed until the user opens them", 
   assert.doesNotMatch(markup, /id="live-alert-panel" class="page-card live-alerts-compact" open/);
 });
 
+test("Live Centre puts compact alerts and Sports Streams in the same utility row", () => {
+  const source = fs.readFileSync(path.join(__dirname, "../custom_components/football_hub/frontend/football-hub-panel.js"), "utf8");
+
+  assert.match(source, /liveUtilities && nuvioSettings\) liveUtilities\.append\(nuvioSettings\)/);
+  assert.match(source, /\.live-utility-grid\.compact \{ grid-template-columns:repeat\(2,minmax\(0,1fr\)\)/);
+});
+
 test("an enabled id-only match sends notifications using its selected alert setting", () => {
   const match = {
     id: "provider-only-id", status_short: "2H", home_team: "Everton", away_team: "Leeds",
@@ -311,7 +318,27 @@ test("overview offers GitHub star and share actions", () => {
   assert.ok(markup.indexOf("overview-community") < markup.indexOf("dashboard-grid"));
 });
 
+test("header beer link has a visible support label", () => {
+  const source = fs.readFileSync(path.join(__dirname, "../custom_components/football_hub/frontend/football-hub-panel.js"), "utf8");
+
+  assert.match(source, /<span class="beer-label">Buy me a beer<\/span>/);
+});
+
+test("Live Centre refreshes its update-age label between feed updates", () => {
+  const source = fs.readFileSync(path.join(__dirname, "../custom_components/football_hub/frontend/football-hub-panel.js"), "utf8");
+
+  assert.match(source, /this\._liveUpdatedAgeTimer = setInterval\(\(\) => this\._refreshLiveUpdatedAge\(\), 1000\)/);
+  assert.match(source, /_refreshLiveUpdatedAge\(\) \{[\s\S]*hero-live-status small[\s\S]*_liveUpdatedAge\(this\._statusInfo\(\)\.last_updated\)/);
+  assert.match(source, /clearInterval\(this\._liveUpdatedAgeTimer\);/);
+});
+
+test("Online connection dot is green", () => {
+  const source = fs.readFileSync(path.join(__dirname, "../custom_components/football_hub/frontend/football-hub-panel.js"), "utf8");
+
+  assert.match(source, /\.connection\.online \.dot \{\s*background: #86efac;/);
+});
+
 test("release identifiers use the current stable version", () => {
   const source = fs.readFileSync(path.join(__dirname, "../custom_components/football_hub/frontend/football-hub-panel.js"), "utf8");
-  assert.match(source, /const PANEL_VERSION = "0\.8\.6-beta\.2"/);
+  assert.match(source, /const PANEL_VERSION = "0\.8\.6-beta\.3"/);
 });

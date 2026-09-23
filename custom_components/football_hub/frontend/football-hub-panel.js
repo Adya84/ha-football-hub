@@ -1,4 +1,4 @@
-const PANEL_VERSION = "0.8.6-beta.2";
+const PANEL_VERSION = "0.8.6-beta.3";
 // Temporarily paused while fixture schedules are being corrected. Manual email
 // actions remain available to the administrator.
 const LMS_AUTOMATIC_EMAILS_ENABLED = false;
@@ -163,6 +163,7 @@ class FootballHubPanel extends HTMLElement {
     this._lmsAutoCheckBusy = false;
     this._lmsReminderBusy = false;
     this._pendingLiveAlerts = [];
+    this._liveUpdatedAgeTimer = null;
   }
 
   _footballStateSignature() {
@@ -247,6 +248,8 @@ class FootballHubPanel extends HTMLElement {
     clearInterval(this._lmsSettleTimer);
     this._lmsSettleTimer = setInterval(() => this._maybeAutoSettleLmsRound(), 60000);
     queueMicrotask(() => this._maybeAutoSettleLmsRound());
+    clearInterval(this._liveUpdatedAgeTimer);
+    this._liveUpdatedAgeTimer = setInterval(() => this._refreshLiveUpdatedAge(), 1000);
   }
 
   disconnectedCallback() {
@@ -258,6 +261,8 @@ class FootballHubPanel extends HTMLElement {
     this._lmsSharePullTimer = null;
     clearInterval(this._lmsSettleTimer);
     this._lmsSettleTimer = null;
+    clearInterval(this._liveUpdatedAgeTimer);
+    this._liveUpdatedAgeTimer = null;
     clearTimeout(this._lmsShareSyncTimer);
     this._lmsShareSyncTimer = null;
   }
@@ -3581,7 +3586,7 @@ class FootballHubPanel extends HTMLElement {
     };
     const liveFeed = Array.isArray(this._attrs("live_matches").matches) ? this._attrs("live_matches").matches : [];
     const liveNow = liveFeed.filter((match) => ["1H", "HT", "2H", "ET", "BT", "P", "SUSP", "INT", "LIVE"].includes(String(match.status_short || "").toUpperCase())).length;
-    const liveStatus = this._activeTab === "live" ? `<div class="hero-live-status"><span class="connection ${String(status.state).toLowerCase() === "online" ? "online" : ""}"><span class="dot"></span>${this._escape(status.state)}</span><b>${liveNow} live</b><small>${this._escape(this._liveUpdatedAge(status.last_updated))}</small></div>` : "";
+    const liveStatus = this._activeTab === "live" ? `<div class="hero-live-status"><b>${liveNow} live</b><small>${this._escape(this._liveUpdatedAge(status.last_updated))}</small></div>` : "";
 
     const options = prefixes
       .map((prefix) => {
@@ -3635,6 +3640,7 @@ class FootballHubPanel extends HTMLElement {
           }
           <a class="header-beer-link" href="https://paypal.me/graffidoodle" target="_blank" rel="noopener noreferrer" title="Buy me a beer" aria-label="Buy me a beer">
             <span class="beer-icon">🍺</span>
+            <span class="beer-label">Buy me a beer</span>
           </a>
           <span class="connection ${String(status.state).toLowerCase() === "online" ? "online" : ""}">
             <span class="dot"></span>${this._escape(status.state)}
@@ -3925,6 +3931,12 @@ class FootballHubPanel extends HTMLElement {
 
   _liveCompetitionKey(country, competition) {
     return `${String(country || "International").trim()}|||${String(competition || "Other matches").trim()}`;
+  }
+
+  _refreshLiveUpdatedAge() {
+    const label = this.shadowRoot.querySelector(".hero-live-status small");
+    if (!label || this._activeTab !== "live") return;
+    label.textContent = this._liveUpdatedAge(this._statusInfo().last_updated);
   }
 
   _liveUpdatedAge(timestamp) {
@@ -4788,6 +4800,9 @@ class FootballHubPanel extends HTMLElement {
     const liveControls = this.shadowRoot.querySelector("#live-controls-panel");
     const liveFilterPanel = this.shadowRoot.querySelector("#live-filter-panel");
     if (liveControls && liveFilterPanel) liveControls.append(liveFilterPanel);
+    const liveUtilities = this.shadowRoot.querySelector(".live-utility-grid.compact");
+    const nuvioSettings = this.shadowRoot.querySelector(".nuvio-settings");
+    if (liveUtilities && nuvioSettings) liveUtilities.append(nuvioSettings);
 
     // Preserve every expandable section across sensor updates and re-renders.
     this.shadowRoot.querySelectorAll("details").forEach((details, index) => {
@@ -5838,12 +5853,13 @@ class FootballHubPanel extends HTMLElement {
       .hero-live-status small { color:var(--secondary-text-color); }
 
       .header-beer-link {
-        display: inline-grid;
-        width: 40px;
-        height: 40px;
-        place-items: center;
+        display: inline-flex;
+        align-items: center;
+        gap: 7px;
+        min-height: 40px;
+        padding: 0 12px;
         border: 1px solid rgba(255, 214, 72, .45);
-        border-radius: 50%;
+        border-radius: 999px;
         color: white;
         background: rgba(255, 193, 7, .12);
         text-decoration: none;
@@ -5852,6 +5868,7 @@ class FootballHubPanel extends HTMLElement {
 
       .header-beer-link:hover { transform: translateY(-2px); background: rgba(255, 193, 7, .24); }
       .beer-icon { font-size: 1.25rem; line-height: 1; }
+      .beer-label { font-size: .76rem; font-weight: 800; white-space: nowrap; }
 
       .competition-picker {
         display: flex;
@@ -5924,8 +5941,8 @@ class FootballHubPanel extends HTMLElement {
       }
 
       .connection.online .dot {
-        background: var(--fh-cyan);
-        box-shadow: 0 0 12px var(--fh-cyan);
+        background: #86efac;
+        box-shadow: 0 0 12px #86efac;
       }
 
       .tabs {
@@ -6431,6 +6448,7 @@ class FootballHubPanel extends HTMLElement {
       .live-toolbar input, .live-toolbar select, .fixture-filter input, .live-picker-control input { min-height: 42px; border-radius: 10px; padding: 8px 11px; border: 1px solid rgba(255,255,255,.18); background: var(--card-background-color); color: var(--primary-text-color); }
       .live-toolbar > button { min-height: 42px; display: flex; align-items: center; justify-content: center; gap: 7px; }
       .nuvio-settings { margin: 16px 0; }
+      .live-utility-grid.compact .nuvio-settings { margin:0; padding:11px 14px; border-radius:14px; }
       .nuvio-settings summary { display:flex; justify-content:space-between; align-items:center; cursor:pointer; font-weight:800; }
       .nuvio-settings summary span { display:inline-flex; align-items:center; gap:8px; }
       .nuvio-settings summary small { color:#78ffb1; text-transform:uppercase; letter-spacing:.08em; }
@@ -6463,7 +6481,7 @@ class FootballHubPanel extends HTMLElement {
       .live-utility-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin: 16px 0 24px; }
       .live-utility-grid p { color: var(--secondary-text-color); }
       .live-diagnostics > div { display: flex; justify-content: space-between; gap: 12px; padding: 7px 0; border-bottom: 1px solid rgba(255,255,255,.08); }
-      .live-utility-grid.compact { grid-template-columns:minmax(0,1.35fr) minmax(300px,.65fr); gap:10px; margin:8px 0 14px; }
+      .live-utility-grid.compact { grid-template-columns:repeat(2,minmax(0,1fr)); gap:10px; margin:8px 0 14px; }
       .live-diagnostics.compact { display:none; }
       .live-utility-grid.compact .page-card { padding:11px 14px; border-radius:14px; }
       .live-utility-grid.compact header { display:flex; align-items:center; justify-content:space-between; gap:12px; margin-bottom:8px; }
