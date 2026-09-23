@@ -12,6 +12,16 @@ It also includes Last Man Standing (LMS) and Acca League tools, with private pla
 
 ---
 
+## Contents
+
+- [Install Football Hub](#install-football-hub)
+- [First-time setup](#first-time-setup)
+- [Updating Football Hub](#updating-football-hub)
+- [What Football Hub includes](#what-football-hub-includes)
+- [Data refresh and troubleshooting](#data-refresh-and-troubleshooting)
+
+---
+
 ## Latest release — 0.8.5
 
 - **Per-match alerts:** Every Live match can be enabled or disabled independently, while favourite-club matches begin enabled automatically.
@@ -20,24 +30,58 @@ It also includes Last Man Standing (LMS) and Acca League tools, with private pla
 
 ---
 
-## Installation
+## Install Football Hub
+
+### Quick install — HACS
+
+1. Open **HACS → Integrations** in Home Assistant.
+2. Select the three-dot menu, choose **Custom repositories**, then add `https://github.com/Adya84/ha-football-hub`.
+3. Set the category to **Integration** and select **Add**.
+4. Search HACS integrations for **Football Hub**, open it, then select **Download**.
+5. Restart Home Assistant when HACS finishes installing it.
+6. Continue with [First-time setup](#first-time-setup).
+
+> New to HACS? Install and configure HACS first, then return to these steps. Football Hub is added as a custom repository; it is not installed from the default HACS catalogue.
 
 ### HACS
 
-1. In **HACS → Integrations → Custom repositories**, add `https://github.com/Adya84/ha-football-hub` as an **Integration** repository.
-2. Install **Football Hub**.
-3. Restart Home Assistant.
-4. Go to **Settings → Devices & Services → Add Integration** and add **Football Hub**.
-5. Open Football Hub from the sidebar and choose your country, competition and favourite clubs.
+Use the **Quick install — HACS** steps above. HACS keeps the integration in `config/custom_components/football_hub` and offers future updates from its **Updates** page.
 
 ### Manual installation
 
-1. Download the latest [release](https://github.com/Adya84/ha-football-hub/releases).
-2. Copy `custom_components/football_hub` into `config/custom_components/football_hub`.
-3. Restart Home Assistant.
-4. Add Football Hub from **Settings → Devices & Services**.
+1. Download the source ZIP for the required [release](https://github.com/Adya84/ha-football-hub/releases), then extract it.
+2. In your Home Assistant configuration directory, create `custom_components` if it does not already exist.
+3. Copy the extracted `custom_components/football_hub` folder so the final path is exactly:
 
-After an update, restart Home Assistant and hard-refresh the browser with **Ctrl+F5**.
+   ```text
+   config/custom_components/football_hub/manifest.json
+   ```
+
+   Do not copy the outer repository folder or create a nested `football_hub/football_hub` folder.
+4. Restart Home Assistant fully: **Settings → System → Restart Home Assistant**.
+5. Continue with [First-time setup](#first-time-setup).
+
+### First-time setup
+
+1. In Home Assistant, go to **Settings → Devices & services**.
+2. Select **Add integration**, search for **Football Hub**, and select it.
+3. Confirm the empty setup form. Football Hub starts with the English Premier League and does not require an API key.
+4. Open **Football Hub** from the Home Assistant sidebar.
+5. Use the competition controls to choose your country, competition and season. Add clubs in **My Club** to follow them across supported competitions.
+
+### Updating Football Hub
+
+**HACS:** Open **HACS → Integrations**, select Football Hub, then install the available update and restart Home Assistant.
+
+**Manual installation:** Download the new release, replace only `config/custom_components/football_hub`, and restart Home Assistant. Keep your Home Assistant configuration directory and do not remove unrelated custom components.
+
+After any update, hard-refresh the Football Hub browser page with **Ctrl+F5** (Windows/Linux) or **Cmd+Shift+R** (macOS). This ensures the new dashboard JavaScript is loaded.
+
+### Installation checks
+
+- **Football Hub is not listed in Add integration:** Confirm the path ends in `custom_components/football_hub/manifest.json`, restart Home Assistant, and check the logs for a manifest or import error.
+- **The panel still shows an older version:** Restart Home Assistant, then hard-refresh the browser. Clear the browser cache for your Home Assistant URL if needed.
+- **HACS cannot find the repository:** Check that the custom repository category is **Integration** and that the repository URL is exactly `https://github.com/Adya84/ha-football-hub`.
 
 ---
 
