@@ -1,4 +1,4 @@
-const PANEL_VERSION = "0.8.6-beta.17";
+const PANEL_VERSION = "0.8.6-beta.18";
 // Temporarily paused while fixture schedules are being corrected. Manual email
 // actions remain available to the administrator.
 const LMS_AUTOMATIC_EMAILS_ENABLED = false;
@@ -5853,10 +5853,10 @@ class FootballHubPanel extends HTMLElement {
         justify-content: flex-end;
       }
 
-      .hero-live-status { display:flex; align-items:center; gap:9px; padding:8px 10px; border:1px solid rgba(134,239,172,.22); border-radius:12px; background:rgba(255,255,255,.05); font-size:.72rem; white-space:nowrap; }
-      .hero-live-status .connection { padding:0; border:0; background:transparent; font-size:.72rem; }
-      .hero-live-status b { color:#86efac; font-size:.82rem; }
-      .hero-live-status small { color:var(--secondary-text-color); }
+      .hero-live-status { display:flex; align-items:center; gap:11px; min-height:48px; padding:10px 14px; border:1px solid rgba(134,239,172,.22); border-radius:12px; background:rgba(255,255,255,.05); font-size:.84rem; white-space:nowrap; }
+      .hero-live-status .connection { padding:0; border:0; background:transparent; font-size:.84rem; }
+      .hero-live-status b { color:#86efac; font-size:.94rem; }
+      .hero-live-status small { color:var(--secondary-text-color); font-size:.82rem; }
 
       .header-beer-link {
         display: inline-flex;

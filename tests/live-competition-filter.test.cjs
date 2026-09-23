@@ -353,6 +353,7 @@ test("Live update bar owns the connection status while the beer link uses the he
   const source = fs.readFileSync(path.join(__dirname, "../custom_components/football_hub/frontend/football-hub-panel.js"), "utf8");
 
   assert.match(source, /hero-live-status"><span class="connection/);
+  assert.match(source, /\.hero-live-status \{[^}]*min-height:48px;[^}]*padding:10px 14px;[^}]*font-size:\.84rem;/);
   assert.doesNotMatch(source, /<\/a>\s*<span class="connection/);
   assert.match(source, /<\/div><\/div>\s*<\/div>\s*<div class="hero-actions">[\s\S]*class="header-beer-link"/);
   assert.match(source, /\.header-beer-link \{[\s\S]*width: 112px;[\s\S]*height: 112px;[\s\S]*border-radius: 50%;/);
@@ -367,5 +368,5 @@ test("Live update bar owns the connection status while the beer link uses the he
 
 test("release identifiers use the current stable version", () => {
   const source = fs.readFileSync(path.join(__dirname, "../custom_components/football_hub/frontend/football-hub-panel.js"), "utf8");
-  assert.match(source, /const PANEL_VERSION = "0\.8\.6-beta\.17"/);
+  assert.match(source, /const PANEL_VERSION = "0\.8\.6-beta\.18"/);
 });
