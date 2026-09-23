@@ -1,4 +1,4 @@
-const PANEL_VERSION = "0.8.6-beta.14";
+const PANEL_VERSION = "0.8.6-beta.15";
 // Temporarily paused while fixture schedules are being corrected. Manual email
 // actions remain available to the administrator.
 const LMS_AUTOMATIC_EMAILS_ENABLED = false;
@@ -3647,7 +3647,8 @@ class FootballHubPanel extends HTMLElement {
               : ""
           }
           <a class="header-beer-link" href="https://paypal.me/graffidoodle" target="_blank" rel="noopener noreferrer" title="Donate to Football Hub" aria-label="Donate to Football Hub">
-            <span class="beer-copy"><small>Keep us in play</small><span class="beer-label"><b>SHOOT</b> us a donation</span></span>
+            <small class="donation-kicker">Keep us in play</small>
+            <span class="beer-copy"><span class="beer-label"><b>SHOOT</b> us a donation</span></span>
           </a>
         </div>
       </header>
@@ -5871,16 +5872,17 @@ class FootballHubPanel extends HTMLElement {
         border: 0;
         border-radius: 50%;
         color: #f8fafc;
-        background: linear-gradient(rgba(2,9,20,.08), rgba(2,9,20,.28)), url("/football_hub/football-hub-logo.png?v=0.4.0") 50% 16%/250% auto;
+        background: linear-gradient(rgba(2,9,20,.06), rgba(2,9,20,.20)), url("/football_hub/football-hub-logo.png?v=0.4.0") 50% 23%/330% auto;
         text-decoration: none;
         box-shadow: none;
         transition: transform .18s ease, filter .18s ease;
       }
 
       .header-beer-link:hover { transform: translateY(-3px) rotate(-4deg); filter:brightness(1.08); }
-      .beer-copy { position:absolute; z-index:1; top:calc(100% + 8px); left:50%; display:flex; width:max-content; min-width:132px; flex-direction:column; align-items:center; gap:3px; padding:5px 9px; transform:translateX(-50%); border:1px solid rgba(83,205,255,.38); border-radius:10px; background:rgba(1,17,33,.92); box-shadow:0 4px 12px rgba(0,0,0,.35); line-height:1; text-align:center; }
-      .beer-copy small { color:#b9efff; font-size:.53rem; font-weight:900; letter-spacing:.08em; line-height:1; text-transform:uppercase; }
-      .beer-label { color:#fff; font-size: .73rem; font-weight: 800; letter-spacing:.02em; line-height:1; white-space:nowrap; }
+      .donation-kicker, .beer-copy { position:absolute; z-index:1; left:50%; width:max-content; min-width:154px; padding:7px 11px; transform:translateX(-50%); border:1px solid rgba(83,205,255,.55); border-radius:11px; background:rgba(1,17,33,.96); box-shadow:0 5px 14px rgba(0,0,0,.42); line-height:1; text-align:center; }
+      .donation-kicker { bottom:calc(100% + 10px); color:#b9efff; font-size:.68rem; font-weight:900; letter-spacing:.09em; text-transform:uppercase; }
+      .beer-copy { top:calc(100% + 10px); }
+      .beer-label { color:#fff; font-size: .88rem; font-weight: 850; letter-spacing:.02em; line-height:1; white-space:nowrap; }
       .beer-label b { color:#63dcff; font-weight:950; letter-spacing:.07em; }
 
       .competition-picker {
@@ -7226,9 +7228,9 @@ class FootballHubPanel extends HTMLElement {
         .app-shell.view-desktop .hero { min-height:auto; }
         .app-shell.view-desktop .hero-brand { margin-left:0; }
         .brand-ball, .header-beer-link { width:74px; height:74px; min-height:74px; }
-        .header-beer-link .beer-copy { width:58px; padding:4px 3px; gap:1px; }
-        .header-beer-link .beer-copy small { font-size:.42rem; letter-spacing:.04em; }
-        .header-beer-link .beer-label { max-width:56px; font-size:.53rem; }
+        .header-beer-link .donation-kicker, .header-beer-link .beer-copy { min-width:74px; padding:4px 5px; }
+        .header-beer-link .donation-kicker { font-size:.42rem; letter-spacing:.04em; }
+        .header-beer-link .beer-label { max-width:74px; font-size:.53rem; }
         .app-shell.view-desktop .panel-back-button { position:static; }
         .app-shell.view-desktop .tabs { position:sticky; top:0; flex-direction:row; overflow-x:auto; border-right:0; border-bottom:1px solid rgba(0,183,255,.28); }
         .app-shell.view-desktop .tabs button { width:auto; min-width:max-content; }
