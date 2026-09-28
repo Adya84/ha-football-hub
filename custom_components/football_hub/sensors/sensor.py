@@ -13,7 +13,7 @@ from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from ..competitions import COMPETITIONS, SEASONS
 from ..const import DOMAIN
-from ..engine.helpers import clean_fixture, fixture_timestamp, limit_items
+from ..engine.helpers import clean_fixture, favourite_fixture_kickoff_attributes, fixture_timestamp, limit_items
 
 ATTRIBUTE_LIMIT = 5
 
@@ -229,6 +229,7 @@ class FootballHubFavouriteClubSensor(FootballHubBaseSensor):
             "competition_key": self.competition_key,
             "country": data.get("country"),
             "data": limit_items(value, 20) if isinstance(value, list) else value,
+            **(favourite_fixture_kickoff_attributes(value) if self.kind == "next_fixture" else {}),
         }
 
 

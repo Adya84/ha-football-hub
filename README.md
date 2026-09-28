@@ -1,7 +1,7 @@
 # ⚽ Home Assistant Football Hub
 
 [![License](https://img.shields.io/badge/license-Personal%20Use-red.svg)](LICENSE)
-![Version](https://img.shields.io/badge/version-v0.8.6-brightgreen)
+![Version](https://img.shields.io/badge/version-v0.8.7-brightgreen)
 ![Home Assistant](https://img.shields.io/badge/Home%20Assistant-2024.1%2B-blue)
 ![HACS](https://img.shields.io/badge/HACS-Custom-orange)
 ![Cloud Polling](https://img.shields.io/badge/IoT--Class-Cloud%20Polling-blue)
@@ -22,27 +22,18 @@ It also includes Last Man Standing (LMS) and Acca League tools, with private pla
 
 ---
 
-## Latest release — 0.8.6
+## Latest release — 0.8.7
 
-### Live Centre improvements
+### Favourite-club next fixture for automations
 
-The Live Centre is now quicker to scan and easier to tailor. Match filters and optional controls can be collapsed when you are not using them, leaving more room for the matches themselves.
+Each favourite club's **Next Fixture** sensor now exposes `kickoff` (an ISO date/time) and `kickoff_timestamp` (Unix seconds) as top-level attributes. The sensor state remains the match name, so existing cards and automations using it are unchanged. When no next fixture is available, both new attributes are empty.
 
-### Match notifications
+For a local-time display in a Home Assistant template, replace the entity ID below with your own:
 
-Every live match has its own notification checkbox, so you can follow only the fixtures that matter to you. Favourite-club matches start selected automatically, but you can manually change any one match.
-
-| Control | What it does |
-| --- | --- |
-| **Select all matches** | Turns notifications on for every listed match. |
-| **Deselect non-favourites** | Turns off manually selected matches while keeping favourite-club matches enabled. |
-| **Event controls** | Choose the alert types: goals, kick-off, cards, half-time and full-time. |
-
-**Find it:** Open **Football Hub → Live Centre → Match Alerts**. Use the individual match checkbox to override one fixture.
-
-### Live status and refresh information
-
-The Live Centre displays a clear Online/Offline state, number of live games and a refresh-age timer in the update strip. The connection dot is green while Football Hub is online and red when it is offline. Live fixtures also show an in-match status badge, such as **LIVE**, **Half-time**, **Full-time** or **Extra time**.
+```jinja2
+{% set kickoff = state_attr('sensor.your_club_next_fixture', 'kickoff') %}
+{{ as_local(as_datetime(kickoff)).strftime('%a %-d %b at %H:%M') if kickoff else 'No next fixture' }}
+```
 
 ---
 
@@ -63,7 +54,7 @@ The Live Centre displays a clear Online/Offline state, number of live games and 
 
 Use the **Quick install — HACS** steps above. HACS keeps the integration in `config/custom_components/football_hub` and offers future updates from its **Updates** page.
 
-> To install the current stable version, choose the normal download option in HACS. Pre-release builds are not required for Football Hub 0.8.6.
+> To install the current stable version, choose the normal download option in HACS. Pre-release builds are not required for Football Hub 0.8.7.
 
 ### Manual installation
 

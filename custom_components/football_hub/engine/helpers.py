@@ -63,6 +63,14 @@ def fixture_timestamp(match: dict[str, Any]) -> int:
     return get_path(match, "fixture", "timestamp", default=0) or 0
 
 
+def favourite_fixture_kickoff_attributes(match: dict[str, Any] | None) -> dict[str, Any]:
+    """Expose a favourite fixture's kickoff directly for HA automations."""
+    return {
+        "kickoff": get_path(match, "fixture", "date"),
+        "kickoff_timestamp": get_path(match, "fixture", "timestamp"),
+    }
+
+
 def is_finished(match: dict[str, Any]) -> bool:
     """Return true if fixture is finished."""
     return status_short(match) in FINISHED_STATUS
