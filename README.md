@@ -1,7 +1,7 @@
 # ⚽ Home Assistant Football Hub
 
 [![License](https://img.shields.io/badge/license-Personal%20Use-red.svg)](LICENSE)
-![Version](https://img.shields.io/badge/version-v0.8.7-brightgreen)
+![Version](https://img.shields.io/badge/version-v0.8.8-brightgreen)
 ![Home Assistant](https://img.shields.io/badge/Home%20Assistant-2024.1%2B-blue)
 ![HACS](https://img.shields.io/badge/HACS-Custom-orange)
 ![Cloud Polling](https://img.shields.io/badge/IoT--Class-Cloud%20Polling-blue)
@@ -22,18 +22,13 @@ It also includes Last Man Standing (LMS) and Acca League tools, with private pla
 
 ---
 
-## Latest release — 0.8.7
+## Latest release — 0.8.8
 
-### Favourite-club next fixture for automations
+### Last Man Standing result correction
 
-Each favourite club's **Next Fixture** sensor now exposes `kickoff` (an ISO date/time) and `kickoff_timestamp` (Unix seconds) as top-level attributes. The sensor state remains the match name, so existing cards and automations using it are unchanged. When no next fixture is available, both new attributes are empty.
+Round 1 buy-back recovery no longer puts a player back **Through** after they were eliminated in a later round. Existing records with that mismatch are corrected when the LMS page reloads and syncs.
 
-For a local-time display in a Home Assistant template, replace the entity ID below with your own:
-
-```jinja2
-{% set kickoff = state_attr('sensor.your_club_next_fixture', 'kickoff') %}
-{{ as_local(as_datetime(kickoff)).strftime('%a %-d %b at %H:%M') if kickoff else 'No next fixture' }}
-```
+Unlocked private-competition admins now have **Mark Out** and **Undo Mark Out** controls on player cards. A manual elimination keeps the player's picks and payment history and asks for confirmation before changing status.
 
 ---
 
@@ -54,7 +49,7 @@ For a local-time display in a Home Assistant template, replace the entity ID bel
 
 Use the **Quick install — HACS** steps above. HACS keeps the integration in `config/custom_components/football_hub` and offers future updates from its **Updates** page.
 
-> To install the current stable version, choose the normal download option in HACS. Pre-release builds are not required for Football Hub 0.8.7.
+> To install the current stable version, choose the normal download option in HACS. Pre-release builds are not required for Football Hub 0.8.8.
 
 ### Manual installation
 

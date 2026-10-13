@@ -228,6 +228,72 @@ test('a saved buy-back restores a player overwritten as eliminated by shared sta
   assert.equal(player.buyBackRounds['1'], true);
 });
 
+test('a Round 1 buy-back cannot revive a player eliminated in Round 2', () => {
+  const { panel } = setup('private');
+  const competition = panel._lmsCompetition;
+  competition.round = 3;
+  const player = competition.players[0];
+  player.name = 'Nathan';
+  player.buyBacks = 1;
+  player.buyBackRounds = { 1: true };
+  player.picks = { 1: 'Manchester United', 2: 'Newcastle United' };
+  player.results = { 1: 'bought-back', 2: 'eliminated' };
+  player.alive = true;
+
+  assert.equal(panel._restoreLmsBuyBacks(), true);
+  assert.equal(player.alive, false);
+  assert.equal(player.results['1'], 'bought-back');
+  assert.equal(player.results['2'], 'eliminated');
+});
+
+test('admin can mark a player out and undo without losing picks or payment history', () => {
+  const { panel } = setup('private');
+  const competition = panel._lmsCompetition;
+  competition.round = 3;
+  const player = competition.players[0];
+  player.buyBacks = 1;
+  player.buyBackRounds = { 1: true };
+  player.paid = true;
+  player.picks = { 1: 'Manchester United', 2: 'Arsenal' };
+  player.results = { 1: 'bought-back', 2: 'survived' };
+
+  panel._markLmsPlayerOut(player.id);
+  assert.equal(player.alive, false);
+  assert.equal(player.results['3'], 'eliminated-manual');
+  assert.equal(player.picks['2'], 'Arsenal');
+  assert.equal(player.paid, true);
+  panel._restoreLmsBuyBacks();
+  assert.equal(player.alive, false, 'buy-back recovery must not undo the manual decision');
+
+  panel._undoLmsPlayerOut(player.id);
+  assert.equal(player.alive, true);
+  assert.equal(player.results['3'], undefined);
+  assert.equal(player.results['1'], 'bought-back');
+  assert.equal(player.paid, true);
+});
+
+test('only the unlocked admin sees Mark Out and Undo controls on player cards', () => {
+  const { panel } = setup('private');
+  panel._lmsMode = 'private';
+  panel._lmsPageView = 'picks';
+  panel._lmsEmailServices = () => [];
+  panel._captureLmsLeagueData = () => {};
+  const player = panel._lmsCompetition.players[0];
+
+  let html = panel._lastManStandingPage();
+  assert.match(html, /class="lms-mark-out" data-player-id="a"/);
+  assert.doesNotMatch(html, /class="lms-undo-mark-out"/);
+
+  panel._markLmsPlayerOut(player.id);
+  html = panel._lastManStandingPage();
+  assert.doesNotMatch(html, /class="lms-mark-out" data-player-id="a"/);
+  assert.match(html, /class="lms-undo-mark-out" data-player-id="a"/);
+
+  panel._isLmsAdmin = () => false;
+  html = panel._lastManStandingPage();
+  assert.doesNotMatch(html, /class="lms-mark-out"|class="lms-undo-mark-out"/);
+});
+
 test('restart retains players and links while archiving the winner and resetting the prize', async () => {
   const { panel } = setup('private');
   const competition = panel._lmsCompetition;

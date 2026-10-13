@@ -1,4 +1,4 @@
-const PANEL_VERSION = "0.8.7";
+const PANEL_VERSION = "0.8.8";
 // Temporarily paused while fixture schedules are being corrected. Manual email
 // actions remain available to the administrator.
 const LMS_AUTOMATIC_EMAILS_ENABLED = false;
@@ -1325,6 +1325,35 @@ class FootballHubPanel extends HTMLElement {
     this._render();
   }
 
+  _markLmsPlayerOut(playerId) {
+    const competition = this._lmsCompetition;
+    if (!competition || competition.mode === "global" || competition.completed || !this._isLmsAdmin()) return;
+    const player = competition.players?.find((item) => String(item.id) === String(playerId));
+    if (!player?.alive || !window.confirm(`Mark ${player.name} out of the competition? Their picks and payment record will be kept.`)) return;
+    const round = String(competition.round);
+    player.results = player.results || {};
+    player.manualElimination = { round, previousResult: player.results[round] ?? null };
+    player.results[round] = "eliminated-manual";
+    player.alive = false;
+    this._saveLms();
+    this._render();
+  }
+
+  _undoLmsPlayerOut(playerId) {
+    const competition = this._lmsCompetition;
+    if (!competition || competition.mode === "global" || !this._isLmsAdmin()) return;
+    const player = competition.players?.find((item) => String(item.id) === String(playerId));
+    if (!player?.manualElimination || !window.confirm(`Undo the manual elimination for ${player.name}?`)) return;
+    const { round, previousResult } = player.manualElimination;
+    player.results = player.results || {};
+    if (previousResult === null) delete player.results[round];
+    else player.results[round] = previousResult;
+    delete player.manualElimination;
+    player.alive = !Object.entries(player.results).some(([, result]) => String(result).startsWith("eliminated"));
+    this._saveLms();
+    this._render();
+  }
+
   _canLmsBuyBack(player) {
     const competition = this._lmsCompetition;
     if (!competition || !player || player.alive || player.buyBackRounds?.["1"]) return false;
@@ -1347,6 +1376,7 @@ class FootballHubPanel extends HTMLElement {
     player.alive = true;
     player.results = player.results || {};
     player.results["1"] = "bought-back";
+    delete player.manualElimination;
     if (competition.completed && Number(competition.round) === 1) {
       competition.completed = false;
       competition.winnerId = "";
@@ -1396,8 +1426,10 @@ class FootballHubPanel extends HTMLElement {
         changed = true;
       }
       player.results = player.results || {};
-      if (!player.alive || player.results["1"] !== "bought-back") {
-        player.alive = true;
+      const eliminatedLater = Boolean(player.manualElimination) || Object.entries(player.results).some(([round, result]) =>
+        Number(round) > 1 && String(result).startsWith("eliminated"));
+      if (player.alive === eliminatedLater || player.results["1"] !== "bought-back") {
+        player.alive = !eliminatedLater;
         player.results["1"] = "bought-back";
         changed = true;
       }
@@ -2668,7 +2700,7 @@ class FootballHubPanel extends HTMLElement {
           const startsPaymentGroup = playerIndex === 0 || playerGroup(sortedPlayers[playerIndex - 1]) !== currentGroup;
           const statusGroupCount = sortedPlayers.filter((item) => playerGroup(item) === currentGroup).length;
           const paymentHeading = startsPaymentGroup ? `<div class="lms-payment-group-title ${currentGroup}"><ha-icon icon="${groupIcon[currentGroup]}"></ha-icon><div><strong>${groupName[currentGroup]}</strong><span>${statusGroupCount} player${statusGroupCount === 1 ? "" : "s"}</span></div></div>` : "";
-          return `${paymentHeading}<article class="page-card lms-player ${player.alive ? "alive" : "out"} ${statusClass}"><div class="lms-player-name"><ha-icon icon="${player.alive ? "mdi:shield-check-outline" : "mdi:close-octagon-outline"}"></ha-icon><div><strong>${this._escape(player.name)}</strong><span>${this._isLmsWinner(player) ? "Winner · " : ""}Round ${competition.round}</span></div><span class="lms-payment-status ${player.paid ? "paid" : "unpaid"}">${player.paid ? `£ Paid${player.buyBacks ? " + buy-back" : ""}` : "Payment due"}</span>${adminUnlocked ? `<button class="lms-toggle-paid" data-player-id="${this._escape(player.id)}">${player.paid ? "Mark unpaid" : "Mark paid"}</button>` : ""}${adminUnlocked && player.pickUrl ? `<button class="lms-copy-player-link" data-player-id="${this._escape(player.id)}"><ha-icon icon="mdi:email-fast-outline"></ha-icon> Copy pick link</button>` : ""}${adminUnlocked && canBuyBack ? `<button class="lms-buy-back" data-player-id="${this._escape(player.id)}"><ha-icon icon="mdi:account-reactivate-outline"></ha-icon> Buy back £${entryFee.toFixed(2)}</button>` : ""}<span class="lms-pick-status ${statusClass}"><ha-icon icon="${statusIcon}"></ha-icon>${statusText}</span></div>${player.alive ? `<label><span>Round ${competition.round} pick</span><select class="lms-pick" data-player-id="${this._escape(player.id)}" ${pickLocked ? "disabled" : ""}><option value="">${deadline.locked ? "Picks locked" : !adminUnlocked ? "Administrator locked" : "Choose a team"}</option>${groupedOptions}</select></label>` : ""}${canPickEarly ? `<label class="lms-early-pick"><span><ha-icon icon="mdi:fast-forward-outline"></ha-icon> Through — choose Round ${Number(competition.round) + 1} early</span><select class="lms-next-pick" data-player-id="${this._escape(player.id)}" ${!adminUnlocked ? "disabled" : ""}><option value="">${!adminUnlocked ? "Administrator locked" : "Choose next-round team"}</option>${earlyOptions}</select></label>` : ""}<div class="lms-history">${Object.entries(player.picks || {}).map(([round, team]) => `<span>R${this._escape(round)} · ${this._escape(team)} · ${this._escape(player.results?.[round] || (round === nextRoundKey ? "early pick" : "pending"))}</span>`).join("") || `<span>No picks yet</span>`}</div><div class="lms-player-email"><ha-icon icon="mdi:email-lock-outline"></ha-icon><span>${this._escape(adminUnlocked ? (email || "No email added") : maskedEmail)}</span>${adminUnlocked ? `<div class="lms-player-admin-actions"><button class="lms-edit-player-email" data-player-id="${this._escape(player.id)}"><ha-icon icon="mdi:email-edit-outline"></ha-icon>${email ? "Edit email" : "Add email"}</button><button class="lms-remove-player" data-player-id="${this._escape(player.id)}"><ha-icon icon="mdi:account-remove-outline"></ha-icon>Remove player</button></div>` : `<small>Hidden until administrator unlocks</small>`}</div></article>`;
+          return `${paymentHeading}<article class="page-card lms-player ${player.alive ? "alive" : "out"} ${statusClass}"><div class="lms-player-name"><ha-icon icon="${player.alive ? "mdi:shield-check-outline" : "mdi:close-octagon-outline"}"></ha-icon><div><strong>${this._escape(player.name)}</strong><span>${this._isLmsWinner(player) ? "Winner · " : ""}Round ${competition.round}</span></div><span class="lms-payment-status ${player.paid ? "paid" : "unpaid"}">${player.paid ? `£ Paid${player.buyBacks ? " + buy-back" : ""}` : "Payment due"}</span>${adminUnlocked ? `<button class="lms-toggle-paid" data-player-id="${this._escape(player.id)}">${player.paid ? "Mark unpaid" : "Mark paid"}</button>` : ""}${adminUnlocked && player.pickUrl ? `<button class="lms-copy-player-link" data-player-id="${this._escape(player.id)}"><ha-icon icon="mdi:email-fast-outline"></ha-icon> Copy pick link</button>` : ""}${adminUnlocked && canBuyBack ? `<button class="lms-buy-back" data-player-id="${this._escape(player.id)}"><ha-icon icon="mdi:account-reactivate-outline"></ha-icon> Buy back £${entryFee.toFixed(2)}</button>` : ""}${adminUnlocked && player.alive && !competition.completed ? `<button class="lms-mark-out" data-player-id="${this._escape(player.id)}">Mark Out</button>` : ""}${adminUnlocked && player.manualElimination ? `<button class="lms-undo-mark-out" data-player-id="${this._escape(player.id)}">Undo Mark Out</button>` : ""}<span class="lms-pick-status ${statusClass}"><ha-icon icon="${statusIcon}"></ha-icon>${statusText}</span></div>${player.alive ? `<label><span>Round ${competition.round} pick</span><select class="lms-pick" data-player-id="${this._escape(player.id)}" ${pickLocked ? "disabled" : ""}><option value="">${deadline.locked ? "Picks locked" : !adminUnlocked ? "Administrator locked" : "Choose a team"}</option>${groupedOptions}</select></label>` : ""}${canPickEarly ? `<label class="lms-early-pick"><span><ha-icon icon="mdi:fast-forward-outline"></ha-icon> Through — choose Round ${Number(competition.round) + 1} early</span><select class="lms-next-pick" data-player-id="${this._escape(player.id)}" ${!adminUnlocked ? "disabled" : ""}><option value="">${!adminUnlocked ? "Administrator locked" : "Choose next-round team"}</option>${earlyOptions}</select></label>` : ""}<div class="lms-history">${Object.entries(player.picks || {}).map(([round, team]) => `<span>R${this._escape(round)} · ${this._escape(team)} · ${this._escape(player.results?.[round] || (round === nextRoundKey ? "early pick" : "pending"))}</span>`).join("") || `<span>No picks yet</span>`}</div><div class="lms-player-email"><ha-icon icon="mdi:email-lock-outline"></ha-icon><span>${this._escape(adminUnlocked ? (email || "No email added") : maskedEmail)}</span>${adminUnlocked ? `<div class="lms-player-admin-actions"><button class="lms-edit-player-email" data-player-id="${this._escape(player.id)}"><ha-icon icon="mdi:email-edit-outline"></ha-icon>${email ? "Edit email" : "Add email"}</button><button class="lms-remove-player" data-player-id="${this._escape(player.id)}"><ha-icon icon="mdi:account-remove-outline"></ha-icon>Remove player</button></div>` : `<small>Hidden until administrator unlocks</small>`}</div></article>`;
         }).join("") : `<div class="page-card empty">Add the players taking part in this competition.</div>`}</section>`}
       `}
     `;
@@ -5305,6 +5337,12 @@ class FootballHubPanel extends HTMLElement {
     this.shadowRoot.querySelectorAll(".lms-buy-back").forEach((button) => {
       button.addEventListener("click", () => this._buyBackLmsPlayer(button.dataset.playerId));
     });
+    this.shadowRoot.querySelectorAll(".lms-mark-out").forEach((button) => {
+      button.addEventListener("click", () => this._markLmsPlayerOut(button.dataset.playerId));
+    });
+    this.shadowRoot.querySelectorAll(".lms-undo-mark-out").forEach((button) => {
+      button.addEventListener("click", () => this._undoLmsPlayerOut(button.dataset.playerId));
+    });
     this.shadowRoot.querySelector("#lms-edit-entry-fee")?.addEventListener("change", (event) => this._setLmsEntryFee(event.target.value));
     this.shadowRoot.querySelector("#lms-restart")?.addEventListener("click", () => void this._restartLmsCompetition());
     this.shadowRoot.querySelector("#lms-rollover")?.addEventListener("click", () => this._rolloverLmsCompetition());
@@ -5570,6 +5608,8 @@ class FootballHubPanel extends HTMLElement {
       .lms-toggle-paid { min-height:32px; border:1px solid var(--fh-border); border-radius:8px; padding:0 9px; color:#fff; background:rgba(255,255,255,.06); cursor:pointer; }
       .lms-buy-back { display:inline-flex; align-items:center; gap:6px; min-height:34px; border:1px solid rgba(255,196,72,.58); border-radius:8px; padding:0 10px; color:#ffd06a; background:rgba(255,164,35,.13); font-weight:900; cursor:pointer; }
       .lms-buy-back ha-icon { --mdc-icon-size:18px; }
+      .lms-mark-out, .lms-undo-mark-out { min-height:34px; border:1px solid rgba(255,77,77,.45); border-radius:8px; padding:0 10px; color:#ff858c; background:rgba(255,55,65,.1); font-weight:800; cursor:pointer; }
+      .lms-undo-mark-out { color:#91d9ff; border-color:rgba(0,180,255,.45); background:rgba(0,180,255,.1); }
       .lms-early-pick { padding:12px; border:1px solid rgba(63,242,142,.48); border-radius:10px; background:rgba(31,203,108,.09); }
       .lms-early-pick > span { display:flex; align-items:center; gap:7px; color:#62ffa8 !important; font-weight:900; }
       .lms-early-pick ha-icon { --mdc-icon-size:18px; }
