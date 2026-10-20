@@ -1,7 +1,7 @@
 # ⚽ Home Assistant Football Hub
 
 [![License](https://img.shields.io/badge/license-Personal%20Use-red.svg)](LICENSE)
-![Version](https://img.shields.io/badge/version-v0.8.8-brightgreen)
+![Version](https://img.shields.io/badge/version-v0.8.9-brightgreen)
 ![Home Assistant](https://img.shields.io/badge/Home%20Assistant-2024.1%2B-blue)
 ![HACS](https://img.shields.io/badge/HACS-Custom-orange)
 ![Cloud Polling](https://img.shields.io/badge/IoT--Class-Cloud%20Polling-blue)
@@ -22,11 +22,11 @@ It also includes Last Man Standing (LMS) and Acca League tools, with private pla
 
 ---
 
-## Latest release — 0.8.8
+## Latest release — 0.8.9
 
-### Last Man Standing result correction
+### Last Man Standing deadline and player recovery
 
-Round 1 buy-back recovery no longer puts a player back **Through** after they were eliminated in a later round. Existing records with that mismatch are corrected when the LMS page reloads and syncs.
+The pick deadline now follows the selected round's full matchweek, not an isolated earlier fixture. If that earlier fixture prematurely marked Round 4 players **Out** for having no pick, reloading the LMS page restores them while the actual deadline is still ahead. Players eliminated by genuine earlier results remain Out.
 
 Unlocked private-competition admins now have **Mark Out** and **Undo Mark Out** controls on player cards. A manual elimination keeps the player's picks and payment history and asks for confirmation before changing status.
 
@@ -49,7 +49,7 @@ Unlocked private-competition admins now have **Mark Out** and **Undo Mark Out** 
 
 Use the **Quick install — HACS** steps above. HACS keeps the integration in `config/custom_components/football_hub` and offers future updates from its **Updates** page.
 
-> To install the current stable version, choose the normal download option in HACS. Pre-release builds are not required for Football Hub 0.8.8.
+> To install the current stable version, choose the normal download option in HACS. Pre-release builds are not required for Football Hub 0.8.9.
 
 ### Manual installation
 

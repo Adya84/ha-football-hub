@@ -1,4 +1,4 @@
-const PANEL_VERSION = "0.8.8";
+const PANEL_VERSION = "0.8.9";
 // Temporarily paused while fixture schedules are being corrected. Manual email
 // actions remain available to the administrator.
 const LMS_AUTOMATIC_EMAILS_ENABLED = false;
@@ -966,14 +966,15 @@ class FootballHubPanel extends HTMLElement {
     competition.deadlines = competition.deadlines || {};
     const roundStarted = Number(competition.roundStarted || 0);
     const savedDeadline = Number(competition.deadlines[roundKey] || 0);
-    if (savedDeadline >= roundStarted) return savedDeadline;
-    if (savedDeadline > 0) delete competition.deadlines[roundKey];
-    const fixtures = this._lmsTeamGroups().flatMap((league) => league.fixtures || []);
+    // The deadline must come from the same matchweek offered for this round.
+    // An isolated postponed fixture must not lock picks for the next full week.
+    const fixtures = this._lmsRoundFixtureGroups().flatMap((league) => league.roundFixtures || []);
     const timestamps = fixtures
       .map((fixture) => this._lmsFixtureTimestamp(fixture))
       .filter((timestamp) => timestamp >= roundStarted)
       .sort((a, b) => a - b);
-    if (!timestamps.length) return 0;
+    if (!timestamps.length) return savedDeadline >= roundStarted ? savedDeadline : 0;
+    if (savedDeadline === timestamps[0]) return savedDeadline;
     competition.deadlines[roundKey] = timestamps[0];
     this._saveLms();
     return timestamps[0];
@@ -1705,12 +1706,21 @@ class FootballHubPanel extends HTMLElement {
     // results with a later stale sensor snapshot.
     if (!competition || competition.mode === "global") return false;
     const buyBackRestored = this._restoreLmsBuyBacks();
-    if (competition.completed) return buyBackRestored;
     const roundKey = String(competition.round || 1);
+    const deadline = this._lmsDeadlineState();
+    const prematureAllOut = competition.completed && !competition.winnerId && deadline.timestamp && !deadline.locked
+      && (competition.players || []).some((player) => player.results?.[roundKey] === "eliminated-no-pick");
+    if (competition.completed && !prematureAllOut) return buyBackRestored;
+    if (prematureAllOut) competition.completed = false;
     const roundStarted = Number(competition.roundStarted || 0);
     const fixtures = this._lmsRoundFixtureGroups().flatMap((league) => league.roundFixtures || []);
-    let changed = false;
+    let changed = Boolean(prematureAllOut);
     for (const player of competition.players || []) {
+      if (deadline.timestamp && !deadline.locked && player.results?.[roundKey] === "eliminated-no-pick") {
+        delete player.results[roundKey];
+        player.alive = true;
+        changed = true;
+      }
       if (!["survived", "eliminated"].includes(player.results?.[roundKey])) continue;
       const pick = player.picks?.[roundKey];
       const match = fixtures

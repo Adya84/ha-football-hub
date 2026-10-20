@@ -486,3 +486,62 @@ test('a new LMS round skips an isolated postponed fixture for the next full matc
   const fixtures = panel._lmsRoundFixtureGroups()[0].roundFixtures;
   assert.deepEqual(Array.from(fixtures, (fixture) => fixture.id), ['next-1', 'next-2']);
 });
+
+test('an isolated early fixture cannot close the next full LMS matchweek or eliminate its unpicked players', () => {
+  const { panel } = setup('private');
+  const competition = panel._lmsCompetition;
+  const now = Math.floor(Date.now() / 1000);
+  competition.round = 4;
+  competition.roundStarted = now - 86400;
+  competition.deadlines = { 4: now - 3600 };
+  competition.completed = false;
+  const [survivor, alreadyOut] = competition.players;
+  survivor.picks = { 1: 'Newcastle', 2: 'Arsenal', 3: 'Tottenham' };
+  survivor.results = { 1: 'survived', 2: 'survived', 3: 'survived', 4: 'eliminated-no-pick' };
+  survivor.alive = false;
+  alreadyOut.picks = { 1: 'Leeds' };
+  alreadyOut.results = { 1: 'eliminated' };
+  alreadyOut.alive = false;
+  panel._lmsLeagueCache.premier_league = { fixtures: [
+    { id: 'stray', home_team: 'Leeds', away_team: 'Newcastle', timestamp: now - 3600, round: '6', status: 'FT', home_goals: 1, away_goals: 0 },
+    { id: 'weekend-1', home_team: 'Arsenal', away_team: 'Chelsea', timestamp: now + 86400, round: '7', status: 'NS' },
+    { id: 'weekend-2', home_team: 'Liverpool', away_team: 'Everton', timestamp: now + 90000, round: '7', status: 'NS' },
+  ] };
+  delete panel._ensureLmsDeadline;
+  delete panel._lmsDeadlineState;
+
+  assert.equal(panel._lmsDeadlineState().locked, false);
+  assert.equal(competition.deadlines['4'], now + 86400);
+  panel._reopenLmsUnfinishedResults();
+  assert.equal(survivor.alive, true);
+  assert.equal(survivor.results['4'], undefined);
+  assert.equal(alreadyOut.alive, false);
+  assert.equal(alreadyOut.results['1'], 'eliminated');
+});
+
+test('a premature all-out competition reopens when the real round deadline is still ahead', () => {
+  const { panel } = setup('private');
+  const competition = panel._lmsCompetition;
+  const now = Math.floor(Date.now() / 1000);
+  competition.round = 4;
+  competition.roundStarted = now - 86400;
+  competition.deadlines = { 4: now - 3600 };
+  competition.completed = true;
+  competition.winnerId = '';
+  for (const player of competition.players) {
+    player.picks = { 1: 'Arsenal', 2: 'Chelsea', 3: 'Liverpool' };
+    player.results = { 1: 'survived', 2: 'survived', 3: 'survived', 4: 'eliminated-no-pick' };
+    player.alive = false;
+  }
+  panel._lmsLeagueCache.premier_league = { fixtures: [
+    { id: 'stray', home_team: 'Leeds', away_team: 'Newcastle', timestamp: now - 3600, round: '6', status: 'FT', home_goals: 1, away_goals: 0 },
+    { id: 'weekend-1', home_team: 'Arsenal', away_team: 'Chelsea', timestamp: now + 86400, round: '7', status: 'NS' },
+    { id: 'weekend-2', home_team: 'Liverpool', away_team: 'Everton', timestamp: now + 90000, round: '7', status: 'NS' },
+  ] };
+  delete panel._ensureLmsDeadline;
+  delete panel._lmsDeadlineState;
+
+  panel._reopenLmsUnfinishedResults();
+  assert.equal(competition.completed, false);
+  assert.equal(competition.players.every((player) => player.alive && !player.results['4']), true);
+});
