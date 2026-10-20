@@ -1,4 +1,4 @@
-const PANEL_VERSION = "0.8.11";
+const PANEL_VERSION = "0.8.12";
 // Temporarily paused while fixture schedules are being corrected. Manual email
 // actions remain available to the administrator.
 const LMS_AUTOMATIC_EMAILS_ENABLED = false;
@@ -780,9 +780,16 @@ class FootballHubPanel extends HTMLElement {
         const before = JSON.stringify({ round: competition.round, completed: competition.completed, players: (competition.players || []).map((player) => ({ id: player.id, alive: player.alive, picks: player.picks, results: player.results })) });
         const mergedPlayers = (remote.players || []).map((remotePlayer) => {
           const localPlayer = localPlayers.get(String(remotePlayer.id)) || {};
-          return { ...localPlayer, ...remotePlayer, email: remotePlayer.email || localPlayer.email || "", pickUrl: remotePlayer.pickUrl || localPlayer.pickUrl || "" };
+          const merged = { ...localPlayer, ...remotePlayer, email: remotePlayer.email || localPlayer.email || "", pickUrl: remotePlayer.pickUrl || localPlayer.pickUrl || "" };
+          if (!Object.hasOwn(remotePlayer, "manualAdvancement")) delete merged.manualAdvancement;
+          if (!Object.hasOwn(remotePlayer, "manualElimination")) delete merged.manualElimination;
+          return merged;
         });
         Object.assign(competition, remote, localAccess, { mode: "private", players: mergedPlayers });
+        if (this._isLmsAdmin() && this._needsLmsRoundFourRepair()) {
+          await this._repairLmsPrematureRoundFour(localAccess);
+          return true;
+        }
         this._restoreLmsBuyBacks();
         if (this._restoreLmsManualAdvancements()) this._saveLms();
         this._applyLmsPlayerLinks(result.playerLinks || []);
@@ -904,6 +911,7 @@ class FootballHubPanel extends HTMLElement {
     }
     this._lmsAdminUnlocked = true;
     this._lmsAdminPassword = String(password || "");
+    await this._pullLmsSharePicks(true);
     this._render();
   }
 
@@ -1536,6 +1544,41 @@ class FootballHubPanel extends HTMLElement {
       competition.winnerId = "";
     }
     return changed;
+  }
+
+  _needsLmsRoundFourRepair() {
+    const competition = this._lmsCompetition;
+    const players = competition?.players || [];
+    return competition?.mode === "private" && Number(competition.round) === 5 && !competition.completed
+      && players.some((player) => player.results?.["4"] === "survived-manual")
+      && players.every((player) => !player.picks?.["4"] && !player.picks?.["5"]
+        && [undefined, "survived-manual", "eliminated-no-pick"].includes(player.results?.["4"])
+        && player.results?.["5"] === undefined);
+  }
+
+  async _repairLmsPrematureRoundFour(localAccess) {
+    const competition = this._lmsCompetition;
+    const response = await fetch(`${LMS_SHARE_SERVICE}/api/competitions/${encodeURIComponent(competition.shareId)}`, {
+      method: "PATCH",
+      headers: {
+        "content-type": "application/json",
+        ...(competition.shareEditToken ? { authorization: `Bearer ${competition.shareEditToken}` } : {}),
+        ...(this._lmsAdminPassword ? { "x-admin-password": this._lmsAdminPassword } : {}),
+      },
+      body: JSON.stringify({ action: "repair-premature-round-four" }),
+    });
+    const result = await response.json();
+    if (!response.ok || !result.competition) throw new Error(result.error || "Round 4 could not be restored");
+    const localPlayers = new Map((competition.players || []).map((player) => [String(player.id), player]));
+    const players = (result.competition.players || []).map((player) => ({
+      ...player,
+      email: player.email || localPlayers.get(String(player.id))?.email || "",
+      pickUrl: player.pickUrl || localPlayers.get(String(player.id))?.pickUrl || "",
+    }));
+    Object.assign(competition, result.competition, localAccess, { mode: "private", players });
+    await this._refreshLmsRoundFixtures();
+    this._saveLms(false);
+    this._render();
   }
 
   _setLmsEntryFee(value) {

@@ -46,6 +46,60 @@ for (const mode of ['private', 'global']) {
   });
 }
 
+test('Round 5 recovery requires an empty Round 4 created by manual Through, not a real pick', () => {
+  const { panel } = setup('private');
+  panel._lmsCompetition.round = 5;
+  panel._lmsCompetition.players = [{ alive: true, picks: { 3: 'Arsenal' }, results: { 3: 'survived', 4: 'survived-manual' }, manualAdvancement: { round: '4' } }];
+  assert.equal(panel._needsLmsRoundFourRepair(), true);
+  panel._lmsCompetition.players[0].picks[4] = 'Chelsea';
+  assert.equal(panel._needsLmsRoundFourRepair(), false);
+});
+
+test('pulling the shared game restores Round 4 and adopts its clean player history', async () => {
+  let Panel, repairCalls = 0;
+  const old = { mode: 'private', round: 5, completed: false, leagues: [{ key: 'premier_league' }], players: [
+    { id: 'a', name: 'Ady', alive: true, picks: { 3: 'Arsenal' }, results: { 3: 'survived', 4: 'survived-manual' }, manualAdvancement: { round: '4' } },
+    { id: 'b', name: 'Dan', alive: false, picks: { 2: 'Leeds' }, results: { 2: 'eliminated' } },
+  ] };
+  const clean = { ...old, round: 4, roundStarted: 400, players: [
+    { id: 'a', name: 'Ady', alive: true, picks: { 3: 'Arsenal' }, results: { 3: 'survived' } },
+    old.players[1],
+  ] };
+  vm.runInNewContext(fs.readFileSync(path.join(__dirname, '../custom_components/football_hub/frontend/football-hub-panel.js'), 'utf8'), {
+    HTMLElement: class {}, customElements: { get: () => false, define: (_name, value) => { Panel = value; } },
+    localStorage: { setItem() {} }, queueMicrotask() {}, console,
+    fetch: async (_url, options = {}) => {
+      if (options.method === 'PATCH') {
+        repairCalls++;
+        assert.equal(JSON.parse(options.body).action, 'repair-premature-round-four');
+        return { ok: true, json: async () => ({ competition: clean }) };
+      }
+      return { ok: true, json: async () => ({ competition: old, playerLinks: [] }) };
+    },
+  });
+  const panel = Object.create(Panel.prototype);
+  panel._lmsCompetition = { ...old, shareId: 'example', shareEditToken: 'test', adminPasswordHash: 'hash',
+    players: old.players.map((player) => ({ ...player })) };
+  panel._lmsMode = 'private';
+  panel._activeTab = 'last-man-standing';
+  panel._lmsAdminUnlocked = true;
+  panel._lmsAdminPassword = 'password';
+  panel._lmsShareBusy = false;
+  panel._lmsShareSyncPending = false;
+  panel._lmsShareLastPull = 0;
+  panel._lmsActiveLeague = 'premier_league';
+  panel._refreshLmsRoundFixtures = async () => {};
+  panel._saveLms = () => {};
+  panel._render = () => {};
+  panel._restoreLmsBuyBacks = () => false;
+  assert.equal(await panel._pullLmsSharePicks(true), true);
+  assert.equal(repairCalls, 1);
+  assert.equal(panel._lmsCompetition.round, 4);
+  assert.equal(panel._lmsCompetition.players[0].manualAdvancement, undefined);
+  assert.equal(panel._lmsCompetition.players[0].alive, true);
+  assert.equal(panel._lmsCompetition.players[1].alive, false);
+});
+
 test('sole survivor is shown as winner only after their final result completes the round', async () => {
   const { panel } = setup('private');
   const [survivor, eliminated] = panel._lmsCompetition.players;
