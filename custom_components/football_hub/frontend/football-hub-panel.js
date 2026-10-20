@@ -1,4 +1,4 @@
-const PANEL_VERSION = "0.8.9";
+const PANEL_VERSION = "0.8.10";
 // Temporarily paused while fixture schedules are being corrected. Manual email
 // actions remain available to the administrator.
 const LMS_AUTOMATIC_EMAILS_ENABLED = false;
@@ -784,6 +784,7 @@ class FootballHubPanel extends HTMLElement {
         });
         Object.assign(competition, remote, localAccess, { mode: "private", players: mergedPlayers });
         this._restoreLmsBuyBacks();
+        if (this._restoreLmsManualAdvancements()) this._saveLms();
         this._applyLmsPlayerLinks(result.playerLinks || []);
         if (!(competition.leagues || []).some((league) => league.key === this._lmsActiveLeague)) {
           this._lmsActiveLeague = competition.leagues?.[0]?.key || "";
@@ -1355,6 +1356,44 @@ class FootballHubPanel extends HTMLElement {
     this._render();
   }
 
+  _markLmsPlayerThrough(playerId) {
+    const competition = this._lmsCompetition;
+    if (!competition || competition.mode === "global" || !this._isLmsAdmin()) return;
+    const player = competition.players?.find((item) => String(item.id) === String(playerId));
+    if (!player || player.alive || !window.confirm(`Put ${player.name} back in as Through? Their picks and payment record will be kept.`)) return;
+    const round = String(competition.round);
+    player.results = player.results || {};
+    player.manualAdvancement = {
+      round,
+      previousResult: player.results[round] ?? null,
+      previousAlive: false,
+      previousManualElimination: player.manualElimination || null,
+    };
+    delete player.manualElimination;
+    player.results[round] = "survived-manual";
+    player.alive = true;
+    competition.completed = false;
+    competition.winnerId = "";
+    this._saveLms();
+    this._render();
+  }
+
+  _undoLmsPlayerThrough(playerId) {
+    const competition = this._lmsCompetition;
+    if (!competition || competition.mode === "global" || !this._isLmsAdmin()) return;
+    const player = competition.players?.find((item) => String(item.id) === String(playerId));
+    if (!player?.manualAdvancement || !window.confirm(`Undo Through for ${player.name}?`)) return;
+    const { round, previousResult, previousAlive, previousManualElimination } = player.manualAdvancement;
+    player.results = player.results || {};
+    if (previousResult === null) delete player.results[round];
+    else player.results[round] = previousResult;
+    player.alive = previousAlive;
+    delete player.manualAdvancement;
+    if (previousManualElimination) player.manualElimination = previousManualElimination;
+    this._saveLms();
+    this._render();
+  }
+
   _canLmsBuyBack(player) {
     const competition = this._lmsCompetition;
     if (!competition || !player || player.alive || player.buyBackRounds?.["1"]) return false;
@@ -1427,13 +1466,38 @@ class FootballHubPanel extends HTMLElement {
         changed = true;
       }
       player.results = player.results || {};
+      const overrideRound = Number(player.manualAdvancement?.round || 0);
+      const manuallyThrough = overrideRound > 0 && player.results[String(overrideRound)] === "survived-manual";
       const eliminatedLater = Boolean(player.manualElimination) || Object.entries(player.results).some(([round, result]) =>
-        Number(round) > 1 && String(result).startsWith("eliminated"));
+        Number(round) > Math.max(1, manuallyThrough ? overrideRound : 1) && String(result).startsWith("eliminated"));
       if (player.alive === eliminatedLater || player.results["1"] !== "bought-back") {
         player.alive = !eliminatedLater;
         player.results["1"] = "bought-back";
         changed = true;
       }
+    }
+    return changed;
+  }
+
+  _restoreLmsManualAdvancements() {
+    const competition = this._lmsCompetition;
+    if (!competition || competition.mode === "global") return false;
+    let changed = false;
+    for (const player of competition.players || []) {
+      const round = Number(player.manualAdvancement?.round || 0);
+      if (!round || round > Number(competition.round || 0)) continue;
+      player.results = player.results || {};
+      if (Object.entries(player.results).some(([savedRound, result]) =>
+        Number(savedRound) > round && String(result).startsWith("eliminated"))) continue;
+      if (!player.alive || player.results[String(round)] !== "survived-manual") {
+        player.alive = true;
+        player.results[String(round)] = "survived-manual";
+        changed = true;
+      }
+    }
+    if (changed && competition.completed) {
+      competition.completed = false;
+      competition.winnerId = "";
     }
     return changed;
   }
@@ -1559,7 +1623,7 @@ class FootballHubPanel extends HTMLElement {
         const result = player.results?.[roundKey];
         if (["survived", "eliminated"].includes(result) && !isFinal) return true;
         if (!player.alive || result) return false;
-        if (!pick) return true;
+        if (!pick) return false;
         return isFinal;
       });
       if (!hasNewResult) return;
@@ -1622,18 +1686,15 @@ class FootballHubPanel extends HTMLElement {
     const waitingPlayers = [];
     for (const player of competition.players) {
       if (!player.alive) continue;
+      if (player.results?.[roundKey] === "survived-manual") continue;
       // A Round 1 buy-back is an explicit override of that losing fixture.
       // Keep the original team in history, but never settle it a second time.
       if (player.results?.[roundKey] === "bought-back") continue;
       const pick = player.picks?.[roundKey];
       if (!pick) {
-        if (this._lmsDeadlineState().locked) {
-          player.results = player.results || {};
-          player.results[roundKey] = "eliminated-no-pick";
-          player.alive = false;
-        } else {
-          waiting = true;
-        }
+        // A deadline locks new picks; only the administrator's explicit
+        // round-end action eliminates players who still have no pick.
+        waiting = true;
         continue;
       }
       const roundStarted = Number(competition.roundStarted || 0);
@@ -1706,17 +1767,19 @@ class FootballHubPanel extends HTMLElement {
     // results with a later stale sensor snapshot.
     if (!competition || competition.mode === "global") return false;
     const buyBackRestored = this._restoreLmsBuyBacks();
+    const manualThroughRestored = this._restoreLmsManualAdvancements();
     const roundKey = String(competition.round || 1);
-    const deadline = this._lmsDeadlineState();
-    const prematureAllOut = competition.completed && !competition.winnerId && deadline.timestamp && !deadline.locked
+    const prematureAllOut = competition.completed && !competition.winnerId
+      && Number(competition.lastManualEndSnapshot?.round) !== Number(competition.round)
       && (competition.players || []).some((player) => player.results?.[roundKey] === "eliminated-no-pick");
-    if (competition.completed && !prematureAllOut) return buyBackRestored;
+    if (competition.completed && !prematureAllOut) return buyBackRestored || manualThroughRestored;
     if (prematureAllOut) competition.completed = false;
     const roundStarted = Number(competition.roundStarted || 0);
     const fixtures = this._lmsRoundFixtureGroups().flatMap((league) => league.roundFixtures || []);
     let changed = Boolean(prematureAllOut);
     for (const player of competition.players || []) {
-      if (deadline.timestamp && !deadline.locked && player.results?.[roundKey] === "eliminated-no-pick") {
+      if (Number(competition.lastManualEndSnapshot?.round) !== Number(competition.round)
+        && player.results?.[roundKey] === "eliminated-no-pick") {
         delete player.results[roundKey];
         player.alive = true;
         changed = true;
@@ -1743,8 +1806,8 @@ class FootballHubPanel extends HTMLElement {
         changed = true;
       }
     }
-    if (changed || buyBackRestored) this._saveLms();
-    return changed || buyBackRestored;
+    if (changed || buyBackRestored || manualThroughRestored) this._saveLms();
+    return changed || buyBackRestored || manualThroughRestored;
   }
 
   _endLmsRoundNow() {
@@ -2632,6 +2695,7 @@ class FootballHubPanel extends HTMLElement {
       if (this._isLmsWinner(player)) return { group: "through", label: "Winner", pick };
       if (!player.alive) return { group: "eliminated", label: player.results?.[roundKey] === "eliminated-no-pick" ? "Out · No pick" : "Out", pick };
       if (player.results?.[roundKey] === "bought-back") return { group: "through", label: "Paid back · Round 1", pick };
+      if (player.results?.[roundKey] === "survived-manual") return { group: "through", label: "Through · Admin", pick };
       if (liveStatuses.has(status)) return { group: "live", label: `Live · ${scoreAvailable ? `${fixture.home_goals}-${fixture.away_goals}` : "–"}${fixture?.elapsed ? ` · ${fixture.elapsed}'` : ""}`, pick };
       if (finalStatuses.has(status) && scoreAvailable) {
         const won = (fixture.home_team === pick && Number(fixture.home_goals) > Number(fixture.away_goals)) || (fixture.away_team === pick && Number(fixture.away_goals) > Number(fixture.home_goals));
@@ -2696,21 +2760,21 @@ class FootballHubPanel extends HTMLElement {
           const allUsedTeams = new Set(Object.entries(player.picks || {}).filter(([round]) => round !== nextRoundKey).map(([, team]) => team));
           const earlyOptions = teamGroups.map((league) => `<optgroup label="${this._escape(league.name)} · ${this._escape(league.teams.length)} teams">${league.teams.map((team) => `<option value="${this._escape(team)}" ${earlyPick === team ? "selected" : ""} ${allUsedTeams.has(team) ? "disabled" : ""}>${this._escape(team)}${allUsedTeams.has(team) ? " · used" : ""}</option>`).join("")}</optgroup>`).join("");
           const boughtBack = result === "bought-back";
-          const statusClass = !player.alive ? "eliminated" : ["survived", "bought-back"].includes(result) ? "survived" : pick ? (deadline.locked ? "waiting" : "selected") : "awaiting";
+          const statusClass = !player.alive ? "eliminated" : ["survived", "survived-manual", "bought-back"].includes(result) ? "survived" : pick ? (deadline.locked ? "waiting" : "selected") : "awaiting";
           const statusIcon = this._isLmsWinner(player) ? "mdi:trophy-award" : statusClass === "eliminated" ? "mdi:close-circle" : ["awaiting", "waiting"].includes(statusClass) ? "mdi:clock-alert-outline" : "mdi:check-circle";
           const statusText = this._isLmsWinner(player) ? "Winner" : statusClass === "eliminated" ? "Out" : boughtBack ? "Paid back · Round 1" : statusClass === "survived" ? "Through" : statusClass === "waiting" ? "Waiting for result · Still in" : statusClass === "selected" ? "Team selected · Still in" : "No team selected · Still in";
           const canPickEarly = player.alive && ["survived", "bought-back"].includes(result) && !competition.completed;
           const canBuyBack = this._canLmsBuyBack(player);
           const email = String(player.email || "");
           const maskedEmail = email ? email.replace(/^(.{1,2}).*(@.*)$/, "$1*****$2") : "No email added";
-          const playerGroup = (item) => !item.alive ? "eliminated" : ["survived", "bought-back"].includes(item.results?.[roundKey]) || this._isLmsWinner(item) ? "through" : "to-play";
+          const playerGroup = (item) => !item.alive ? "eliminated" : ["survived", "survived-manual", "bought-back"].includes(item.results?.[roundKey]) || this._isLmsWinner(item) ? "through" : "to-play";
           const groupName = { through: "Through", "to-play": "To play", eliminated: "Eliminated" };
           const groupIcon = { through: "mdi:check-circle", "to-play": "mdi:clock-alert-outline", eliminated: "mdi:account-off-outline" };
           const currentGroup = playerGroup(player);
           const startsPaymentGroup = playerIndex === 0 || playerGroup(sortedPlayers[playerIndex - 1]) !== currentGroup;
           const statusGroupCount = sortedPlayers.filter((item) => playerGroup(item) === currentGroup).length;
           const paymentHeading = startsPaymentGroup ? `<div class="lms-payment-group-title ${currentGroup}"><ha-icon icon="${groupIcon[currentGroup]}"></ha-icon><div><strong>${groupName[currentGroup]}</strong><span>${statusGroupCount} player${statusGroupCount === 1 ? "" : "s"}</span></div></div>` : "";
-          return `${paymentHeading}<article class="page-card lms-player ${player.alive ? "alive" : "out"} ${statusClass}"><div class="lms-player-name"><ha-icon icon="${player.alive ? "mdi:shield-check-outline" : "mdi:close-octagon-outline"}"></ha-icon><div><strong>${this._escape(player.name)}</strong><span>${this._isLmsWinner(player) ? "Winner · " : ""}Round ${competition.round}</span></div><span class="lms-payment-status ${player.paid ? "paid" : "unpaid"}">${player.paid ? `£ Paid${player.buyBacks ? " + buy-back" : ""}` : "Payment due"}</span>${adminUnlocked ? `<button class="lms-toggle-paid" data-player-id="${this._escape(player.id)}">${player.paid ? "Mark unpaid" : "Mark paid"}</button>` : ""}${adminUnlocked && player.pickUrl ? `<button class="lms-copy-player-link" data-player-id="${this._escape(player.id)}"><ha-icon icon="mdi:email-fast-outline"></ha-icon> Copy pick link</button>` : ""}${adminUnlocked && canBuyBack ? `<button class="lms-buy-back" data-player-id="${this._escape(player.id)}"><ha-icon icon="mdi:account-reactivate-outline"></ha-icon> Buy back £${entryFee.toFixed(2)}</button>` : ""}${adminUnlocked && player.alive && !competition.completed ? `<button class="lms-mark-out" data-player-id="${this._escape(player.id)}">Mark Out</button>` : ""}${adminUnlocked && player.manualElimination ? `<button class="lms-undo-mark-out" data-player-id="${this._escape(player.id)}">Undo Mark Out</button>` : ""}<span class="lms-pick-status ${statusClass}"><ha-icon icon="${statusIcon}"></ha-icon>${statusText}</span></div>${player.alive ? `<label><span>Round ${competition.round} pick</span><select class="lms-pick" data-player-id="${this._escape(player.id)}" ${pickLocked ? "disabled" : ""}><option value="">${deadline.locked ? "Picks locked" : !adminUnlocked ? "Administrator locked" : "Choose a team"}</option>${groupedOptions}</select></label>` : ""}${canPickEarly ? `<label class="lms-early-pick"><span><ha-icon icon="mdi:fast-forward-outline"></ha-icon> Through — choose Round ${Number(competition.round) + 1} early</span><select class="lms-next-pick" data-player-id="${this._escape(player.id)}" ${!adminUnlocked ? "disabled" : ""}><option value="">${!adminUnlocked ? "Administrator locked" : "Choose next-round team"}</option>${earlyOptions}</select></label>` : ""}<div class="lms-history">${Object.entries(player.picks || {}).map(([round, team]) => `<span>R${this._escape(round)} · ${this._escape(team)} · ${this._escape(player.results?.[round] || (round === nextRoundKey ? "early pick" : "pending"))}</span>`).join("") || `<span>No picks yet</span>`}</div><div class="lms-player-email"><ha-icon icon="mdi:email-lock-outline"></ha-icon><span>${this._escape(adminUnlocked ? (email || "No email added") : maskedEmail)}</span>${adminUnlocked ? `<div class="lms-player-admin-actions"><button class="lms-edit-player-email" data-player-id="${this._escape(player.id)}"><ha-icon icon="mdi:email-edit-outline"></ha-icon>${email ? "Edit email" : "Add email"}</button><button class="lms-remove-player" data-player-id="${this._escape(player.id)}"><ha-icon icon="mdi:account-remove-outline"></ha-icon>Remove player</button></div>` : `<small>Hidden until administrator unlocks</small>`}</div></article>`;
+          return `${paymentHeading}<article class="page-card lms-player ${player.alive ? "alive" : "out"} ${statusClass}"><div class="lms-player-name"><ha-icon icon="${player.alive ? "mdi:shield-check-outline" : "mdi:close-octagon-outline"}"></ha-icon><div><strong>${this._escape(player.name)}</strong><span>${this._isLmsWinner(player) ? "Winner · " : ""}Round ${competition.round}</span></div><span class="lms-payment-status ${player.paid ? "paid" : "unpaid"}">${player.paid ? `£ Paid${player.buyBacks ? " + buy-back" : ""}` : "Payment due"}</span>${adminUnlocked ? `<button class="lms-toggle-paid" data-player-id="${this._escape(player.id)}">${player.paid ? "Mark unpaid" : "Mark paid"}</button>` : ""}${adminUnlocked && player.pickUrl ? `<button class="lms-copy-player-link" data-player-id="${this._escape(player.id)}"><ha-icon icon="mdi:email-fast-outline"></ha-icon> Copy pick link</button>` : ""}${adminUnlocked && canBuyBack ? `<button class="lms-buy-back" data-player-id="${this._escape(player.id)}"><ha-icon icon="mdi:account-reactivate-outline"></ha-icon> Buy back £${entryFee.toFixed(2)}</button>` : ""}${adminUnlocked && player.alive && !competition.completed ? `<button class="lms-mark-out" data-player-id="${this._escape(player.id)}">Mark Out</button>` : ""}${adminUnlocked && player.manualElimination ? `<button class="lms-undo-mark-out" data-player-id="${this._escape(player.id)}">Undo Mark Out</button>` : ""}${adminUnlocked && !player.alive ? `<button class="lms-mark-through" data-player-id="${this._escape(player.id)}">Mark Through</button>` : ""}${adminUnlocked && player.manualAdvancement && player.alive ? `<button class="lms-undo-through" data-player-id="${this._escape(player.id)}">Undo Through</button>` : ""}<span class="lms-pick-status ${statusClass}"><ha-icon icon="${statusIcon}"></ha-icon>${statusText}</span></div>${player.alive ? `<label><span>Round ${competition.round} pick</span><select class="lms-pick" data-player-id="${this._escape(player.id)}" ${pickLocked ? "disabled" : ""}><option value="">${deadline.locked ? "Picks locked" : !adminUnlocked ? "Administrator locked" : "Choose a team"}</option>${groupedOptions}</select></label>` : ""}${canPickEarly ? `<label class="lms-early-pick"><span><ha-icon icon="mdi:fast-forward-outline"></ha-icon> Through — choose Round ${Number(competition.round) + 1} early</span><select class="lms-next-pick" data-player-id="${this._escape(player.id)}" ${!adminUnlocked ? "disabled" : ""}><option value="">${!adminUnlocked ? "Administrator locked" : "Choose next-round team"}</option>${earlyOptions}</select></label>` : ""}<div class="lms-history">${Object.entries(player.picks || {}).map(([round, team]) => `<span>R${this._escape(round)} · ${this._escape(team)} · ${this._escape(player.results?.[round] || (round === nextRoundKey ? "early pick" : "pending"))}</span>`).join("") || `<span>No picks yet</span>`}</div><div class="lms-player-email"><ha-icon icon="mdi:email-lock-outline"></ha-icon><span>${this._escape(adminUnlocked ? (email || "No email added") : maskedEmail)}</span>${adminUnlocked ? `<div class="lms-player-admin-actions"><button class="lms-edit-player-email" data-player-id="${this._escape(player.id)}"><ha-icon icon="mdi:email-edit-outline"></ha-icon>${email ? "Edit email" : "Add email"}</button><button class="lms-remove-player" data-player-id="${this._escape(player.id)}"><ha-icon icon="mdi:account-remove-outline"></ha-icon>Remove player</button></div>` : `<small>Hidden until administrator unlocks</small>`}</div></article>`;
         }).join("") : `<div class="page-card empty">Add the players taking part in this competition.</div>`}</section>`}
       `}
     `;
@@ -5353,6 +5417,12 @@ class FootballHubPanel extends HTMLElement {
     this.shadowRoot.querySelectorAll(".lms-undo-mark-out").forEach((button) => {
       button.addEventListener("click", () => this._undoLmsPlayerOut(button.dataset.playerId));
     });
+    this.shadowRoot.querySelectorAll(".lms-mark-through").forEach((button) => {
+      button.addEventListener("click", () => this._markLmsPlayerThrough(button.dataset.playerId));
+    });
+    this.shadowRoot.querySelectorAll(".lms-undo-through").forEach((button) => {
+      button.addEventListener("click", () => this._undoLmsPlayerThrough(button.dataset.playerId));
+    });
     this.shadowRoot.querySelector("#lms-edit-entry-fee")?.addEventListener("change", (event) => this._setLmsEntryFee(event.target.value));
     this.shadowRoot.querySelector("#lms-restart")?.addEventListener("click", () => void this._restartLmsCompetition());
     this.shadowRoot.querySelector("#lms-rollover")?.addEventListener("click", () => this._rolloverLmsCompetition());
@@ -5620,6 +5690,8 @@ class FootballHubPanel extends HTMLElement {
       .lms-buy-back ha-icon { --mdc-icon-size:18px; }
       .lms-mark-out, .lms-undo-mark-out { min-height:34px; border:1px solid rgba(255,77,77,.45); border-radius:8px; padding:0 10px; color:#ff858c; background:rgba(255,55,65,.1); font-weight:800; cursor:pointer; }
       .lms-undo-mark-out { color:#91d9ff; border-color:rgba(0,180,255,.45); background:rgba(0,180,255,.1); }
+      .lms-mark-through, .lms-undo-through { min-height:34px; border:1px solid rgba(63,242,142,.55); border-radius:8px; padding:0 10px; color:#62ffa8; background:rgba(31,203,108,.12); font-weight:800; cursor:pointer; }
+      .lms-undo-through { color:#91d9ff; border-color:rgba(0,180,255,.45); background:rgba(0,180,255,.1); }
       .lms-early-pick { padding:12px; border:1px solid rgba(63,242,142,.48); border-radius:10px; background:rgba(31,203,108,.09); }
       .lms-early-pick > span { display:flex; align-items:center; gap:7px; color:#62ffa8 !important; font-weight:900; }
       .lms-early-pick ha-icon { --mdc-icon-size:18px; }
