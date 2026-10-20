@@ -597,15 +597,17 @@ test('admin can mark an Out player Through and the automatic check keeps that ov
   player.manualElimination = { round: '4', previousResult: null };
   panel._markLmsPlayerThrough(player.id);
   assert.equal(player.alive, true);
-  assert.equal(player.results['4'], 'survived-manual');
+  assert.equal(player.results['3'], 'survived-manual');
+  assert.equal(player.results['4'], undefined);
   assert.equal(player.manualElimination, undefined);
   panel._lmsPageView = 'picks';
   panel._lmsEmailServices = () => [];
   panel._captureLmsLeagueData = () => {};
-  assert.match(panel._lastManStandingPage(), /class="lms-payment-group-title through"[\s\S]*?class="lms-undo-through" data-player-id="a"/);
+  assert.match(panel._lastManStandingPage(), /class="lms-payment-group-title to-play"[\s\S]*?class="lms-undo-through" data-player-id="a"/);
   await panel._settleLmsRound(true);
   assert.equal(player.alive, true);
-  assert.equal(player.results['4'], 'survived-manual');
+  assert.equal(player.results['3'], 'survived-manual');
+  assert.equal(player.results['4'], undefined);
   panel._undoLmsPlayerThrough(player.id);
   assert.equal(player.alive, false);
   assert.equal(player.results['4'], 'eliminated-no-pick');
@@ -639,7 +641,74 @@ test('a saved manual Through decision repairs a stale shared Out status', () => 
   player.alive = false;
   assert.equal(panel._restoreLmsManualAdvancements(), true);
   assert.equal(player.alive, true);
-  assert.equal(player.results['4'], 'survived-manual');
+  assert.equal(player.results['3'], 'survived-manual');
+  assert.equal(player.results['4'], undefined);
+});
+
+test('Mark Through repairs Round 3 without closing the open Round 4 or reusing teams', () => {
+  const { panel } = setup('private');
+  const competition = panel._lmsCompetition;
+  competition.round = 4;
+  const player = competition.players[0];
+  player.picks = { 1: 'Newcastle', 2: 'Arsenal', 3: 'Tottenham' };
+  player.results = { 1: 'survived', 2: 'survived', 3: 'eliminated-no-pick', 4: 'eliminated-no-pick' };
+  player.alive = false;
+  panel._markLmsPlayerThrough(player.id);
+  assert.equal(competition.round, 4);
+  assert.equal(player.alive, true);
+  assert.equal(player.results['3'], 'survived-manual');
+  assert.equal(player.results['4'], undefined);
+  assert.equal(player.manualAdvancement.round, '3');
+  assert.equal(panel._lmsSharePayload().players[0].results['3'], 'survived-manual');
+  assert.equal(panel._lmsSharePayload().players[0].results['4'], undefined);
+  panel._setLmsPick(player.id, 'Arsenal');
+  assert.equal(player.picks['4'], undefined, 'a team used in Round 2 cannot be picked again');
+});
+
+test('an already saved Round 4 Through override moves back to Round 3 on reload', () => {
+  const { panel } = setup('private');
+  const competition = panel._lmsCompetition;
+  competition.round = 4;
+  const player = competition.players[0];
+  player.picks = { 1: 'Newcastle', 2: 'Arsenal', 3: 'Tottenham' };
+  player.results = { 1: 'survived', 2: 'survived', 3: 'survived', 4: 'survived-manual' };
+  player.manualAdvancement = { round: '4', previousResult: 'eliminated-no-pick', previousAlive: false };
+  player.alive = true;
+  assert.equal(panel._restoreLmsManualAdvancements(), true);
+  assert.equal(player.manualAdvancement.round, '3');
+  assert.equal(player.results['3'], 'survived-manual');
+  assert.equal(player.results['4'], undefined);
+  assert.equal(competition.round, 4);
+});
+
+test('a stale online Out record cannot undo the corrected Round 3 Through status', () => {
+  const { panel } = setup('private');
+  const competition = panel._lmsCompetition;
+  competition.round = 4;
+  const player = competition.players[0];
+  player.picks = { 1: 'Newcastle', 2: 'Arsenal', 3: 'Tottenham' };
+  player.results = { 3: 'survived', 4: 'eliminated-no-pick' };
+  player.manualAdvancement = { round: '4', previousResult: 'eliminated-no-pick', previousAlive: false };
+  player.alive = false;
+  assert.equal(panel._restoreLmsManualAdvancements(), true);
+  assert.equal(player.alive, true);
+  assert.equal(player.manualAdvancement.round, '3');
+  assert.equal(player.results['3'], 'survived-manual');
+  assert.equal(player.results['4'], undefined);
+  assert.equal(panel._lmsSharePayload().players[0].alive, true);
+});
+
+test('End Round 4 cannot eliminate everybody before anyone has made a Round 4 pick', () => {
+  const { panel } = setup('private');
+  const competition = panel._lmsCompetition;
+  competition.round = 4;
+  for (const player of competition.players) {
+    player.picks = { 3: 'Arsenal' };
+    player.results = { 3: 'survived' };
+  }
+  assert.throws(() => panel._endLmsRoundNow(), /No Round 4 picks/);
+  assert.equal(competition.round, 4);
+  assert.equal(competition.players.every((player) => player.alive && !player.results['4']), true);
 });
 
 test('only the unlocked admin sees a Through action on Out player cards', () => {

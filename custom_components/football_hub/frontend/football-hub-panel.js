@@ -1,4 +1,4 @@
-const PANEL_VERSION = "0.8.10";
+const PANEL_VERSION = "0.8.11";
 // Temporarily paused while fixture schedules are being corrected. Manual email
 // actions remain available to the administrator.
 const LMS_AUTOMATIC_EMAILS_ENABLED = false;
@@ -1361,16 +1361,23 @@ class FootballHubPanel extends HTMLElement {
     if (!competition || competition.mode === "global" || !this._isLmsAdmin()) return;
     const player = competition.players?.find((item) => String(item.id) === String(playerId));
     if (!player || player.alive || !window.confirm(`Put ${player.name} back in as Through? Their picks and payment record will be kept.`)) return;
-    const round = String(competition.round);
+    const currentRound = String(competition.round);
     player.results = player.results || {};
+    const previousRound = String(Number(competition.round) - 1);
+    const repairPreviousRound = Number(competition.round) > 1 && !player.picks?.[currentRound]
+      && player.results[previousRound] !== undefined
+      && [undefined, "eliminated-no-pick", "survived-manual"].includes(player.results[currentRound]);
+    const round = repairPreviousRound ? previousRound : currentRound;
     player.manualAdvancement = {
       round,
       previousResult: player.results[round] ?? null,
       previousAlive: false,
       previousManualElimination: player.manualElimination || null,
+      ...(repairPreviousRound ? { currentRound, previousCurrentResult: player.results[currentRound] ?? null } : {}),
     };
     delete player.manualElimination;
     player.results[round] = "survived-manual";
+    if (repairPreviousRound) delete player.results[currentRound];
     player.alive = true;
     competition.completed = false;
     competition.winnerId = "";
@@ -1383,10 +1390,14 @@ class FootballHubPanel extends HTMLElement {
     if (!competition || competition.mode === "global" || !this._isLmsAdmin()) return;
     const player = competition.players?.find((item) => String(item.id) === String(playerId));
     if (!player?.manualAdvancement || !window.confirm(`Undo Through for ${player.name}?`)) return;
-    const { round, previousResult, previousAlive, previousManualElimination } = player.manualAdvancement;
+    const { round, previousResult, previousAlive, previousManualElimination, currentRound, previousCurrentResult } = player.manualAdvancement;
     player.results = player.results || {};
     if (previousResult === null) delete player.results[round];
     else player.results[round] = previousResult;
+    if (currentRound) {
+      if (previousCurrentResult === null) delete player.results[currentRound];
+      else player.results[currentRound] = previousCurrentResult;
+    }
     player.alive = previousAlive;
     delete player.manualAdvancement;
     if (previousManualElimination) player.manualElimination = previousManualElimination;
@@ -1484,9 +1495,34 @@ class FootballHubPanel extends HTMLElement {
     if (!competition || competition.mode === "global") return false;
     let changed = false;
     for (const player of competition.players || []) {
-      const round = Number(player.manualAdvancement?.round || 0);
+      let round = Number(player.manualAdvancement?.round || 0);
+      const currentRound = Number(competition.round || 0);
+      const currentKey = String(currentRound);
+      const previousKey = String(currentRound - 1);
+      // Older Through actions were recorded on the new round even though the
+      // mistaken Out result belonged to the previous round.
+      if (round === currentRound && currentRound > 1 && !player.picks?.[currentKey]
+        && player.results?.[previousKey] !== undefined
+        && ["survived-manual", "eliminated-no-pick"].includes(player.results?.[currentKey])) {
+        player.manualAdvancement = {
+          ...player.manualAdvancement,
+          round: previousKey,
+          previousResult: player.results[previousKey],
+          currentRound: currentKey,
+          previousCurrentResult: player.manualAdvancement.previousResult ?? null,
+        };
+        delete player.results[currentKey];
+        round = currentRound - 1;
+        changed = true;
+      }
       if (!round || round > Number(competition.round || 0)) continue;
       player.results = player.results || {};
+      if (round === currentRound - 1 && !player.picks?.[currentKey]
+        && player.results[currentKey] === "eliminated-no-pick"
+        && Number(competition.lastManualEndSnapshot?.round) !== currentRound) {
+        delete player.results[currentKey];
+        changed = true;
+      }
       if (Object.entries(player.results).some(([savedRound, result]) =>
         Number(savedRound) > round && String(result).startsWith("eliminated"))) continue;
       if (!player.alive || player.results[String(round)] !== "survived-manual") {
@@ -1814,6 +1850,11 @@ class FootballHubPanel extends HTMLElement {
     const competition = this._lmsCompetition;
     if (!competition || competition.completed || competition.mode === "global" || !this._isLmsAdmin()) return;
     const roundKey = String(competition.round);
+    const stillIn = (competition.players || []).filter((player) => player.alive);
+    if (stillIn.length && stillIn.every((player) => !player.picks?.[roundKey] && !player.results?.[roundKey])) {
+      window.alert(`No Round ${roundKey} picks or results are recorded yet. This is the current round; ending it now would put everybody out.`);
+      return;
+    }
     const undoSnapshot = {
       round: Number(competition.round || 1),
       roundStarted: competition.roundStarted,

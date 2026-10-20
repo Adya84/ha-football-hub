@@ -1,7 +1,7 @@
 # ⚽ Home Assistant Football Hub
 
 [![License](https://img.shields.io/badge/license-Personal%20Use-red.svg)](LICENSE)
-![Version](https://img.shields.io/badge/version-v0.8.10-brightgreen)
+![Version](https://img.shields.io/badge/version-v0.8.11-brightgreen)
 ![Home Assistant](https://img.shields.io/badge/Home%20Assistant-2024.1%2B-blue)
 ![HACS](https://img.shields.io/badge/HACS-Custom-orange)
 ![Cloud Polling](https://img.shields.io/badge/IoT--Class-Cloud%20Polling-blue)
@@ -22,13 +22,13 @@ It also includes Last Man Standing (LMS) and Acca League tools, with private pla
 
 ---
 
-## Latest release — 0.8.10
+## Latest release — 0.8.11
 
 ### Last Man Standing player recovery
 
-An automatic results check no longer eliminates a player just because they have not chosen a team in the new round. Players incorrectly marked **Out** for a missing current-round pick are restored when LMS reloads; genuine earlier eliminations remain Out. The administrator can still explicitly end the round or mark a player Out.
+**Mark Through** now repairs the previous round's result when a player was wrongly marked Out after advancing, while leaving the current round open for a new pick. Saved corrections are restored on reload and synced to the public player page. A round cannot be ended while all active players are still waiting to pick; genuine earlier eliminations remain Out.
 
-Unlocked private-competition admins also have **Mark Through** and **Undo Through** controls on Out player cards. Manual corrections are saved without removing picks or payment history.
+Unlocked private-competition admins can use **Mark Through** and **Undo Through** on Out player cards. Manual corrections preserve picks and payment history. The public LMS page now waits for a round's fixtures to finish before eliminating players with no pick and repairs stale new-round fixtures.
 
 ---
 
@@ -49,7 +49,7 @@ Unlocked private-competition admins also have **Mark Through** and **Undo Throug
 
 Use the **Quick install — HACS** steps above. HACS keeps the integration in `config/custom_components/football_hub` and offers future updates from its **Updates** page.
 
-> To install the current stable version, choose the normal download option in HACS. Pre-release builds are not required for Football Hub 0.8.10.
+> To install the current stable version, choose the normal download option in HACS. Pre-release builds are not required for Football Hub 0.8.11.
 
 ### Manual installation
 
