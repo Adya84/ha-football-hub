@@ -1,7 +1,7 @@
 # ⚽ Home Assistant Football Hub
 
 [![License](https://img.shields.io/badge/license-Personal%20Use-red.svg)](LICENSE)
-![Version](https://img.shields.io/badge/version-v0.8.15-brightgreen)
+![Version](https://img.shields.io/badge/version-v0.8.16-brightgreen)
 ![Home Assistant](https://img.shields.io/badge/Home%20Assistant-2024.1%2B-blue)
 ![HACS](https://img.shields.io/badge/HACS-Custom-orange)
 ![Cloud Polling](https://img.shields.io/badge/IoT--Class-Cloud%20Polling-blue)
@@ -22,13 +22,13 @@ It also includes Last Man Standing (LMS) and Acca League tools, with private pla
 
 ---
 
-## Latest release — 0.8.15
+## Latest release — 0.8.16
 
-### Live score ticker country coverage
+### Clearer live score ticker
 
-The live score ticker below the top bar now recognises the country codes used by the live feed. Selecting England, Scotland, Wales or Northern Ireland shows all live UK matches. Selecting another country shows that country's live matches. The ticker displays league labels, scores and match minutes, and pauses on hover.
+The live score ticker below the top bar now shows a small country flag and country name beneath each league, so Scottish and Welsh competitions are easy to distinguish from English ones. Team names and scores are larger and centred. The ticker maintains its scroll position as scores refresh, allowing every live match to pass before the list loops.
 
-League tables also show wins, losses and draws alongside played matches, goal difference and points. This applies to every competition with a table. Where a provider has not supplied a figure, the table shows a dash.
+Selecting England, Scotland, Wales or Northern Ireland shows all live UK matches. Selecting another country shows that country's live matches. League tables show wins, losses and draws alongside played matches, goal difference and points.
 
 ---
 
@@ -49,7 +49,7 @@ League tables also show wins, losses and draws alongside played matches, goal di
 
 Use the **Quick install — HACS** steps above. HACS keeps the integration in `config/custom_components/football_hub` and offers future updates from its **Updates** page.
 
-> To install the current stable version, choose the normal download option in HACS. Pre-release builds are not required for Football Hub 0.8.15.
+> To install the current stable version, choose the normal download option in HACS. Pre-release builds are not required for Football Hub 0.8.16.
 
 ### Manual installation
 

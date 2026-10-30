@@ -58,4 +58,10 @@ test('UK ticker includes live matches from all UK nations and omits finished mat
   assert.match(html, /UK LIVE/);
   for (const team of ['Newport', 'Livingston', 'Bala', 'Linfield']) assert.match(html, new RegExp(team));
   for (const team of ['Shamrock', 'Arsenal']) assert.doesNotMatch(html, new RegExp(team));
+  assert.match(html, /Championship<\/strong><small>.*Scotland<\/small>/s);
+  assert.match(html, /Cymru Premier<\/strong><small>.*Wales<\/small>/s);
+  assert.match(html, /League Two<\/strong><small>.*England<\/small>/s);
+  assert.equal((html.match(/Newport/g) || []).length, 2);
+  assert.equal((html.match(/Livingston/g) || []).length, 2);
+  assert.match(html, /--ticker-delay:-\d+(?:\.\d+)?s/);
 });
