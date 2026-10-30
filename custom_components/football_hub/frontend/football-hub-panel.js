@@ -1,4 +1,5 @@
-const PANEL_VERSION = "0.8.14";
+const PANEL_VERSION = "0.8.15";
+const LIVE_COUNTRY_CODES = { ENG:"England", SCO:"Scotland", WAL:"Wales", NIR:"Northern Ireland", IRL:"Ireland", GBR:"United Kingdom", USA:"United States", BRA:"Brazil", ARG:"Argentina", ESP:"Spain", GER:"Germany", ITA:"Italy", FRA:"France", NED:"Netherlands", POR:"Portugal", BEL:"Belgium", TUR:"Türkiye", MEX:"Mexico", CAN:"Canada", AUS:"Australia", JPN:"Japan", KOR:"South Korea", CHN:"China", IND:"India", AUT:"Austria", SUI:"Switzerland", DEN:"Denmark", SWE:"Sweden", NOR:"Norway", FIN:"Finland", POL:"Poland", CZE:"Czech Republic", GRE:"Greece", CRO:"Croatia", SRB:"Serbia", UKR:"Ukraine", RUS:"Russia", ROU:"Romania", BUL:"Bulgaria", HUN:"Hungary", ISR:"Israel", KSA:"Saudi Arabia", UAE:"United Arab Emirates", QAT:"Qatar", EGY:"Egypt", MAR:"Morocco", RSA:"South Africa", NGA:"Nigeria", COL:"Colombia", CHI:"Chile", URU:"Uruguay", PAR:"Paraguay", ECU:"Ecuador", PER:"Peru", VEN:"Venezuela", INT:"International", FIFA:"International", UEFA:"Europe" };
 // Temporarily paused while fixture schedules are being corrected. Manual email
 // actions remain available to the administrator.
 const LMS_AUTOMATIC_EMAILS_ENABLED = false;
@@ -3798,19 +3799,18 @@ class FootballHubPanel extends HTMLElement {
       .join("");
 
     const selectedCountry = String(this._selectedCountry || activeCompetition.country || "").trim().toLowerCase();
-    const selectedLeague = String(activeCompetition.name || "").trim().toLowerCase();
+    const ukCountries = ["england", "scotland", "wales", "northern ireland"];
+    const tickerCountries = ukCountries.includes(selectedCountry) ? new Set([...ukCountries, "united kingdom"]) : new Set([selectedCountry]);
     const leagueLive = liveFeed.filter((match) =>
       ["1H", "HT", "2H", "ET", "BT", "P", "SUSP", "INT", "LIVE"].includes(String(match.status_short || "").toUpperCase())
-      && (String(match.country || "").trim().toLowerCase() === selectedCountry
-        || this._favouriteLiveCompetitions?.has(this._liveCompetitionKey(match.country || match.country_code, match.competition || match.league_name))
-        || (String(match.competition || match.league_name || "").trim().toLowerCase() === selectedLeague
-          && String(match.country || "").trim().toLowerCase() === String(activeCompetition.country || "").trim().toLowerCase()))
-    ).sort((a, b) => Number(String(b.competition || b.league_name || "").trim().toLowerCase() === selectedLeague) - Number(String(a.competition || a.league_name || "").trim().toLowerCase() === selectedLeague));
+      && tickerCountries.has(String(LIVE_COUNTRY_CODES[String(match.country_code || match.country || match.league?.country_code || match.league?.country || "").trim().toUpperCase()] || match.country || "").trim().toLowerCase())
+    );
     const tickerScores = leagueLive.map((match) => {
       const minute = match.elapsed ? `${String(match.elapsed).replace(/'+$/, "")}'` : (match.status_short || "LIVE");
       return `<span class="league-live-item"><small>${this._escape(match.competition || match.league_name || "Football")}</small><b>${this._escape(match.home_team)} <em>${this._score(match.home_goals)}–${this._score(match.away_goals)}</em> ${this._escape(match.away_team)}</b><i>${this._escape(minute)}</i></span>`;
     }).join("");
-    const liveTicker = leagueLive.length ? `<div class="league-live-ticker" aria-label="Live scores in ${this._escape(this._selectedCountry || activeCompetition.country)} and pinned leagues"><strong><span class="league-live-pulse"></span> LIVE SCORES</strong><div class="league-live-window"><div class="league-live-track" style="--ticker-duration:${Math.max(20, leagueLive.length * 13)}s"><div class="league-live-scores">${tickerScores}</div><div class="league-live-scores" aria-hidden="true">${tickerScores}</div></div></div></div>` : "";
+    const tickerLabel = ukCountries.includes(selectedCountry) ? "UK" : (this._selectedCountry || activeCompetition.country);
+    const liveTicker = leagueLive.length ? `<div class="league-live-ticker" aria-label="Live scores in ${this._escape(tickerLabel)}"><strong><span class="league-live-pulse"></span> ${this._escape(tickerLabel)} LIVE</strong><div class="league-live-window"><div class="league-live-track" style="--ticker-duration:${Math.max(20, leagueLive.length * 13)}s"><div class="league-live-scores">${tickerScores}</div><div class="league-live-scores" aria-hidden="true">${tickerScores}</div></div></div></div>` : "";
 
     return `
       <header class="hero">
@@ -4222,7 +4222,7 @@ class FootballHubPanel extends HTMLElement {
     const competitionName = (match) => this._matchText(match.league || match.competition) || "Other matches";
     const catalogueCountries = new Map();
     catalogue.forEach((item) => { if (!catalogueCountries.has(item.name)) catalogueCountries.set(item.name, new Set()); catalogueCountries.get(item.name).add(item.country); });
-    const countryCodes = { ENG:"England", SCO:"Scotland", WAL:"Wales", NIR:"Northern Ireland", IRL:"Ireland", GBR:"United Kingdom", USA:"United States", BRA:"Brazil", ARG:"Argentina", ESP:"Spain", GER:"Germany", ITA:"Italy", FRA:"France", NED:"Netherlands", POR:"Portugal", BEL:"Belgium", TUR:"Türkiye", MEX:"Mexico", CAN:"Canada", AUS:"Australia", JPN:"Japan", KOR:"South Korea", CHN:"China", IND:"India", AUT:"Austria", SUI:"Switzerland", DEN:"Denmark", SWE:"Sweden", NOR:"Norway", FIN:"Finland", POL:"Poland", CZE:"Czech Republic", GRE:"Greece", CRO:"Croatia", SRB:"Serbia", UKR:"Ukraine", RUS:"Russia", ROU:"Romania", BUL:"Bulgaria", HUN:"Hungary", ISR:"Israel", KSA:"Saudi Arabia", UAE:"United Arab Emirates", QAT:"Qatar", EGY:"Egypt", MAR:"Morocco", RSA:"South Africa", NGA:"Nigeria", COL:"Colombia", CHI:"Chile", URU:"Uruguay", PAR:"Paraguay", ECU:"Ecuador", PER:"Peru", VEN:"Venezuela", INT:"International", FIFA:"International", UEFA:"Europe" };
+    const countryCodes = LIVE_COUNTRY_CODES;
     [...this._hiddenLiveCountries].forEach((savedCountry) => {
       const migratedCountry = countryCodes[String(savedCountry).toUpperCase()];
       if (migratedCountry && migratedCountry !== savedCountry) {

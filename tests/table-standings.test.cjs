@@ -34,3 +34,28 @@ test('desktop ticker has its own full-width grid row above navigation and conten
   assert.match(styles, /\.app-shell\.view-desktop \.tabs\s*\{[^}]*grid-row:3;/);
   assert.match(styles, /\.app-shell\.view-desktop main\s*\{[^}]*grid-row:3;/);
 });
+
+test('UK ticker includes live matches from all UK nations and omits finished matches', () => {
+  const panel = Object.create(Panel.prototype);
+  panel._selectedCountry = 'England';
+  panel._selectedPrefix = 'sensor.football_hub';
+  panel._activeTab = 'overview';
+  panel._viewMode = 'desktop';
+  panel._language = 'en';
+  panel._competitionPrefixes = () => [];
+  panel._allStates = () => ({});
+  panel._statusInfo = () => ({ state: 'Online', country: 'England', competition: 'Premier League', season: '2026/27', available_competitions: [{ country: 'England', name: 'Premier League', key: 'england-premier-league' }] });
+  panel._attrs = () => ({ matches: [
+    { country_code: 'ENG', competition: 'League Two', status_short: '1H', home_team: 'Newport', away_team: 'Chesterfield', home_goals: 2, away_goals: 0, elapsed: 18 },
+    { country_code: 'SCO', competition: 'Championship', status_short: '2H', home_team: 'Livingston', away_team: 'Stenhousemuir', home_goals: 1, away_goals: 0, elapsed: 61 },
+    { country_code: 'WAL', competition: 'Cymru Premier', status_short: 'HT', home_team: 'Bala', away_team: 'TNS', home_goals: 0, away_goals: 0 },
+    { country_code: 'NIR', competition: 'Premiership', status_short: 'LIVE', home_team: 'Linfield', away_team: 'Larne', home_goals: 0, away_goals: 1 },
+    { country_code: 'IRL', competition: 'Premier Division', status_short: '1H', home_team: 'Shamrock', away_team: 'Derry', home_goals: 0, away_goals: 0 },
+    { country_code: 'ENG', competition: 'Premier League', status_short: 'FT', home_team: 'Arsenal', away_team: 'Chelsea', home_goals: 1, away_goals: 0 },
+  ] });
+  panel._t = (key) => key;
+  const html = panel._hero();
+  assert.match(html, /UK LIVE/);
+  for (const team of ['Newport', 'Livingston', 'Bala', 'Linfield']) assert.match(html, new RegExp(team));
+  for (const team of ['Shamrock', 'Arsenal']) assert.doesNotMatch(html, new RegExp(team));
+});
