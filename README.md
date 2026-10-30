@@ -1,7 +1,7 @@
 # ⚽ Home Assistant Football Hub
 
 [![License](https://img.shields.io/badge/license-Personal%20Use-red.svg)](LICENSE)
-![Version](https://img.shields.io/badge/version-v0.8.12-brightgreen)
+![Version](https://img.shields.io/badge/version-v0.8.13-brightgreen)
 ![Home Assistant](https://img.shields.io/badge/Home%20Assistant-2024.1%2B-blue)
 ![HACS](https://img.shields.io/badge/HACS-Custom-orange)
 ![Cloud Polling](https://img.shields.io/badge/IoT--Class-Cloud%20Polling-blue)
@@ -22,13 +22,13 @@ It also includes Last Man Standing (LMS) and Acca League tools, with private pla
 
 ---
 
-## Latest release — 0.8.12
+## Latest release — 0.8.13
 
-### Last Man Standing Round 4 recovery
+### League tables and live scores
 
-If an empty Round 4 was incorrectly advanced to Round 5, opening LMS as an unlocked administrator restores Round 4 from the shared game. The repair removes the mistaken Round 4 manual Through results, keeps genuine earlier eliminations, and loads the next upcoming league fixtures for Round 4.
+League tables now show wins, losses and draws alongside played matches, goal difference and points. This applies to every competition with a table. Where a provider has not supplied a figure, the table shows a dash.
 
-The public LMS page no longer advances a round while any surviving player has not picked. Existing picks and payment history are kept. **Mark Through** and **Undo Through** remain available for other corrections.
+A live score ticker appears below the top bar for matches in the selected country, selected league and pinned leagues. The selected league appears first. It scrolls at a steady pace, repeats, and pauses on hover. When no matching game is live, the ticker stays hidden.
 
 ---
 
@@ -49,7 +49,7 @@ The public LMS page no longer advances a round while any surviving player has no
 
 Use the **Quick install — HACS** steps above. HACS keeps the integration in `config/custom_components/football_hub` and offers future updates from its **Updates** page.
 
-> To install the current stable version, choose the normal download option in HACS. Pre-release builds are not required for Football Hub 0.8.12.
+> To install the current stable version, choose the normal download option in HACS. Pre-release builds are not required for Football Hub 0.8.13.
 
 ### Manual installation
 

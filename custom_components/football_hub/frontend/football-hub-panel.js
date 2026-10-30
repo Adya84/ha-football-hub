@@ -1,4 +1,4 @@
-const PANEL_VERSION = "0.8.12";
+const PANEL_VERSION = "0.8.13";
 // Temporarily paused while fixture schedules are being corrected. Manual email
 // actions remain available to the administrator.
 const LMS_AUTOMATIC_EMAILS_ENABLED = false;
@@ -3797,6 +3797,18 @@ class FootballHubPanel extends HTMLElement {
       })
       .join("");
 
+    const selectedCountry = String(this._selectedCountry || activeCompetition.country || "").trim().toLowerCase();
+    const selectedLeague = String(activeCompetition.name || "").trim().toLowerCase();
+    const leagueLive = liveFeed.filter((match) =>
+      ["1H", "HT", "2H", "ET", "BT", "P", "SUSP", "INT", "LIVE"].includes(String(match.status_short || "").toUpperCase())
+      && (String(match.country || "").trim().toLowerCase() === selectedCountry
+        || this._favouriteLiveCompetitions?.has(this._liveCompetitionKey(match.country || match.country_code, match.competition || match.league_name))
+        || (String(match.competition || match.league_name || "").trim().toLowerCase() === selectedLeague
+          && String(match.country || "").trim().toLowerCase() === String(activeCompetition.country || "").trim().toLowerCase()))
+    ).sort((a, b) => Number(String(b.competition || b.league_name || "").trim().toLowerCase() === selectedLeague) - Number(String(a.competition || a.league_name || "").trim().toLowerCase() === selectedLeague));
+    const tickerScores = leagueLive.map((match) => `<span><small>${this._escape(match.competition || match.league_name || "Football")}</small> ${this._escape(match.home_team)} ${this._score(match.home_goals)}–${this._score(match.away_goals)} ${this._escape(match.away_team)}</span>`).join("");
+    const liveTicker = leagueLive.length ? `<div class="league-live-ticker" aria-label="Live scores in ${this._escape(this._selectedCountry || activeCompetition.country)} and pinned leagues"><strong>LIVE SCORES</strong><div class="league-live-window"><div class="league-live-track" style="--ticker-duration:${Math.max(18, leagueLive.length * 11)}s"><div class="league-live-scores">${tickerScores}</div><div class="league-live-scores" aria-hidden="true">${tickerScores}</div></div></div></div>` : "";
+
     return `
       <header class="hero">
         <div>
@@ -3842,6 +3854,7 @@ class FootballHubPanel extends HTMLElement {
           </a>
         </div>
       </header>
+      ${liveTicker}
     `;
   }
 
@@ -4495,7 +4508,7 @@ class FootballHubPanel extends HTMLElement {
 
     return `
       <div class="table">
-        <div class="table-head"><span>#</span><span>Club</span><span>P</span><span>GD</span><span>Pts</span></div>
+        <div class="table-head"><span>#</span><span>Club</span><span title="Played">P</span><span title="Wins">W</span><span title="Losses">L</span><span title="Draws">D</span><span>GD</span><span>Pts</span></div>
         ${table
           .map(
             (row, index) => `
@@ -4505,6 +4518,9 @@ class FootballHubPanel extends HTMLElement {
               row.team || row.team_name || "Team"
             )}</span>
             <span>${this._escape(row.played ?? row.all?.played ?? 0)}</span>
+            <span>${this._escape(row.won ?? row.win ?? row.all?.win ?? row.all?.won ?? "—")}</span>
+            <span>${this._escape(row.lost ?? row.lose ?? row.all?.lose ?? row.all?.lost ?? "—")}</span>
+            <span>${this._escape(row.drawn ?? row.draw ?? row.all?.draw ?? row.all?.drawn ?? "—")}</span>
             <span>${this._escape(row.goals_diff ?? row.goal_difference ?? 0)}</span>
             <strong>${this._escape(row.points ?? 0)}</strong>
           </div>`
@@ -5994,6 +6010,17 @@ class FootballHubPanel extends HTMLElement {
         overflow: visible;
       }
 
+      .league-live-ticker { display:flex; align-items:center; gap:18px; padding:10px 22px; color:#fff; background:#061b30; border-block:1px solid rgba(0,188,255,.25); overflow:hidden; }
+      .league-live-ticker > strong { flex:none; color:#86efac; white-space:nowrap; font-size:.78rem; }
+      .league-live-window { flex:1; min-width:0; overflow:hidden; }
+      .league-live-track { display:flex; width:max-content; animation:league-live-scroll var(--ticker-duration) linear infinite; }
+      .league-live-ticker:hover .league-live-track, .league-live-ticker:focus-within .league-live-track { animation-play-state:paused; }
+      .league-live-scores { display:flex; flex:none; gap:36px; padding-right:36px; white-space:nowrap; font-size:.82rem; }
+      .league-live-scores small { color:#7dd3fc; font-weight:700; margin-right:6px; }
+      .league-live-scores span::before { content:"●"; color:#00bfff; margin-right:12px; font-size:.6rem; }
+      @keyframes league-live-scroll { to { transform:translateX(-50%); } }
+      @media (prefers-reduced-motion:reduce) { .league-live-track { animation:none; } .league-live-window { overflow-x:auto; } }
+
       .hero::after {
         content: "";
         position: absolute;
@@ -6397,11 +6424,13 @@ class FootballHubPanel extends HTMLElement {
       .table {
         display: flex;
         flex-direction: column;
+        overflow-x: auto;
       }
 
       .table-head, .table-row {
         display: grid;
-        grid-template-columns: 38px minmax(150px, 1fr) 44px 50px 52px;
+        grid-template-columns: 38px minmax(150px, 1fr) repeat(4, 44px) 50px 52px;
+        min-width: 620px;
         align-items: center;
         gap: 8px;
         min-height: 48px;
@@ -7126,7 +7155,7 @@ class FootballHubPanel extends HTMLElement {
       .app-shell.view-mobile .feature-match, .app-shell.view-mobile .live-matchup { grid-template-columns:1fr 76px 1fr; gap:6px; }
       .app-shell.view-mobile .score-board strong { font-size:2.25rem; }
       .app-shell.view-mobile .table { overflow-x:auto; }
-      .app-shell.view-mobile .table-head, .app-shell.view-mobile .table-row { min-width:470px; }
+      .app-shell.view-mobile .table-head, .app-shell.view-mobile .table-row { min-width:620px; }
       .app-shell.view-mobile .squad-grid { grid-template-columns:1fr; }
       .app-shell.view-mobile .club-profile-head { align-items:flex-start; }
       .app-shell.view-mobile .transfer-row { grid-template-columns:42px minmax(0,1fr); }
@@ -7234,7 +7263,7 @@ class FootballHubPanel extends HTMLElement {
         .live-picker-control select { min-width: 0; width: 100%; }
 
         .table-head, .table-row {
-          grid-template-columns: 30px minmax(120px, 1fr) 34px 42px 42px;
+          grid-template-columns: 30px minmax(120px, 1fr) repeat(4, 34px) 42px 42px;
           font-size: .78rem;
         }
 
