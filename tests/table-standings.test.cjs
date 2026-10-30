@@ -26,3 +26,11 @@ test('every league table includes wins, losses and draws from normalized and pro
   assert.match(html, /Cardiff.*?<span>10<\/span>.*?<span>5<\/span>.*?<span>3<\/span>.*?<span>2<\/span>/s);
   assert.match(html, /Unknown.*?<span>0<\/span>.*?<span>—<\/span>.*?<span>—<\/span>.*?<span>—<\/span>/s);
 });
+
+test('desktop ticker has its own full-width grid row above navigation and content', () => {
+  const panel = Object.create(Panel.prototype);
+  const styles = panel._styles();
+  assert.match(styles, /\.app-shell\.view-desktop > \.league-live-ticker\s*\{[^}]*grid-column:1 \/ -1;[^}]*grid-row:2;/);
+  assert.match(styles, /\.app-shell\.view-desktop \.tabs\s*\{[^}]*grid-row:3;/);
+  assert.match(styles, /\.app-shell\.view-desktop main\s*\{[^}]*grid-row:3;/);
+});

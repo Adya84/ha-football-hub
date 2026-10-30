@@ -1,4 +1,4 @@
-const PANEL_VERSION = "0.8.13";
+const PANEL_VERSION = "0.8.14";
 // Temporarily paused while fixture schedules are being corrected. Manual email
 // actions remain available to the administrator.
 const LMS_AUTOMATIC_EMAILS_ENABLED = false;
@@ -3806,8 +3806,11 @@ class FootballHubPanel extends HTMLElement {
         || (String(match.competition || match.league_name || "").trim().toLowerCase() === selectedLeague
           && String(match.country || "").trim().toLowerCase() === String(activeCompetition.country || "").trim().toLowerCase()))
     ).sort((a, b) => Number(String(b.competition || b.league_name || "").trim().toLowerCase() === selectedLeague) - Number(String(a.competition || a.league_name || "").trim().toLowerCase() === selectedLeague));
-    const tickerScores = leagueLive.map((match) => `<span><small>${this._escape(match.competition || match.league_name || "Football")}</small> ${this._escape(match.home_team)} ${this._score(match.home_goals)}–${this._score(match.away_goals)} ${this._escape(match.away_team)}</span>`).join("");
-    const liveTicker = leagueLive.length ? `<div class="league-live-ticker" aria-label="Live scores in ${this._escape(this._selectedCountry || activeCompetition.country)} and pinned leagues"><strong>LIVE SCORES</strong><div class="league-live-window"><div class="league-live-track" style="--ticker-duration:${Math.max(18, leagueLive.length * 11)}s"><div class="league-live-scores">${tickerScores}</div><div class="league-live-scores" aria-hidden="true">${tickerScores}</div></div></div></div>` : "";
+    const tickerScores = leagueLive.map((match) => {
+      const minute = match.elapsed ? `${String(match.elapsed).replace(/'+$/, "")}'` : (match.status_short || "LIVE");
+      return `<span class="league-live-item"><small>${this._escape(match.competition || match.league_name || "Football")}</small><b>${this._escape(match.home_team)} <em>${this._score(match.home_goals)}–${this._score(match.away_goals)}</em> ${this._escape(match.away_team)}</b><i>${this._escape(minute)}</i></span>`;
+    }).join("");
+    const liveTicker = leagueLive.length ? `<div class="league-live-ticker" aria-label="Live scores in ${this._escape(this._selectedCountry || activeCompetition.country)} and pinned leagues"><strong><span class="league-live-pulse"></span> LIVE SCORES</strong><div class="league-live-window"><div class="league-live-track" style="--ticker-duration:${Math.max(20, leagueLive.length * 13)}s"><div class="league-live-scores">${tickerScores}</div><div class="league-live-scores" aria-hidden="true">${tickerScores}</div></div></div></div>` : "";
 
     return `
       <header class="hero">
@@ -6010,14 +6013,18 @@ class FootballHubPanel extends HTMLElement {
         overflow: visible;
       }
 
-      .league-live-ticker { display:flex; align-items:center; gap:18px; padding:10px 22px; color:#fff; background:#061b30; border-block:1px solid rgba(0,188,255,.25); overflow:hidden; }
-      .league-live-ticker > strong { flex:none; color:#86efac; white-space:nowrap; font-size:.78rem; }
+      .league-live-ticker { display:flex; align-items:stretch; gap:0; min-height:52px; color:#fff; background:linear-gradient(90deg,#06172b,#092944 55%,#06172b); border-block:1px solid rgba(0,188,255,.4); box-shadow:0 7px 20px rgba(0,0,0,.25); overflow:hidden; }
+      .league-live-ticker > strong { display:flex; align-items:center; gap:8px; flex:none; padding:0 20px; color:#86efac; background:#06253a; border-right:1px solid rgba(0,188,255,.4); white-space:nowrap; font-size:.76rem; letter-spacing:.08em; }
+      .league-live-pulse { width:8px; height:8px; border-radius:50%; background:#4ade80; box-shadow:0 0 10px #4ade80; }
       .league-live-window { flex:1; min-width:0; overflow:hidden; }
       .league-live-track { display:flex; width:max-content; animation:league-live-scroll var(--ticker-duration) linear infinite; }
       .league-live-ticker:hover .league-live-track, .league-live-ticker:focus-within .league-live-track { animation-play-state:paused; }
-      .league-live-scores { display:flex; flex:none; gap:36px; padding-right:36px; white-space:nowrap; font-size:.82rem; }
-      .league-live-scores small { color:#7dd3fc; font-weight:700; margin-right:6px; }
-      .league-live-scores span::before { content:"●"; color:#00bfff; margin-right:12px; font-size:.6rem; }
+      .league-live-scores { display:flex; flex:none; align-items:stretch; white-space:nowrap; font-size:.82rem; }
+      .league-live-item { display:flex; align-items:center; gap:11px; padding:0 24px; border-right:1px solid rgba(125,211,252,.22); }
+      .league-live-item small { color:#7dd3fc; font-size:.72rem; font-weight:800; text-transform:uppercase; }
+      .league-live-item b { font-weight:650; }
+      .league-live-item em { color:#fff; font-style:normal; font-weight:900; font-size:1rem; margin:0 5px; }
+      .league-live-item i { color:#86efac; font-style:normal; font-size:.72rem; font-weight:800; }
       @keyframes league-live-scroll { to { transform:translateX(-50%); } }
       @media (prefers-reduced-motion:reduce) { .league-live-track { animation:none; } .league-live-window { overflow-x:auto; } }
 
@@ -7293,7 +7300,7 @@ class FootballHubPanel extends HTMLElement {
       .app-shell.view-desktop {
         display:grid;
         grid-template-columns:174px minmax(0,1fr);
-        grid-template-rows:auto 1fr auto;
+        grid-template-rows:auto auto 1fr auto;
         min-height:100vh;
         background:
           radial-gradient(circle at 70% 0%, rgba(0,132,255,.16), transparent 32%),
@@ -7336,6 +7343,7 @@ class FootballHubPanel extends HTMLElement {
         border-bottom:1px solid rgba(0,183,255,.32);
         background:linear-gradient(90deg,rgba(0,8,20,.98),rgba(0,30,63,.72),rgba(0,8,20,.98));
       }
+      .app-shell.view-desktop > .league-live-ticker { grid-column:1 / -1; grid-row:2; min-width:0; position:relative; z-index:1; }
       .app-shell.view-desktop .hero::after { width:230px; height:230px; top:-76px; opacity:.45; }
       .app-shell.view-desktop .hero .eyebrow { display:none; }
       .app-shell.view-desktop .hero h1 { font-size:2.25rem; letter-spacing:-.04em; }
@@ -7348,7 +7356,7 @@ class FootballHubPanel extends HTMLElement {
       .app-shell.view-desktop .panel-back-button span { display:none; }
       .app-shell.view-desktop .tabs {
         grid-column:1;
-        grid-row:2;
+        grid-row:3;
         position:relative;
         top:auto;
         z-index:5;
@@ -7397,12 +7405,12 @@ class FootballHubPanel extends HTMLElement {
       }
       .app-shell.view-desktop main {
         grid-column:2;
-        grid-row:2;
+        grid-row:3;
         width:100%;
         max-width:none;
         padding:14px 16px 20px;
       }
-      .app-shell.view-desktop footer { grid-column:2; grid-row:3; }
+      .app-shell.view-desktop footer { grid-column:2; grid-row:4; }
       .app-shell.view-desktop .feature-card,
       .app-shell.view-desktop .stat-card,
       .app-shell.view-desktop .list-card,
