@@ -1,4 +1,4 @@
-const PANEL_VERSION = "0.8.16";
+const PANEL_VERSION = "0.8.17";
 const LIVE_COUNTRY_CODES = { ENG:"England", SCO:"Scotland", WAL:"Wales", NIR:"Northern Ireland", IRL:"Ireland", GBR:"United Kingdom", USA:"United States", BRA:"Brazil", ARG:"Argentina", ESP:"Spain", GER:"Germany", ITA:"Italy", FRA:"France", NED:"Netherlands", POR:"Portugal", BEL:"Belgium", TUR:"Türkiye", MEX:"Mexico", CAN:"Canada", AUS:"Australia", JPN:"Japan", KOR:"South Korea", CHN:"China", IND:"India", AUT:"Austria", SUI:"Switzerland", DEN:"Denmark", SWE:"Sweden", NOR:"Norway", FIN:"Finland", POL:"Poland", CZE:"Czech Republic", GRE:"Greece", CRO:"Croatia", SRB:"Serbia", UKR:"Ukraine", RUS:"Russia", ROU:"Romania", BUL:"Bulgaria", HUN:"Hungary", ISR:"Israel", KSA:"Saudi Arabia", UAE:"United Arab Emirates", QAT:"Qatar", EGY:"Egypt", MAR:"Morocco", RSA:"South Africa", NGA:"Nigeria", COL:"Colombia", CHI:"Chile", URU:"Uruguay", PAR:"Paraguay", ECU:"Ecuador", PER:"Peru", VEN:"Venezuela", INT:"International", FIFA:"International", UEFA:"Europe" };
 // Temporarily paused while fixture schedules are being corrected. Manual email
 // actions remain available to the administrator.
@@ -102,6 +102,8 @@ class FootballHubPanel extends HTMLElement {
     catch (_error) { this._openLiveFilterCountries = new Set(); }
     try { this._favouriteLiveCompetitions = new Set(JSON.parse(localStorage.getItem("football_hub_favourite_live_competitions") || "[]")); }
     catch (_error) { this._favouriteLiveCompetitions = new Set(); }
+    try { this._tickerLeagueChoices = JSON.parse(localStorage.getItem("football_hub_ticker_leagues") || "{}"); }
+    catch (_error) { this._tickerLeagueChoices = {}; }
     try { this._liveNotifications = { kickoff: false, goals: false, yellowCards: false, redCards: false, halftime: false, fulltime: false, sounds: false, selectedClubOnly: false, ...JSON.parse(localStorage.getItem("football_hub_live_notifications") || "{}") }; }
     catch (_error) { this._liveNotifications = { kickoff: false, goals: false, yellowCards: false, redCards: false, halftime: false, fulltime: false, sounds: false, selectedClubOnly: false }; }
     this._alertAudioContext = null;
@@ -3799,12 +3801,20 @@ class FootballHubPanel extends HTMLElement {
       .join("");
 
     const selectedCountry = String(this._selectedCountry || activeCompetition.country || "").trim().toLowerCase();
-    const ukCountries = ["england", "scotland", "wales", "northern ireland"];
-    const tickerCountries = ukCountries.includes(selectedCountry) ? new Set([...ukCountries, "united kingdom"]) : new Set([selectedCountry]);
-    const leagueLive = liveFeed.filter((match) =>
+    const ukCountries = ["england", "scotland"];
+    const tickerCountries = ukCountries.includes(selectedCountry) ? new Set([...ukCountries, "wales", "northern ireland", "united kingdom"]) : new Set([selectedCountry]);
+    const countryOf = (match) => String(LIVE_COUNTRY_CODES[String(match.country_code || match.country || match.league?.country_code || match.league?.country || "").trim().toUpperCase()] || match.country || "").trim();
+    const competitionOf = (match) => String(match.competition || match.league_name || "Football").trim();
+    const tickerKey = (match) => `${countryOf(match)}|||${competitionOf(match)}`;
+    const allTickerLive = liveFeed.filter((match) =>
       ["1H", "HT", "2H", "ET", "BT", "P", "SUSP", "INT", "LIVE"].includes(String(match.status_short || "").toUpperCase())
-      && tickerCountries.has(String(LIVE_COUNTRY_CODES[String(match.country_code || match.country || match.league?.country_code || match.league?.country || "").trim().toUpperCase()] || match.country || "").trim().toLowerCase())
+      && tickerCountries.has(countryOf(match).toLowerCase())
     );
+    const defaultTickerChoice = (match) => !ukCountries.includes(selectedCountry) || ukCountries.includes(countryOf(match).toLowerCase());
+    const tickerEnabled = (match) => this._tickerLeagueChoices?.[tickerKey(match)] ?? defaultTickerChoice(match);
+    const leagueLive = allTickerLive.filter(tickerEnabled);
+    const tickerLeagues = [...new Map(allTickerLive.map((match) => [tickerKey(match), match])).values()];
+    const tickerOptions = tickerLeagues.map((match) => `<label><input type="checkbox" data-ticker-league="${this._escape(tickerKey(match))}" ${tickerEnabled(match) ? "checked" : ""}>${this._countryFlag(countryOf(match), "league-live-flag")}<span>${this._escape(countryOf(match))} · ${this._escape(competitionOf(match))}</span></label>`).join("");
     const tickerScores = leagueLive.map((match) => {
       const minute = match.elapsed ? `${String(match.elapsed).replace(/'+$/, "")}'` : (match.status_short || "LIVE");
       const rawCountry = String(match.country_code || match.country || match.league?.country_code || match.league?.country || "").trim();
@@ -3814,7 +3824,7 @@ class FootballHubPanel extends HTMLElement {
     const tickerLabel = ukCountries.includes(selectedCountry) ? "UK" : (this._selectedCountry || activeCompetition.country);
     const tickerDuration = Math.max(20, leagueLive.length * 13);
     const tickerDelay = -(Date.now() / 1000 % tickerDuration);
-    const liveTicker = leagueLive.length ? `<div class="league-live-ticker" aria-label="Live scores in ${this._escape(tickerLabel)}"><strong><span class="league-live-pulse"></span> ${this._escape(tickerLabel)} LIVE</strong><div class="league-live-window"><div class="league-live-track" style="--ticker-duration:${tickerDuration}s;--ticker-delay:${tickerDelay}s"><div class="league-live-scores">${tickerScores}</div><div class="league-live-scores" aria-hidden="true">${tickerScores}</div></div></div></div>` : "";
+    const liveTicker = allTickerLive.length ? `<div class="league-live-ticker" aria-label="Live scores in ${this._escape(tickerLabel)}"><strong><span class="league-live-pulse"></span> ${this._escape(tickerLabel)} LIVE</strong><details class="league-live-filter" id="ticker-leagues-filter" ${this._tickerFilterOpen ? "open" : ""}><summary>Leagues <span>▾</span></summary><div class="league-live-filter-options">${tickerOptions}</div></details><div class="league-live-window">${leagueLive.length ? `<div class="league-live-track" style="--ticker-duration:${tickerDuration}s;--ticker-delay:${tickerDelay}s"><div class="league-live-scores">${tickerScores}</div><div class="league-live-scores" aria-hidden="true">${tickerScores}</div></div>` : `<span class="league-live-empty">Select a league to show live scores.</span>`}</div></div>` : "";
 
     return `
       <header class="hero">
@@ -5012,6 +5022,12 @@ class FootballHubPanel extends HTMLElement {
       </div>
       <aside id="football-hub-live-alerts" class="football-hub-live-alerts" aria-live="polite"></aside>
     `;
+    this.shadowRoot.querySelectorAll("[data-ticker-league]").forEach((input) => input.addEventListener("change", () => {
+      this._tickerLeagueChoices = { ...this._tickerLeagueChoices, [input.dataset.tickerLeague]: input.checked };
+      localStorage.setItem("football_hub_ticker_leagues", JSON.stringify(this._tickerLeagueChoices));
+      this._tickerFilterOpen = input.closest("details")?.open;
+      this._render();
+    }));
 
     // Keep the detailed country and competition chooser with the rest of the
     // Match controls, rather than giving it its own full-width row.
@@ -5024,6 +5040,10 @@ class FootballHubPanel extends HTMLElement {
 
     // Preserve every expandable section across sensor updates and re-renders.
     this.shadowRoot.querySelectorAll("details").forEach((details, index) => {
+      if (details.id === "ticker-leagues-filter") {
+        details.addEventListener("toggle", () => { this._tickerFilterOpen = details.open; });
+        return;
+      }
       if (details.dataset.liveFilterCountry) return;
       const country = details.querySelector('summary [data-live-filter-kind="country"]')?.dataset.liveFilterValue;
       const heading = details.querySelector("summary strong, summary h2")?.textContent || details.querySelector("summary")?.textContent || "";
@@ -6017,8 +6037,16 @@ class FootballHubPanel extends HTMLElement {
         overflow: visible;
       }
 
-      .league-live-ticker { display:flex; align-items:stretch; gap:0; min-height:64px; color:#fff; background:linear-gradient(90deg,#06172b,#092944 55%,#06172b); border-block:1px solid rgba(0,188,255,.4); box-shadow:0 7px 20px rgba(0,0,0,.25); overflow:hidden; }
+      .league-live-ticker { display:flex; align-items:stretch; gap:0; min-height:64px; color:#fff; background:linear-gradient(90deg,#06172b,#092944 55%,#06172b); border-block:1px solid rgba(0,188,255,.4); box-shadow:0 7px 20px rgba(0,0,0,.25); overflow:visible; }
       .league-live-ticker > strong { display:flex; align-items:center; gap:8px; flex:none; padding:0 20px; color:#86efac; background:#06253a; border-right:1px solid rgba(0,188,255,.4); white-space:nowrap; font-size:.86rem; letter-spacing:.08em; }
+      .league-live-filter { position:relative; display:flex; align-items:center; flex:none; border-right:1px solid rgba(0,188,255,.35); }
+      .league-live-filter summary { display:flex; align-items:center; gap:8px; height:100%; padding:0 14px; cursor:pointer; color:#d5e9f8; font-size:.8rem; font-weight:800; list-style:none; }
+      .league-live-filter summary::-webkit-details-marker { display:none; }
+      .league-live-filter-options { position:absolute; z-index:20; top:100%; left:0; width:min(360px,calc(100vw - 24px)); max-height:320px; overflow:auto; padding:9px; border:1px solid rgba(0,188,255,.5); border-radius:0 0 10px 10px; background:#061b30; box-shadow:0 16px 28px rgba(0,0,0,.45); }
+      .league-live-filter-options label { display:flex; align-items:center; gap:9px; padding:9px; cursor:pointer; color:#e8f4ff; font-size:.83rem; }
+      .league-live-filter-options label:hover { background:rgba(0,183,255,.12); }
+      .league-live-filter-options input { accent-color:#00b7ff; }
+      .league-live-empty { display:flex; align-items:center; height:100%; padding:0 20px; color:#c6d8e7; font-size:.85rem; }
       .league-live-pulse { width:8px; height:8px; border-radius:50%; background:#4ade80; box-shadow:0 0 10px #4ade80; }
       .league-live-window { flex:1; min-width:0; overflow:hidden; }
       .league-live-track { display:flex; width:max-content; animation:league-live-scroll var(--ticker-duration) linear var(--ticker-delay) infinite; }
@@ -7350,7 +7378,7 @@ class FootballHubPanel extends HTMLElement {
         border-bottom:1px solid rgba(0,183,255,.32);
         background:linear-gradient(90deg,rgba(0,8,20,.98),rgba(0,30,63,.72),rgba(0,8,20,.98));
       }
-      .app-shell.view-desktop > .league-live-ticker { grid-column:1 / -1; grid-row:2; min-width:0; position:relative; z-index:1; }
+      .app-shell.view-desktop > .league-live-ticker { grid-column:1 / -1; grid-row:2; min-width:0; position:relative; z-index:10; }
       .app-shell.view-desktop .hero::after { width:230px; height:230px; top:-76px; opacity:.45; }
       .app-shell.view-desktop .hero .eyebrow { display:none; }
       .app-shell.view-desktop .hero h1 { font-size:2.25rem; letter-spacing:-.04em; }

@@ -35,7 +35,7 @@ test('desktop ticker has its own full-width grid row above navigation and conten
   assert.match(styles, /\.app-shell\.view-desktop main\s*\{[^}]*grid-row:3;/);
 });
 
-test('UK ticker includes live matches from all UK nations and omits finished matches', () => {
+test('UK ticker shows England and Scotland without Wales, Northern Ireland or finished matches', () => {
   const panel = Object.create(Panel.prototype);
   panel._selectedCountry = 'England';
   panel._selectedPrefix = 'sensor.football_hub';
@@ -44,7 +44,7 @@ test('UK ticker includes live matches from all UK nations and omits finished mat
   panel._language = 'en';
   panel._competitionPrefixes = () => [];
   panel._allStates = () => ({});
-  panel._statusInfo = () => ({ state: 'Online', country: 'England', competition: 'Premier League', season: '2026/27', available_competitions: [{ country: 'England', name: 'Premier League', key: 'england-premier-league' }] });
+  panel._statusInfo = () => ({ state: 'Online', country: 'England', competition: 'Premier League', season: '2026/27', available_competitions: [{ country: 'England', name: 'Premier League', key: 'england-premier-league' }, { country: 'Northern Ireland', name: 'Premiership', key: 'northern-ireland-premiership' }] });
   panel._attrs = () => ({ matches: [
     { country_code: 'ENG', competition: 'League Two', status_short: '1H', home_team: 'Newport', away_team: 'Chesterfield', home_goals: 2, away_goals: 0, elapsed: 18 },
     { country_code: 'SCO', competition: 'Championship', status_short: '2H', home_team: 'Livingston', away_team: 'Stenhousemuir', home_goals: 1, away_goals: 0, elapsed: 61 },
@@ -56,12 +56,20 @@ test('UK ticker includes live matches from all UK nations and omits finished mat
   panel._t = (key) => key;
   const html = panel._hero();
   assert.match(html, /UK LIVE/);
-  for (const team of ['Newport', 'Livingston', 'Bala', 'Linfield']) assert.match(html, new RegExp(team));
-  for (const team of ['Shamrock', 'Arsenal']) assert.doesNotMatch(html, new RegExp(team));
+  for (const team of ['Newport', 'Livingston']) assert.match(html, new RegExp(team));
+  for (const team of ['Bala', 'Linfield', 'Shamrock', 'Arsenal']) assert.doesNotMatch(html, new RegExp(`<b>${team}`));
   assert.match(html, /Championship<\/strong><small>.*Scotland<\/small>/s);
-  assert.match(html, /Cymru Premier<\/strong><small>.*Wales<\/small>/s);
+  assert.doesNotMatch(html, /<strong>Cymru Premier<\/strong>/);
+  assert.match(html, /data-ticker-league="Wales\|\|\|Cymru Premier"/);
+  assert.match(html, /data-ticker-league="Northern Ireland\|\|\|Premiership"/);
   assert.match(html, /League Two<\/strong><small>.*England<\/small>/s);
   assert.equal((html.match(/Newport/g) || []).length, 2);
   assert.equal((html.match(/Livingston/g) || []).length, 2);
   assert.match(html, /--ticker-delay:-\d+(?:\.\d+)?s/);
+  panel._tickerLeagueChoices = { 'Wales|||Cymru Premier': true, 'Scotland|||Championship': false };
+  const customized = panel._hero();
+  assert.match(customized, /<b>Bala/);
+  assert.doesNotMatch(customized, /Livingston/);
+  panel._selectedCountry = 'Northern Ireland';
+  assert.match(panel._hero(), /<b>Linfield/);
 });
