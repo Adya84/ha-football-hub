@@ -1,7 +1,7 @@
 # ⚽ Home Assistant Football Hub
 
 [![License](https://img.shields.io/badge/license-Personal%20Use-red.svg)](LICENSE)
-![Version](https://img.shields.io/badge/version-v0.8.18-brightgreen)
+![Version](https://img.shields.io/badge/version-v0.8.19-brightgreen)
 ![Home Assistant](https://img.shields.io/badge/Home%20Assistant-2024.1%2B-blue)
 ![HACS](https://img.shields.io/badge/HACS-Custom-orange)
 ![Cloud Polling](https://img.shields.io/badge/IoT--Class-Cloud%20Polling-blue)
@@ -22,13 +22,13 @@ It also includes Last Man Standing (LMS) and Acca League tools, with private pla
 
 ---
 
-## Latest release — 0.8.18
+## Latest release — 0.8.19
 
-### Greek league and cup
+### Favourite clubs across leagues
 
-Added Greece's **Super League 1** and **Greece Cup** to the competition chooser. Follow their fixtures, results and live scores; the league table and cup group-stage standings are available where the data provider supplies them.
+Choose a **home league** when adding a favourite club, or change it from the saved club list. The club's device and sensors then use that league, even when you first find the club while another competition is active.
 
-Select **Greece** in the country menu, then choose either competition. Greek live matches can also appear in the live feed and league ticker.
+Standings for favourite clubs in other leagues now refresh in the background and restore from a saved snapshot after Home Assistant restarts.
 
 ---
 
@@ -49,7 +49,7 @@ Select **Greece** in the country menu, then choose either competition. Greek liv
 
 Use the **Quick install — HACS** steps above. HACS keeps the integration in `config/custom_components/football_hub` and offers future updates from its **Updates** page.
 
-> To install the current stable version, choose the normal download option in HACS. Pre-release builds are not required for Football Hub 0.8.18.
+> To install the current stable version, choose the normal download option in HACS. Pre-release builds are not required for Football Hub 0.8.19.
 
 ### Manual installation
 

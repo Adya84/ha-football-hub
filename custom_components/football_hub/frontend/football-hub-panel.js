@@ -1,4 +1,4 @@
-const PANEL_VERSION = "0.8.18";
+const PANEL_VERSION = "0.8.19";
 const LIVE_COUNTRY_CODES = { ENG:"England", SCO:"Scotland", WAL:"Wales", NIR:"Northern Ireland", IRL:"Ireland", GBR:"United Kingdom", USA:"United States", BRA:"Brazil", ARG:"Argentina", ESP:"Spain", GER:"Germany", ITA:"Italy", FRA:"France", NED:"Netherlands", POR:"Portugal", BEL:"Belgium", TUR:"Türkiye", MEX:"Mexico", CAN:"Canada", AUS:"Australia", JPN:"Japan", KOR:"South Korea", CHN:"China", IND:"India", AUT:"Austria", SUI:"Switzerland", DEN:"Denmark", SWE:"Sweden", NOR:"Norway", FIN:"Finland", POL:"Poland", CZE:"Czech Republic", GRE:"Greece", CRO:"Croatia", SRB:"Serbia", UKR:"Ukraine", RUS:"Russia", ROU:"Romania", BUL:"Bulgaria", HUN:"Hungary", ISR:"Israel", KSA:"Saudi Arabia", UAE:"United Arab Emirates", QAT:"Qatar", EGY:"Egypt", MAR:"Morocco", RSA:"South Africa", NGA:"Nigeria", COL:"Colombia", CHI:"Chile", URU:"Uruguay", PAR:"Paraguay", ECU:"Ecuador", PER:"Peru", VEN:"Venezuela", INT:"International", FIFA:"International", UEFA:"Europe" };
 // Temporarily paused while fixture schedules are being corrected. Manual email
 // actions remain available to the administrator.
@@ -3580,16 +3580,21 @@ class FootballHubPanel extends HTMLElement {
     this._render();
   }
 
-  _setMyClub(team) {
+  _setMyClub(team, homeCompetition = "") {
     team = String(team || "").trim();
     if (!team) return;
+    if (!homeCompetition) {
+      window.alert("Choose the club's home league first.");
+      return;
+    }
     this._selectedClub = team;
     localStorage.setItem("football_hub_my_club", team);
     const status = this._statusInfo();
     this._hass?.callService("football_hub", "select_my_club", {
       team,
+      home_competition: homeCompetition,
       entry_id: status.config_entry_id || "",
-    }).catch(() => {});
+    }).catch((error) => window.alert(`Could not save club: ${error.message || error}`));
     this._setLiveTeam(team);
     this._render();
   }
@@ -4710,12 +4715,19 @@ class FootballHubPanel extends HTMLElement {
       const candidate = String(name).trim().toLowerCase();
       return candidate === selected || candidate.startsWith(`${selected} `);
     });
+    const clubInCurrentLeague = Boolean(canonicalSelection);
     if (canonicalSelection) {
       club = canonicalSelection;
       this._selectedClub = canonicalSelection;
       localStorage.setItem("football_hub_my_club", canonicalSelection);
     } else if (club) addSelectorClub(null, club);
     const teams = [...new Set(selectorClubs.values())].sort((a, b) => a.localeCompare(b));
+    const leagueOptions = (this._statusInfo().available_competitions || [])
+      .filter((item) => item.type === "league")
+      .sort((a, b) => String(a.country).localeCompare(String(b.country)) || String(a.name).localeCompare(String(b.name)));
+    const leagueChoices = (selected) => leagueOptions.map((item) => `<option value="${this._escape(item.key)}" ${item.key === selected ? "selected" : ""}>${this._escape(item.country)} · ${this._escape(item.name)}</option>`).join("");
+    const savedClub = favourites.find((item) => String(item.team || "").toLowerCase() === String(club || "").toLowerCase());
+    const suggestedLeague = savedClub?.home_competition || (clubInCurrentLeague ? this._statusInfo().competition_key : "");
 
     const clubFixtures = fixtures.filter((match) => match.home_team === club || match.away_team === club);
     const clubResults = results.filter((match) => match.home_team === club || match.away_team === club);
@@ -4740,6 +4752,8 @@ class FootballHubPanel extends HTMLElement {
           <label for="my-club-select">${this._t("chooseClub")}</label>
           <input id="my-club-select" type="search" list="my-club-options" value="${this._escape(club || "")}" placeholder="Search for a club" aria-label="Search for your club">
           <datalist id="my-club-options">${teams.map((team) => `<option value="${this._escape(team)}"></option>`).join("")}</datalist>
+          <label for="my-club-home-league">Home league</label>
+          <select id="my-club-home-league"><option value="">Choose home league</option>${leagueChoices(suggestedLeague)}</select>
           <button id="my-club-add" class="primary-button" type="button">Add / reload club</button>
         </div>
         <div class="favourite-club-list">
@@ -4748,6 +4762,7 @@ class FootballHubPanel extends HTMLElement {
             <span class="favourite-club-chip">
               <button type="button" class="favourite-club-open" data-team="${this._escape(item.team)}" data-competition="${this._escape(item.home_competition || item.competition || "")}">${this._escape(item.team)}</button>
               <small>${this._escape(item.country || "")} · ${this._escape((item.competitions || [item.competition]).map((key) => key.replaceAll("_", " ")).join(" · "))}</small>
+              <select class="favourite-club-home-league" data-team="${this._escape(item.team)}" aria-label="Home league for ${this._escape(item.team)}">${leagueChoices(item.home_competition || item.competition)}</select>
               <button type="button" class="favourite-club-remove" data-team="${this._escape(item.team)}" title="Remove favourite">×</button>
             </span>`).join("") : `<span class="empty">Choose a club to add your first favourite.</span>`}
         </div>
@@ -5228,11 +5243,18 @@ class FootballHubPanel extends HTMLElement {
     });
     this.shadowRoot.querySelector("#match-details-close")?.addEventListener("click", () => { this._selectedMatchDetailsId = ""; this._selectedMatchDetails = null; this._render(); });
 
-    this.shadowRoot.querySelector("#my-club-select")?.addEventListener("change", (event) => {
-      this._setMyClub(event.target.value);
-    });
     this.shadowRoot.querySelector("#my-club-add")?.addEventListener("click", () => {
-      this._setMyClub(this.shadowRoot.querySelector("#my-club-select")?.value);
+      this._setMyClub(this.shadowRoot.querySelector("#my-club-select")?.value, this.shadowRoot.querySelector("#my-club-home-league")?.value);
+    });
+    this.shadowRoot.querySelector("#my-club-select")?.addEventListener("input", (event) => {
+      const team = String(event.target.value || "").trim().toLowerCase();
+      const saved = (this._statusInfo().favourite_clubs || []).find((item) => String(item.team || "").toLowerCase() === team);
+      const knownHere = [...this.shadowRoot.querySelectorAll("#my-club-options option")].some((option) => option.value.toLowerCase() === team);
+      const homeLeague = this.shadowRoot.querySelector("#my-club-home-league");
+      if (homeLeague) homeLeague.value = saved?.home_competition || (knownHere ? this._statusInfo().competition_key : "");
+    });
+    this.shadowRoot.querySelectorAll(".favourite-club-home-league").forEach((select) => {
+      select.addEventListener("change", () => this._setMyClub(select.dataset.team, select.value));
     });
     this.shadowRoot.querySelectorAll("[data-sidebar-tab-toggle]").forEach((checkbox) => {
       checkbox.addEventListener("change", () => this._setSidebarTabVisible(checkbox.dataset.sidebarTabToggle, checkbox.checked));
@@ -5249,7 +5271,7 @@ class FootballHubPanel extends HTMLElement {
           if (button.dataset.competition && button.dataset.competition !== this._statusInfo().competition_key) {
             await this._hass.callService("football_hub", "select_competition", { competition: button.dataset.competition, entry_id });
           }
-          await this._hass.callService("football_hub", "select_my_club", { team: button.dataset.team, entry_id });
+          await this._hass.callService("football_hub", "select_my_club", { team: button.dataset.team, home_competition: button.dataset.competition, entry_id });
           this._selectedClub = button.dataset.team;
           localStorage.setItem("football_hub_my_club", this._selectedClub);
           this._render();
@@ -7496,7 +7518,8 @@ class FootballHubPanel extends HTMLElement {
       .compact-news a span { display:flex; min-width:0; flex-direction:column; gap:4px; }
       .compact-news small { color:var(--secondary-text-color); }
       .favourite-club-list { display:flex; flex:1 1 100%; flex-wrap:wrap; align-items:center; gap:8px; margin-top:14px; }
-      .favourite-club-chip { display:grid; grid-template-columns:auto auto 28px; align-items:center; gap:8px; padding:5px 6px 5px 10px; border:1px solid rgba(0,183,255,.35); border-radius:999px; background:rgba(0,42,82,.56); }
+      .favourite-club-chip { display:grid; grid-template-columns:auto auto minmax(160px,auto) 28px; align-items:center; gap:8px; padding:5px 6px 5px 10px; border:1px solid rgba(0,183,255,.35); border-radius:999px; background:rgba(0,42,82,.56); }
+      .favourite-club-home-league { max-width:220px; }
       .favourite-club-chip button { color:inherit; border:0; background:none; cursor:pointer; font-weight:800; }
       .favourite-club-chip small { color:var(--secondary-text-color); }
       .favourite-club-chip .favourite-club-remove { width:26px; height:26px; padding:0; border-radius:50%; color:#ff9aa6; font-size:1.15rem; }

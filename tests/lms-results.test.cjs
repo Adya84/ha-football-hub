@@ -503,7 +503,7 @@ test('the main competition picker includes cups for My Club', () => {
 test('unified favourites store linked competitions once per club', () => {
   const source = fs.readFileSync(path.join(__dirname, '../custom_components/football_hub/api/coordinator.py'), 'utf8');
   assert.match(source, /def _normalise_favourite_clubs/);
-  assert.match(source, /"competitions": self\._default_club_competitions\(self\.competition_key\)/);
+  assert.match(source, /"competitions": self\._default_club_competitions\(home_competition\)/);
   assert.match(source, /def club_matches/);
 });
 

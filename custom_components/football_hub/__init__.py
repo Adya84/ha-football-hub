@@ -1,6 +1,7 @@
 """Football Hub integration setup."""
 from __future__ import annotations
 
+import copy
 from pathlib import Path
 
 from homeassistant.components.frontend import async_register_built_in_panel
@@ -16,7 +17,7 @@ from .const import DOMAIN
 PLATFORMS = ["sensor"]
 PANEL_URL = "football-hub"
 PANEL_NAME = "football-hub-panel"
-PANEL_VERSION = "0.8.18"
+PANEL_VERSION = "0.8.19"
 PANEL_STATIC_URL = "/football_hub/football-hub-panel.js"
 PANEL_MODULE_URL = f"{PANEL_STATIC_URL}?v={PANEL_VERSION}"
 PANEL_SCRIPT_PATH = Path(__file__).parent / "frontend" / "football-hub-panel.js"
@@ -117,10 +118,11 @@ async def async_setup(hass: HomeAssistant, config: dict) -> bool:
 
     async def async_select_my_club(call: ServiceCall) -> None:
         team = str(call.data.get("team") or "").strip()
+        home_competition = str(call.data.get("home_competition") or "").strip()
         async for coordinator in _coordinators(call):
-            previous = len(coordinator.favourite_clubs)
-            await coordinator.async_set_my_club(team)
-            if len(coordinator.favourite_clubs) != previous:
+            previous = copy.deepcopy(coordinator.favourite_clubs)
+            await coordinator.async_set_my_club(team, home_competition)
+            if coordinator.favourite_clubs != previous:
                 hass.async_create_task(hass.config_entries.async_reload(coordinator.entry.entry_id))
 
     async def async_remove_favourite_club(call: ServiceCall) -> None:

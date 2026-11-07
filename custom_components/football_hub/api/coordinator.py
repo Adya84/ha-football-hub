@@ -204,12 +204,14 @@ class FootballHubCoordinator(DataUpdateCoordinator):
                 self._updated_at.pop("club_statistics", None)
         self._updated_at[key] = monotonic()
         self._random_ttls.pop(key, None)
-        if self._club_page_saved is not None and (key.startswith("club_") or key in {"fixtures", "standings", "player_leaderboards", "teams"}):
+        if self._club_page_saved is not None and (key.startswith("club_") or key.endswith(":standings") or key in {"fixtures", "standings", "player_leaderboards", "teams"}):
             namespace = self._club_page_namespace(key)
             self._club_page_saved.setdefault(namespace, {})[key] = {"data": value, "checked": time()}
             self._club_page_store.async_delay_save(lambda: self._club_page_saved, 5)
 
     def _club_page_namespace(self, key):
+        if key.startswith("favourite:"):
+            return f"{key.split(':', 2)[1]}:{self.season}:favourite"
         club = self.my_club.strip().casefold() if key.startswith("club_") else "league"
         return f"{self.competition_key}:{self.season}:{club}"
 
@@ -219,7 +221,12 @@ class FootballHubCoordinator(DataUpdateCoordinator):
         selection = self._club_page_namespace("club_profile")
         if self._club_page_restored == selection:
             return
-        for namespace in (self._club_page_namespace("fixtures"), selection):
+        favourite_namespaces = {
+            self._club_page_namespace(f"favourite:{key}:standings")
+            for favourite in self.favourite_clubs
+            for key in favourite.get("competitions", [])
+        }
+        for namespace in (self._club_page_namespace("fixtures"), selection, *favourite_namespaces):
             for key, record in self._club_page_saved.get(namespace, {}).items():
                 if key not in self._cache and isinstance(record, dict) and "data" in record:
                     self._cache[key] = record["data"]
@@ -396,11 +403,15 @@ class FootballHubCoordinator(DataUpdateCoordinator):
         self.hass.config_entries.async_update_entry(self.entry, options=options)
         await self.async_request_refresh()
 
-    async def async_set_my_club(self, team: str) -> None:
+    async def async_set_my_club(self, team: str, home_competition: str = "") -> None:
         """Persist the My Club selection and refresh club datasets."""
+        saved = next((item for item in self.favourite_clubs if str(item.get("team") or "").casefold() == str(team or "").strip().casefold()), None)
+        home_competition = home_competition or (saved or {}).get("home_competition") or self.competition_key
+        if home_competition not in COMPETITIONS or COMPETITIONS[home_competition]["type"] != "league":
+            raise ValueError(f"Unknown home league: {home_competition}")
         previous_club = self.my_club
         self.my_club = str(team or "").strip()
-        self.my_clubs[self.competition_key] = self.my_club
+        self.my_clubs[home_competition] = self.my_club
         if previous_club.casefold() != self.my_club.casefold():
             for key in list(self._cache):
                 if key.startswith("club_"):
@@ -414,17 +425,20 @@ class FootballHubCoordinator(DataUpdateCoordinator):
                     self._updated_at.pop(key, None)
         favourite = next((item for item in self.favourite_clubs if item.get("team", "").casefold() == self.my_club.casefold()), None)
         if favourite:
-            for competition in self._default_club_competitions(self.competition_key):
-                if competition not in favourite["competitions"]:
-                    favourite["competitions"].append(competition)
+            old_home = favourite.get("home_competition")
+            if old_home != home_competition and self.my_clubs.get(old_home) == self.my_club:
+                self.my_clubs.pop(old_home, None)
+            favourite["home_competition"] = home_competition
+            favourite["competitions"] = self._default_club_competitions(home_competition)
+            favourite["country"] = COMPETITIONS[home_competition]["country"]
         elif self.my_club:
             if len(self.favourite_clubs) >= 5:
                 raise ValueError("A maximum of five favourite clubs is supported")
             self.favourite_clubs.append({
                 "team": self.my_club,
-                "home_competition": self.competition_key,
-                "competitions": self._default_club_competitions(self.competition_key),
-                "country": self.competition.get("country", ""),
+                "home_competition": home_competition,
+                "competitions": self._default_club_competitions(home_competition),
+                "country": COMPETITIONS[home_competition]["country"],
             })
         options = {
             **self.entry.options,
@@ -432,7 +446,10 @@ class FootballHubCoordinator(DataUpdateCoordinator):
             "favourite_clubs": self.favourite_clubs,
         }
         self.hass.config_entries.async_update_entry(self.entry, options=options)
-        await self.async_request_refresh()
+        if home_competition != self.competition_key:
+            await self.async_set_competition(home_competition)
+        else:
+            await self.async_request_refresh()
 
     async def async_set_ui_preferences(self, preferences: dict[str, Any]) -> None:
         """Persist shared panel preferences for use on every device."""
@@ -699,16 +716,31 @@ class FootballHubCoordinator(DataUpdateCoordinator):
         # Keep lightweight fixture/table snapshots for every permanent favourite.
         # Current-league data is reused, and at most two background datasets are
         # requested per coordinator cycle to avoid bursts.
-        favourite_budget = 2
-        for favourite in self.favourite_clubs:
-            for competition_key in favourite.get("competitions", []):
-                competition = COMPETITIONS.get(competition_key)
-                if not competition:
-                    continue
+        favourite_competitions = dict.fromkeys(
+            competition_key
+            for favourite in self.favourite_clubs
+            for competition_key in favourite.get("competitions", [])
+        )
+        home_competitions = dict.fromkeys(
+            favourite.get("home_competition") for favourite in self.favourite_clubs
+        )
+        favourite_candidates = []
+        for competition_key in home_competitions:
+            if competition_key != self.competition_key and competition_key in COMPETITIONS:
+                key = f"favourite:{competition_key}:standings"
+                if self._is_stale(key, STANDINGS_TTL):
+                    favourite_candidates.append((key, competition_key, "standings"))
+        for competition_key in favourite_competitions:
+            if competition_key != self.competition_key and competition_key in COMPETITIONS:
                 key = f"favourite:{competition_key}:fixtures"
-                if competition_key != self.competition_key and favourite_budget and self._is_stale(key, FIXTURES_TTL):
-                    requests.append((key, self.api.get_fixtures(competition["league_id"], self.season)))
-                    favourite_budget -= 1
+                if self._is_stale(key, FIXTURES_TTL):
+                    favourite_candidates.append((key, competition_key, "fixtures"))
+        # Oldest first keeps one busy league from starving other favourites.
+        favourite_candidates.sort(key=lambda item: (self._updated_at.get(item[0], 0), item[2] != "standings"))
+        for key, competition_key, kind in favourite_candidates[:2]:
+            league_id = COMPETITIONS[competition_key]["league_id"]
+            request = self.api.get_standings(league_id, self.season) if kind == "standings" else self.api.get_fixtures(league_id, self.season)
+            requests.append((key, request))
 
         if requests:
             results = await asyncio.gather(
@@ -898,9 +930,13 @@ class FootballHubCoordinator(DataUpdateCoordinator):
             standings = league_table(raw_standings)
             favourite_team_id, upcoming, completed = self._team_context(team, fixtures)
             standing = next(
-                (row for row in standings if str(row.get("team") or "").casefold() == team.casefold()),
+                (row for row in standings if (
+                    (favourite_team_id is not None and str(row.get("team_id")) == str(favourite_team_id))
+                    or str(row.get("team") or "").casefold() == team.casefold()
+                )),
                 None,
             )
+            favourite_team_id = favourite_team_id or (standing or {}).get("team_id")
             live_match = next((item for item in raw_live if team.casefold() in {
                 str((((item or {}).get("teams") or {}).get("home") or {}).get("name") or "").casefold(),
                 str((((item or {}).get("teams") or {}).get("away") or {}).get("name") or "").casefold(),
