@@ -50,6 +50,7 @@ COMPETITIONS = {
     "primeira_liga": _league("Primeira Liga", "Portugal", 94),
     "belgian_pro_league": _league("Jupiler Pro League", "Belgium", 144),
     "super_lig": _league("Süper Lig", "Türkiye", 203),
+    "greek_super_league": _league("Super League 1", "Greece", 2400),
 
     # UEFA league-phase tables are available for all three competitions.
     "champions_league": _cup("UEFA Champions League", "Europe", 1001, True),
@@ -84,4 +85,5 @@ COMPETITIONS = {
     "belgian_super_cup": _cup("Belgian Super Cup", "Belgium", 2202),
     "turkish_cup": _cup("Turkish Cup", "Türkiye", 2301),
     "turkish_super_cup": _cup("Turkish Super Cup", "Türkiye", 2302),
+    "greece_cup": _cup("Greece Cup", "Greece", 2401, True),
 }

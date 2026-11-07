@@ -55,6 +55,7 @@ FM_LEAGUES = {
     94: 61,    # Primeira Liga
     144: 40,   # Belgian Pro League
     203: 71,   # Turkish Super Lig
+    2400: 135, # Greek Super League 1
     1001: 42,    # UEFA Champions League
     1002: 73,    # UEFA Europa League
     1003: 10216, # UEFA Conference League
@@ -86,6 +87,7 @@ FM_LEAGUES = {
     2202: 266,   # Belgian Super Cup
     2301: 151,   # Turkish Cup
     2302: 166,   # Turkish Super Cup
+    2401: 145,   # Greece Cup
     1902: 207,   # Trophee des Champions (correct FotMob ID)
     2101: 186,   # Taca de Portugal (correct FotMob ID)
 }
@@ -94,7 +96,7 @@ FM_CUP_LEAGUES = {
     1001, 1002, 1003, 1101, 1102, 1103, 1201, 1202, 1301,
     1401, 1501, 1601, 1602, 1701, 1702, 1801, 1802, 1901,
     1902, 2001, 2002, 2101, 2102, 2103, 2201, 2202, 2301, 2302,
-    3101, 3102, 3103,
+    3101, 3102, 3103, 2401,
 }
 
 # These cups run inside a single calendar year rather than a European-style
@@ -108,7 +110,7 @@ FM_COUNTRY_CODES = {
     3010: "USA", 3011: "USA", 3012: "USA", 3013: "USA",
     3014: "USA", 3015: "USA",
     140: "ESP", 78: "GER", 135: "ITA", 61: "FRA", 88: "NED",
-    94: "POR", 144: "BEL", 203: "TUR",
+    94: "POR", 144: "BEL", 203: "TUR", 2400: "GRE",
 }
 
 TV_GUIDE_REGIONS = {
@@ -126,6 +128,7 @@ TV_GUIDE_REGIONS = {
     "Portugal": ("pt", "Europe/Lisbon"),
     "Belgium": ("be", "Europe/Brussels"),
     "Turkey": ("tr", "Europe/Istanbul"),
+    "Greece": ("gr", "Europe/Athens"),
     "USA": ("us", "America/New_York"),
     "United States": ("us", "America/New_York"),
 }

@@ -1,4 +1,4 @@
-const PANEL_VERSION = "0.8.17";
+const PANEL_VERSION = "0.8.18";
 const LIVE_COUNTRY_CODES = { ENG:"England", SCO:"Scotland", WAL:"Wales", NIR:"Northern Ireland", IRL:"Ireland", GBR:"United Kingdom", USA:"United States", BRA:"Brazil", ARG:"Argentina", ESP:"Spain", GER:"Germany", ITA:"Italy", FRA:"France", NED:"Netherlands", POR:"Portugal", BEL:"Belgium", TUR:"Türkiye", MEX:"Mexico", CAN:"Canada", AUS:"Australia", JPN:"Japan", KOR:"South Korea", CHN:"China", IND:"India", AUT:"Austria", SUI:"Switzerland", DEN:"Denmark", SWE:"Sweden", NOR:"Norway", FIN:"Finland", POL:"Poland", CZE:"Czech Republic", GRE:"Greece", CRO:"Croatia", SRB:"Serbia", UKR:"Ukraine", RUS:"Russia", ROU:"Romania", BUL:"Bulgaria", HUN:"Hungary", ISR:"Israel", KSA:"Saudi Arabia", UAE:"United Arab Emirates", QAT:"Qatar", EGY:"Egypt", MAR:"Morocco", RSA:"South Africa", NGA:"Nigeria", COL:"Colombia", CHI:"Chile", URU:"Uruguay", PAR:"Paraguay", ECU:"Ecuador", PER:"Peru", VEN:"Venezuela", INT:"International", FIFA:"International", UEFA:"Europe" };
 // Temporarily paused while fixture schedules are being corrected. Manual email
 // actions remain available to the administrator.
@@ -18,6 +18,7 @@ const FULL_COMPETITION_CATALOGUE = {
   Portugal: ["Primeira Liga", "Taça de Portugal", "Portuguese League Cup", "Portuguese Super Cup"],
   Belgium: ["Jupiler Pro League", "Belgian Cup", "Belgian Super Cup"],
   Türkiye: ["Süper Lig", "Turkish Cup", "Turkish Super Cup"],
+  Greece: ["Super League 1", "Greece Cup"],
   "United States": ["MLS", "USL Championship", "USL League One", "MLS Next Pro", "NISA", "NWSL", "US Open Cup", "USL Cup", "NWSL Challenge Cup"],
   Europe: ["UEFA Champions League", "UEFA Europa League", "UEFA Conference League"],
 };
