@@ -394,16 +394,17 @@ test('rendering the actual LMS standings does not erase a confirmed Arsenal resu
   assert.match(html, /<b>Winner<\/b>/);
 });
 
-test('LMS player page separates through, to-play and eliminated players', () => {
+test('a new LMS competition separates paid players from players with payment due', () => {
   const { panel } = setup('private');
   panel._lmsMode = 'private';
   panel._lmsPageView = 'picks';
   panel._lmsCompetition.players[0].paid = true;
+  panel._lmsCompetition.players[1].paid = false;
   panel._lmsEmailServices = () => [];
   const html = panel._lastManStandingPage();
-  assert.match(html, /To play/);
-  assert.doesNotMatch(html, /<strong>Paid players<\/strong>/);
-  assert.doesNotMatch(html, /<strong>Payment due<\/strong>/);
+  assert.match(html, /class="lms-payment-group-title paid"[\s\S]*?<strong>Paid players<\/strong>[\s\S]*?Arsenal player/);
+  assert.match(html, /class="lms-payment-group-title unpaid"[\s\S]*?<strong>Payment due<\/strong>[\s\S]*?Pending player/);
+  assert.ok(html.indexOf('Arsenal player') < html.indexOf('Pending player'));
 });
 
 test('automatic LMS emails are paused while fixture scheduling is corrected', () => {
@@ -657,7 +658,7 @@ test('admin can mark an Out player Through and the automatic check keeps that ov
   panel._lmsPageView = 'picks';
   panel._lmsEmailServices = () => [];
   panel._captureLmsLeagueData = () => {};
-  assert.match(panel._lastManStandingPage(), /class="lms-payment-group-title to-play"[\s\S]*?class="lms-undo-through" data-player-id="a"/);
+  assert.match(panel._lastManStandingPage(), /class="lms-payment-group-title unpaid"[\s\S]*?class="lms-undo-through" data-player-id="a"/);
   await panel._settleLmsRound(true);
   assert.equal(player.alive, true);
   assert.equal(player.results['3'], 'survived-manual');

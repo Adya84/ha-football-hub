@@ -368,5 +368,6 @@ test("Live update bar owns the connection status while the beer link uses the he
 
 test("release identifiers use the current stable version", () => {
   const source = fs.readFileSync(path.join(__dirname, "../custom_components/football_hub/frontend/football-hub-panel.js"), "utf8");
-  assert.match(source, /const PANEL_VERSION = "0\.8\.19"/);
+  const manifest = JSON.parse(fs.readFileSync(path.join(__dirname, "../custom_components/football_hub/manifest.json"), "utf8"));
+  assert.ok(source.includes(`const PANEL_VERSION = "${manifest.version}"`));
 });

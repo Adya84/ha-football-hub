@@ -1,7 +1,7 @@
 # ⚽ Home Assistant Football Hub
 
 [![License](https://img.shields.io/badge/license-Personal%20Use-red.svg)](LICENSE)
-![Version](https://img.shields.io/badge/version-v0.8.19-brightgreen)
+![Version](https://img.shields.io/badge/version-v0.8.20-brightgreen)
 ![Home Assistant](https://img.shields.io/badge/Home%20Assistant-2024.1%2B-blue)
 ![Marketplace](https://img.shields.io/badge/Marketplace-Custom%20repository-orange)
 ![Cloud Polling](https://img.shields.io/badge/IoT--Class-Cloud%20Polling-blue)
@@ -22,13 +22,11 @@ It also includes Last Man Standing (LMS) and Acca League tools, with private pla
 
 ---
 
-## Latest release — 0.8.19
+## Latest release — 0.8.20
 
-### Favourite clubs across leagues
+### LMS payment groups
 
-Choose a **home league** when adding a favourite club, or change it from the saved club list. The club's device and sensors then use that league, even when you first find the club while another competition is active.
-
-Standings for favourite clubs in other leagues now refresh in the background and restore from a saved snapshot after Home Assistant restarts.
+The **Players & picks** page now separates paid players, players with payment due, and eliminated players in a new private competition. Match status remains visible on each player card and in Standings.
 
 ---
 

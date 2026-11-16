@@ -1,4 +1,4 @@
-const PANEL_VERSION = "0.8.19";
+const PANEL_VERSION = "0.8.20";
 const LIVE_COUNTRY_CODES = { ENG:"England", SCO:"Scotland", WAL:"Wales", NIR:"Northern Ireland", IRL:"Ireland", GBR:"United Kingdom", USA:"United States", BRA:"Brazil", ARG:"Argentina", ESP:"Spain", GER:"Germany", ITA:"Italy", FRA:"France", NED:"Netherlands", POR:"Portugal", BEL:"Belgium", TUR:"Türkiye", MEX:"Mexico", CAN:"Canada", AUS:"Australia", JPN:"Japan", KOR:"South Korea", CHN:"China", IND:"India", AUT:"Austria", SUI:"Switzerland", DEN:"Denmark", SWE:"Sweden", NOR:"Norway", FIN:"Finland", POL:"Poland", CZE:"Czech Republic", GRE:"Greece", CRO:"Croatia", SRB:"Serbia", UKR:"Ukraine", RUS:"Russia", ROU:"Romania", BUL:"Bulgaria", HUN:"Hungary", ISR:"Israel", KSA:"Saudi Arabia", UAE:"United Arab Emirates", QAT:"Qatar", EGY:"Egypt", MAR:"Morocco", RSA:"South Africa", NGA:"Nigeria", COL:"Colombia", CHI:"Chile", URU:"Uruguay", PAR:"Paraguay", ECU:"Ecuador", PER:"Peru", VEN:"Venezuela", INT:"International", FIFA:"International", UEFA:"Europe" };
 // Temporarily paused while fixture schedules are being corrected. Manual email
 // actions remain available to the administrator.
@@ -2835,7 +2835,7 @@ class FootballHubPanel extends HTMLElement {
         <section class="page-card lms-league-switch"><label><span>Choose teams from</span><select id="lms-active-league">${(competition.leagues || []).map((league) => `<option value="${this._escape(league.key)}" ${league.key === selectedLmsLeague ? "selected" : ""}>${this._escape(league.country)} · ${this._escape(league.name)}</option>`).join("")}</select></label>${loadedLmsLeague ? `<strong>${this._escape(teams.length)} teams loaded</strong>` : `<strong class="lms-loading">Loading selected league teams…</strong>`}</section>
         ${adminUnlocked ? `<section class="page-card lms-add-player"><input id="lms-player-name" maxlength="50" placeholder="Player name"><input id="lms-player-email" type="email" maxlength="120" placeholder="Email (for pick link)"><button id="lms-add-player">Add player</button><button id="lms-settle" type="button">Check round results</button><button id="lms-end-round" type="button">Start next round (failsafe)</button>${Number(competition.round || 1) > 1 ? `<button id="lms-undo-end-round" type="button">Undo last manual round</button>` : ""}</section>` : ""}
         <section class="lms-player-list">${competition.players.length ? [...competition.players].sort((a, b) => {
-          const group = (player) => !player.alive ? 2 : ["survived", "bought-back"].includes(player.results?.[roundKey]) || this._isLmsWinner(player) ? 0 : 1;
+          const group = (player) => this._isLmsWinner(player) ? 0 : !player.alive ? 3 : player.paid ? 1 : 2;
           return group(a) - group(b) || String(a.name).localeCompare(String(b.name));
         }).map((player, playerIndex, sortedPlayers) => {
           const used = new Set(Object.entries(player.picks || {}).filter(([round]) => round !== roundKey).map(([, team]) => team));
@@ -2855,9 +2855,9 @@ class FootballHubPanel extends HTMLElement {
           const canBuyBack = this._canLmsBuyBack(player);
           const email = String(player.email || "");
           const maskedEmail = email ? email.replace(/^(.{1,2}).*(@.*)$/, "$1*****$2") : "No email added";
-          const playerGroup = (item) => !item.alive ? "eliminated" : ["survived", "survived-manual", "bought-back"].includes(item.results?.[roundKey]) || this._isLmsWinner(item) ? "through" : "to-play";
-          const groupName = { through: "Through", "to-play": "To play", eliminated: "Eliminated" };
-          const groupIcon = { through: "mdi:check-circle", "to-play": "mdi:clock-alert-outline", eliminated: "mdi:account-off-outline" };
+          const playerGroup = (item) => this._isLmsWinner(item) ? "winner" : !item.alive ? "eliminated" : item.paid ? "paid" : "unpaid";
+          const groupName = { winner: "Winner", paid: "Paid players", unpaid: "Payment due", eliminated: "Eliminated players" };
+          const groupIcon = { winner: "mdi:trophy-award", paid: "mdi:cash-check", unpaid: "mdi:cash-clock", eliminated: "mdi:account-off-outline" };
           const currentGroup = playerGroup(player);
           const startsPaymentGroup = playerIndex === 0 || playerGroup(sortedPlayers[playerIndex - 1]) !== currentGroup;
           const statusGroupCount = sortedPlayers.filter((item) => playerGroup(item) === currentGroup).length;
