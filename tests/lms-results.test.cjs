@@ -829,3 +829,23 @@ test('setting the LMS admin password does not invoke buy-back', async () => {
   await panel._setLmsAdminPassword('secret', 'secret');
   assert.equal(panel._lmsCompetition.adminPasswordHash, 'hashed');
 });
+
+test('a Round 1 bought-back player is ignored by the result check, but not a later round', async () => {
+  const { panel } = setup('private');
+  const player = panel._lmsCompetition.players[0];
+  player.picks = { 1: 'Arsenal' };
+  player.buyBacks = 1;
+  player.buyBackRounds = { 1: true };
+  player.results = { 1: 'eliminated' };
+  player.alive = false;
+  await panel._refreshLmsRoundFixtures();
+  await panel._settleLmsRound(true);
+  assert.equal(player.alive, true);
+  assert.equal(player.results[1], 'bought-back');
+  panel._lmsCompetition.round = 2;
+  player.results[2] = 'eliminated';
+  player.alive = false;
+  panel._restoreLmsBuyBacks();
+  assert.equal(player.alive, false);
+  assert.equal(player.results[2], 'eliminated');
+});

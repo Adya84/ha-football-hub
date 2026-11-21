@@ -1,7 +1,7 @@
 # ⚽ Home Assistant Football Hub
 
 [![License](https://img.shields.io/badge/license-Personal%20Use-red.svg)](LICENSE)
-![Version](https://img.shields.io/badge/version-v0.8.22-brightgreen)
+![Version](https://img.shields.io/badge/version-v0.8.23-brightgreen)
 ![Home Assistant](https://img.shields.io/badge/Home%20Assistant-2024.1%2B-blue)
 ![Marketplace](https://img.shields.io/badge/Marketplace-Custom%20repository-orange)
 ![Cloud Polling](https://img.shields.io/badge/IoT--Class-Cloud%20Polling-blue)
@@ -22,11 +22,11 @@ It also includes Last Man Standing (LMS) and Acca League tools, with private pla
 
 ---
 
-## Latest release — 0.8.22
+## Latest release — 0.8.23
 
-### LMS buy-back refresh fix
+### LMS buy-back stays saved
 
-The Home Assistant LMS page now waits for a buy-back save to finish before refreshing shared player status. It also removes an outdated duplicate buy-back handler. Together with the shared game's Round 1 fixture correction, this keeps a confirmed buy-back from reverting to eliminated.
+Once a Round 1 buy-back is confirmed, Football Hub records it on the player and skips that losing Round 1 result on later checks. An older shared snapshot cannot remove the buy-back. From Round 2 onward, each new pick is checked normally.
 
 ---
 

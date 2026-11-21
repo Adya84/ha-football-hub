@@ -1,4 +1,4 @@
-const PANEL_VERSION = "0.8.22";
+const PANEL_VERSION = "0.8.23";
 const LIVE_COUNTRY_CODES = { ENG:"England", SCO:"Scotland", WAL:"Wales", NIR:"Northern Ireland", IRL:"Ireland", GBR:"United Kingdom", USA:"United States", BRA:"Brazil", ARG:"Argentina", ESP:"Spain", GER:"Germany", ITA:"Italy", FRA:"France", NED:"Netherlands", POR:"Portugal", BEL:"Belgium", TUR:"Türkiye", MEX:"Mexico", CAN:"Canada", AUS:"Australia", JPN:"Japan", KOR:"South Korea", CHN:"China", IND:"India", AUT:"Austria", SUI:"Switzerland", DEN:"Denmark", SWE:"Sweden", NOR:"Norway", FIN:"Finland", POL:"Poland", CZE:"Czech Republic", GRE:"Greece", CRO:"Croatia", SRB:"Serbia", UKR:"Ukraine", RUS:"Russia", ROU:"Romania", BUL:"Bulgaria", HUN:"Hungary", ISR:"Israel", KSA:"Saudi Arabia", UAE:"United Arab Emirates", QAT:"Qatar", EGY:"Egypt", MAR:"Morocco", RSA:"South Africa", NGA:"Nigeria", COL:"Colombia", CHI:"Chile", URU:"Uruguay", PAR:"Paraguay", ECU:"Ecuador", PER:"Peru", VEN:"Venezuela", INT:"International", FIFA:"International", UEFA:"Europe" };
 // Temporarily paused while fixture schedules are being corrected. Manual email
 // actions remain available to the administrator.
@@ -782,15 +782,26 @@ class FootballHubPanel extends HTMLElement {
           adminPasswordHash: competition.adminPasswordHash,
         };
         const localPlayers = new Map((competition.players || []).map((player) => [String(player.id), player]));
+        let buyBackNeedsSync = false;
         const before = JSON.stringify({ round: competition.round, completed: competition.completed, players: (competition.players || []).map((player) => ({ id: player.id, alive: player.alive, picks: player.picks, results: player.results })) });
         const mergedPlayers = (remote.players || []).map((remotePlayer) => {
           const localPlayer = localPlayers.get(String(remotePlayer.id)) || {};
           const merged = { ...localPlayer, ...remotePlayer, email: remotePlayer.email || localPlayer.email || "", pickUrl: remotePlayer.pickUrl || localPlayer.pickUrl || "" };
+          if (Number(remote.edition || 1) === Number(competition.edition || 1)
+            && (localPlayer.buyBackRounds?.["1"] || Number(localPlayer.buyBacks || 0) > 0)
+            && !remotePlayer.buyBackRounds?.["1"] && !Number(remotePlayer.buyBacks || 0)) {
+            merged.buyBacks = Math.max(1, Number(localPlayer.buyBacks || 0));
+            merged.buyBackRounds = { ...(localPlayer.buyBackRounds || {}), "1": true };
+            merged.results = { ...(remotePlayer.results || {}), "1": "bought-back" };
+            if (Number(remote.round || 1) === 1) merged.alive = true;
+            buyBackNeedsSync = true;
+          }
           if (!Object.hasOwn(remotePlayer, "manualAdvancement")) delete merged.manualAdvancement;
           if (!Object.hasOwn(remotePlayer, "manualElimination")) delete merged.manualElimination;
           return merged;
         });
         Object.assign(competition, remote, localAccess, { mode: "private", players: mergedPlayers });
+        if (buyBackNeedsSync) this._saveLms();
         if (this._isLmsAdmin() && this._needsLmsRoundFourRepair()) {
           await this._repairLmsPrematureRoundFour(localAccess);
           return true;
@@ -1455,7 +1466,7 @@ class FootballHubPanel extends HTMLElement {
       if (!player || !result.player) throw new Error("Buy-back was saved, but the player could not be refreshed. Reload the game.");
       Object.assign(player, result.player);
       Object.assign(competition, { round: result.round ?? competition.round, completed: result.completed ?? competition.completed, winnerId: result.winnerId ?? competition.winnerId });
-      this._saveLms(false);
+      this._saveLms();
       this._render();
     } catch (error) {
       console.warn("Football Hub LMS buy-back save failed", error);
@@ -1732,6 +1743,11 @@ class FootballHubPanel extends HTMLElement {
     // A stale sensor update can briefly settle a live fixture. Reopen that
     // player's current-round result before checking the actual final score.
     for (const player of competition.players) {
+      if (roundKey === "1" && (player.buyBackRounds?.["1"] || Number(player.buyBacks || 0) > 0)) {
+        player.results = { ...(player.results || {}), "1": "bought-back" };
+        player.alive = true;
+        continue;
+      }
       if (!["survived", "eliminated"].includes(player.results?.[roundKey])) continue;
       const pick = player.picks?.[roundKey];
       const match = fixtures
