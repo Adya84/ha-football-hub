@@ -811,3 +811,21 @@ test('only the unlocked admin sees a Through action on Out player cards', () => 
   panel._isLmsAdmin = () => false;
   assert.doesNotMatch(panel._lastManStandingPage(), /class="lms-mark-through"/);
 });
+
+test('Home Assistant does not pull an older shared status during a buy-back save', async () => {
+  const { panel } = setup('private');
+  panel._activeTab = 'last-man-standing';
+  panel._lmsCompetition.shareId = 'shared-game';
+  panel._lmsBuyBackPending = true;
+  assert.equal(await panel._pullLmsSharePicks(true), false);
+});
+
+test('setting the LMS admin password does not invoke buy-back', async () => {
+  const { panel } = setup('private');
+  panel._lmsCompetition.shareId = 'shared-game';
+  panel._lmsCompetition.shareEditToken = 'edit-token';
+  panel._lmsPasswordHash = async () => 'hashed';
+  panel._commitLmsBuyBack = () => { throw new Error('Unexpected buy-back'); };
+  await panel._setLmsAdminPassword('secret', 'secret');
+  assert.equal(panel._lmsCompetition.adminPasswordHash, 'hashed');
+});

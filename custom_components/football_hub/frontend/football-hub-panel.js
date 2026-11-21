@@ -1,4 +1,4 @@
-const PANEL_VERSION = "0.8.21";
+const PANEL_VERSION = "0.8.22";
 const LIVE_COUNTRY_CODES = { ENG:"England", SCO:"Scotland", WAL:"Wales", NIR:"Northern Ireland", IRL:"Ireland", GBR:"United Kingdom", USA:"United States", BRA:"Brazil", ARG:"Argentina", ESP:"Spain", GER:"Germany", ITA:"Italy", FRA:"France", NED:"Netherlands", POR:"Portugal", BEL:"Belgium", TUR:"Türkiye", MEX:"Mexico", CAN:"Canada", AUS:"Australia", JPN:"Japan", KOR:"South Korea", CHN:"China", IND:"India", AUT:"Austria", SUI:"Switzerland", DEN:"Denmark", SWE:"Sweden", NOR:"Norway", FIN:"Finland", POL:"Poland", CZE:"Czech Republic", GRE:"Greece", CRO:"Croatia", SRB:"Serbia", UKR:"Ukraine", RUS:"Russia", ROU:"Romania", BUL:"Bulgaria", HUN:"Hungary", ISR:"Israel", KSA:"Saudi Arabia", UAE:"United Arab Emirates", QAT:"Qatar", EGY:"Egypt", MAR:"Morocco", RSA:"South Africa", NGA:"Nigeria", COL:"Colombia", CHI:"Chile", URU:"Uruguay", PAR:"Paraguay", ECU:"Ecuador", PER:"Peru", VEN:"Venezuela", INT:"International", FIFA:"International", UEFA:"Europe" };
 // Temporarily paused while fixture schedules are being corrected. Manual email
 // actions remain available to the administrator.
@@ -716,7 +716,7 @@ class FootballHubPanel extends HTMLElement {
   async _syncLmsShare() {
     const competition = this._lmsCompetition;
     if (!competition?.shareId || (!competition?.shareEditToken && !this._lmsAdminPassword) || !LMS_SHARE_SERVICE) return;
-    if (this._lmsShareBusy) {
+    if (this._lmsShareBusy || this._lmsBuyBackPending) {
       clearTimeout(this._lmsShareSyncTimer);
       this._lmsShareSyncTimer = setTimeout(() => this._syncLmsShare(), 1500);
       return;
@@ -757,6 +757,7 @@ class FootballHubPanel extends HTMLElement {
 
   async _pullLmsSharePicks(force = false) {
     const competition = this._lmsCompetition;
+    if (this._lmsBuyBackPending) return false;
     if (this._activeTab !== "last-man-standing" || !competition?.shareId || !LMS_SHARE_SERVICE || (!force && (this._lmsShareBusy || this._lmsShareSyncPending))) return false;
     if (!force && Date.now() - this._lmsShareLastPull < 1500) return;
     this._lmsShareLastPull = Date.now();
@@ -874,35 +875,7 @@ class FootballHubPanel extends HTMLElement {
     this._lmsAdminUnlocked = true;
     this._saveLms(false);
     this._render();
-    if (competition.shareId && LMS_SHARE_SERVICE && (competition.shareEditToken || this._lmsAdminPassword)) {
-      void this._commitLmsBuyBack(player.id);
-    } else {
-      this._saveLms();
-    }
-  }
-
-  async _commitLmsBuyBack(playerId) {
-    const competition = this._lmsCompetition;
-    if (!competition?.shareId || this._lmsShareBusy) return;
-    this._lmsShareBusy = true;
-    try {
-      const response = await fetch(`${LMS_SHARE_SERVICE}/api/competitions/${encodeURIComponent(competition.shareId)}`, {
-        method: "PATCH",
-        headers: { "content-type": "application/json", ...(competition.shareEditToken ? { authorization: `Bearer ${competition.shareEditToken}` } : {}), ...(this._lmsAdminPassword ? { "x-admin-password": this._lmsAdminPassword } : {}) },
-        body: JSON.stringify({ action: "buy-back", playerId }),
-      });
-      const result = await response.json();
-      if (!response.ok) throw new Error(result.error || "Buy-back could not be saved");
-      const player = competition.players?.find((item) => String(item.id) === String(playerId));
-      if (player && result.player) Object.assign(player, result.player);
-      Object.assign(competition, { round: result.round ?? competition.round, completed: result.completed ?? competition.completed, winnerId: result.winnerId ?? competition.winnerId });
-      this._saveLms(false);
-      this._render();
-    } catch (error) {
-      console.warn("Football Hub LMS buy-back save failed", error);
-      await this._pullLmsSharePicks(true);
-      window.alert(error?.message || "Buy-back could not be saved. Please try again.");
-    } finally { this._lmsShareBusy = false; }
+    this._saveLms();
   }
 
   async _unlockLmsAdmin(password) {
