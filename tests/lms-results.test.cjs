@@ -268,6 +268,38 @@ test('a Round 1 buy-back remains active when results are checked again', async (
   assert.equal(player.picks['1'], 'Sunderland');
 });
 
+test('buy-back waits for an in-progress share refresh and is saved before showing Through', async () => {
+  let Panel, patchCount = 0;
+  vm.runInNewContext(fs.readFileSync(path.join(__dirname, '../custom_components/football_hub/frontend/football-hub-panel.js'), 'utf8'), {
+    HTMLElement: class {}, customElements: { get: () => false, define: (_name, value) => { Panel = value; } },
+    localStorage: { setItem() {} }, queueMicrotask() {}, console, setTimeout,
+    window: { confirm: () => true, alert: (message) => { throw new Error(message); } },
+    fetch: async (_url, options) => {
+      assert.equal(options.method, 'PATCH');
+      assert.equal(JSON.parse(options.body).action, 'buy-back');
+      patchCount++;
+      return { ok: true, json: async () => ({ player: { id: 'a', alive: true, paid: true, buyBacks: 1, buyBackRounds: { 1: true }, results: { 1: 'bought-back' } } }) };
+    },
+  });
+  const panel = Object.create(Panel.prototype);
+  const player = { id: 'a', name: 'Test player', alive: false, paid: true, picks: { 1: 'Tottenham Hotspur' }, results: { 1: 'eliminated' } };
+  panel._lmsCompetition = { mode: 'private', round: 1, entryFee: 5, shareId: 'shared-game', shareEditToken: 'edit-token', players: [player] };
+  panel._isLmsAdmin = () => true;
+  panel._lmsDeadlineState = () => ({ locked: false });
+  panel._saveLms = () => {};
+  panel._render = () => {};
+  panel._lmsShareBusy = true;
+
+  panel._buyBackLmsPlayer(player.id);
+  assert.equal(player.alive, false, 'the card must not show Through before the save succeeds');
+  panel._lmsShareBusy = false;
+  await new Promise((resolve) => setTimeout(resolve, 300));
+
+  assert.equal(patchCount, 1);
+  assert.equal(player.alive, true);
+  assert.equal(player.results['1'], 'bought-back');
+});
+
 test('a saved buy-back restores a player overwritten as eliminated by shared state', () => {
   const { panel } = setup('private');
   const player = panel._lmsCompetition.players[0];

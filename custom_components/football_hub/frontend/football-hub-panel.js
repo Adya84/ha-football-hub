@@ -1,4 +1,4 @@
-const PANEL_VERSION = "0.8.20";
+const PANEL_VERSION = "0.8.21";
 const LIVE_COUNTRY_CODES = { ENG:"England", SCO:"Scotland", WAL:"Wales", NIR:"Northern Ireland", IRL:"Ireland", GBR:"United Kingdom", USA:"United States", BRA:"Brazil", ARG:"Argentina", ESP:"Spain", GER:"Germany", ITA:"Italy", FRA:"France", NED:"Netherlands", POR:"Portugal", BEL:"Belgium", TUR:"Türkiye", MEX:"Mexico", CAN:"Canada", AUS:"Australia", JPN:"Japan", KOR:"South Korea", CHN:"China", IND:"India", AUT:"Austria", SUI:"Switzerland", DEN:"Denmark", SWE:"Sweden", NOR:"Norway", FIN:"Finland", POL:"Poland", CZE:"Czech Republic", GRE:"Greece", CRO:"Croatia", SRB:"Serbia", UKR:"Ukraine", RUS:"Russia", ROU:"Romania", BUL:"Bulgaria", HUN:"Hungary", ISR:"Israel", KSA:"Saudi Arabia", UAE:"United Arab Emirates", QAT:"Qatar", EGY:"Egypt", MAR:"Morocco", RSA:"South Africa", NGA:"Nigeria", COL:"Colombia", CHI:"Chile", URU:"Uruguay", PAR:"Paraguay", ECU:"Ecuador", PER:"Peru", VEN:"Venezuela", INT:"International", FIFA:"International", UEFA:"Europe" };
 // Temporarily paused while fixture schedules are being corrected. Manual email
 // actions remain available to the administrator.
@@ -1433,6 +1433,14 @@ class FootballHubPanel extends HTMLElement {
     if (!this._canLmsBuyBack(player)) return;
     const fee = Number(competition.entryFee ?? 5);
     if (!window.confirm(`Buy ${player.name} back into the competition for £${fee.toFixed(2)}? Their first team will remain used.`)) return;
+    if (competition.shareId && LMS_SHARE_SERVICE) {
+      if (!competition.shareEditToken && !this._lmsAdminPassword) {
+        window.alert("Reopen the shared game with its link and administrator password before buying a player back in.");
+        return;
+      }
+      if (!this._lmsBuyBackPending) void this._commitLmsBuyBack(player.id);
+      return;
+    }
     player.buyBacks = Number(player.buyBacks || 0) + 1;
     player.buyBackRounds = { ...(player.buyBackRounds || {}), "1": true };
     player.paid = true;
@@ -1448,15 +1456,21 @@ class FootballHubPanel extends HTMLElement {
     }
     this._saveLms(false);
     this._render();
-    if (competition.shareId && LMS_SHARE_SERVICE && (competition.shareEditToken || this._lmsAdminPassword)) void this._commitLmsBuyBack(player.id);
-    else this._saveLms();
+    this._saveLms();
   }
 
   async _commitLmsBuyBack(playerId) {
     const competition = this._lmsCompetition;
-    if (!competition?.shareId || this._lmsShareBusy) return;
-    this._lmsShareBusy = true;
+    if (!competition?.shareId || this._lmsBuyBackPending) return;
+    this._lmsBuyBackPending = true;
+    let ownsShareLock = false;
     try {
+      for (let attempt = 0; this._lmsShareBusy && attempt < 100; attempt++) {
+        await new Promise((resolve) => setTimeout(resolve, 100));
+      }
+      if (this._lmsShareBusy || this._lmsCompetition !== competition) throw new Error("The game is still syncing. Please try Buy back again.");
+      this._lmsShareBusy = true;
+      ownsShareLock = true;
       const response = await fetch(`${LMS_SHARE_SERVICE}/api/competitions/${encodeURIComponent(competition.shareId)}`, {
         method: "PATCH",
         headers: { "content-type": "application/json", ...(competition.shareEditToken ? { authorization: `Bearer ${competition.shareEditToken}` } : {}), ...(this._lmsAdminPassword ? { "x-admin-password": this._lmsAdminPassword } : {}) },
@@ -1465,14 +1479,15 @@ class FootballHubPanel extends HTMLElement {
       const result = await response.json();
       if (!response.ok) throw new Error(result.error || "Buy-back could not be saved");
       const player = competition.players?.find((item) => String(item.id) === String(playerId));
-      if (player && result.player) Object.assign(player, result.player);
+      if (!player || !result.player) throw new Error("Buy-back was saved, but the player could not be refreshed. Reload the game.");
+      Object.assign(player, result.player);
+      Object.assign(competition, { round: result.round ?? competition.round, completed: result.completed ?? competition.completed, winnerId: result.winnerId ?? competition.winnerId });
       this._saveLms(false);
       this._render();
     } catch (error) {
       console.warn("Football Hub LMS buy-back save failed", error);
-      await this._pullLmsSharePicks(true);
       window.alert(error?.message || "Buy-back could not be saved. Please try again.");
-    } finally { this._lmsShareBusy = false; }
+    } finally { if (ownsShareLock) this._lmsShareBusy = false; this._lmsBuyBackPending = false; }
   }
 
   _restoreLmsBuyBacks() {
